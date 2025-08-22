@@ -19,5 +19,9 @@
         <HintPath>..\libs\MMHOOK_Assembly-CSharp.dll</HintPath>
       </Reference>
     </ItemGroup>
+    
+    <ItemGroup>
+      <Folder Include="src\obj\" />
+    </ItemGroup>
 
 </Project>

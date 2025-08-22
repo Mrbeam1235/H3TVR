@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 using Valve.VR;
 
@@ -25,152 +26,109 @@ namespace H3TVR
         private const float RealisticFallTime = 1f;
         private string ZeroGStatus = "Off";
         private readonly Hooks _hooks;
-        private List<string> GunList = File.ReadAllLines(@"c:\H3TVR\GunList.txt").ToList();
-        private List<string> MagazineList = File.ReadAllLines(@"c:\H3TVR\MagazineList.txt").ToList();
-        public string filepath = string.Empty;
-        private ConfigEntry<string> filePathToTextFolderGunList;
-        private ConfigEntry<string> filePathToTextFolderMagzineList;
+        public string filePath = string.Empty;
+        private ConfigEntry<string> GunList;
+        public ConfigEntry<string> MagazineList;
+        private ConfigEntry<KeyCode> Key0;
+        private ConfigEntry<KeyCode> Key1;
+        private ConfigEntry<KeyCode> Key2;
+        private ConfigEntry<KeyCode> Key3;
+        private ConfigEntry<KeyCode> Key4;
+        private ConfigEntry<KeyCode> Key5;
+        private ConfigEntry<KeyCode> Key6;
+        private ConfigEntry<KeyCode> Key7;
+        private ConfigEntry<KeyCode> Key8;
+        private ConfigEntry<KeyCode> Key9;
+        private ConfigEntry<KeyCode> Key10;
+        private ConfigEntry<KeyCode> Key11;
+        private ConfigEntry<KeyCode> Key12;
+        private ConfigEntry<KeyCode> Key13;
+        private ConfigEntry<KeyCode> Key14;
+        private ConfigEntry<KeyCode> Key15;
 
-
-#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
         public H3TVR()
-#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
         {
-            ConfigEntry<string> configEntry = Config.Bind("General",
-                           "FilePath",
-                           "null",
-                           "The File path to the skitty subs gun list");
-            ConfigEntry<string> filePathtoTextFolderGunList = configEntry;
-ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
-                    "FilePath",
-                    "null",
-                    "The File Path to where the Skitty sub MagzineList is");
-            ConfigEntry<KeyCode> keytoSpawnwonderToy = Config.Bind("General",
-                           "KeyBindForWonderToy",
-                        KeyCode.Keypad0,
-                        "The key used to spawn WonderToy");
-            ConfigEntry<KeyCode> keytoSpawnBodypillows = Config.Bind("General",
-                        "KeyBindForBodyPillows",
-                        KeyCode.Keypad1,
-                        "The Key to spawn Body Pillows ");
-            ConfigEntry<KeyCode> keyToSpawnFlash = Config.Bind("General",
-                             "KeyBindForFlash",
-                             KeyCode.Keypad2,
-                             "The key to spawn flash nades");
-            ConfigEntry<KeyCode> KeyToSpawnShuri = Config.Bind("General",
-                "KeyBindForShuri",
-                KeyCode.Keypad3,
-                "The key to spawn shurkins");
-            ConfigEntry<KeyCode> KeytoSpawnNadeRain = Config.Bind("General",
-                    "KeyBindForNadeRain",
-                    KeyCode.Keypad4,
-                    "The Key to Spawn Nade Rain");
-            ConfigEntry<KeyCode> KeytoSpawnHydration = Config.Bind("General",
-                "KeyBindForHydration",
-                KeyCode.Keypad5,
-                "The key to spawn Hydration");
-            ConfigEntry<KeyCode> KeytoSpawnJeditToy = Config.Bind("General",
-                "KeyBindForJeditToy",
-                KeyCode.Keypad6,
-                "The key to spawn JeditToy");
-            ConfigEntry<KeyCode> KeyToSpawnSloMo = Config.Bind("General",
-                "KeyBindForSloMo",
-                KeyCode.Keypad7,
-                "The key to active slomo (keyboard press not controller button)");
-            ConfigEntry<KeyCode> KeytoSpawnDestoryHeld = Config.Bind("General",
-                "KeyBindForDestoryHeld",
-                KeyCode.Keypad8,
-                "The key to Destory what is held");
-            ConfigEntry<KeyCode> KeyToSpawnSkittysubGuns = Config.Bind("General",
-                "KeyBindForSkittySubGuns",
-                KeyCode.Keypad9,
-                "The key to spawn SkittySubGuns");
-            ConfigEntry<KeyCode> KeyToBumpGravityDown = Config.Bind("General",
-                "KeyBindForBumpGravityDown",
-                KeyCode.KeypadDivide,
-                "The key to Bump gravityDown");
-            ConfigEntry<KeyCode> KeyToEnableMeatHands = Config.Bind("General",
-                "KeyBindToEnableMeatHands",
-                KeyCode.KeypadEnter,
-                "The key to EnableMeatHands");
-            ConfigEntry<KeyCode> KeytoSpawnDangerClose = Config.Bind("General",
-                "KeyBindForDangerClose",
-                KeyCode.KeypadMinus,
-                "The key to use DangerClose");
-            ConfigEntry<KeyCode> keyToSpawnFlash2 = Config.Bind("General",
-                "KeyBindForFlash2",
-                KeyCode.KeypadMultiply,
-                "The key to spawn flash2");
-            ConfigEntry<KeyCode> KeytoDestoryQuickbelt = Config.Bind("General",
-                "KeyBindForDestoryQuickbelt",
-                KeyCode.KeypadPeriod,
-                "The key to DestoryQuickbelt");
-            ConfigEntry<KeyCode> KeytoBigSkittySubGuns = Config.Bind("General",
-                "KeyBindForBigSkittySubGuns",
-                KeyCode.KeypadPlus,
-                "The key to SpawnBigSkittySubGuns");
-
-
-
-
             _hooks = new Hooks();
             _hooks.Hook();
             Logger.LogInfo("Loading H3TVR");
         }
 
-        private void Awake()
+        public void Awake()
         {
+
             Harmony.CreateAndPatchAll(this.GetType());
             Logger.LogInfo("Successfully loaded H3TVR!");
+
+            // Initialize non-nullable fields with default values
+            GunList = Config.Bind("General", "GunList", string.Empty, "List of guns");
+            MagazineList = Config.Bind("General", "MagazineList", string.Empty, "List of magazines");
+
+            // Initialize Key bindings with default values
+            Key0 = Config.Bind("General", "KeyBindForWonderToy", KeyCode.Keypad0, "The key used to spawn WonderToy");
+            Key1 = Config.Bind("General", "KeyBindForPillow", KeyCode.Keypad1, "The key used to spawn Pillow");
+            Key2 = Config.Bind("General", "KeyBindForFlash", KeyCode.Keypad2, "The key used to spawn Flash");
+            Key3 = Config.Bind("General", "KeyBindForShuri", KeyCode.Keypad3, "The key used to spawn Shuri");
+            Key4 = Config.Bind("General", "KeyBindForNadeRain", KeyCode.Keypad4, "The key used to spawn Nade Rain");
+            Key5 = Config.Bind("General", "KeyBindForHydration", KeyCode.Keypad5, "The key used to spawn Hydration");
+            Key6 = Config.Bind("General", "KeyBindForJeditToy", KeyCode.Keypad6, "The key used to spawn Jedit Toy");
+            Key7 = Config.Bind("General", "KeyBindForSlomo", KeyCode.Keypad7, "The key used to trigger Slomo");
+            Key8 = Config.Bind("General", "KeyBindForDestroyHeld", KeyCode.Keypad8, "The key used to destroy held object");
+            Key9 = Config.Bind("General", "KeyBindForSkittySubGun", KeyCode.Keypad9, "The key used to spawn Skitty Sub Gun");
+            Key10 = Config.Bind("General", "KeyBindForZeroGravity", KeyCode.KeypadMinus, "The key used to toggle Zero Gravity");
+            Key11 = Config.Bind("General", "KeyBindForMeatHands", KeyCode.KeypadPlus, "The key used to enable Meat Hands");
+            Key12 = Config.Bind("General", "KeyBindForDangerClose", KeyCode.F1, "The key used for Danger Close Barrage");
+            Key13 = Config.Bind("General", "KeyBindForFlash2", KeyCode.F2, "The key used to spawn Flash2");
+            Key14 = Config.Bind("General", "KeyBindForDestroyQuickbelt", KeyCode.F3, "The key used to destroy Quickbelt");
+            Key15 = Config.Bind("General", "KeyBindForSkittyBigGun", KeyCode.F4, "The key used to spawn Skitty Big Gun");
         }
 
-        private void Update()
+        public void Update()
         {
             //wonderful toy spawn
-            if (Input.GetKeyDown(KeyCode.H))
+            if (Input.GetKeyDown(Key0.Value))
 
             {
                 SpawnWonderfulToy();
             }
 
             //body pillow spawn
-            if (Input.GetKeyDown(KeyCode.J))
+            if (Input.GetKeyDown(Key1.Value))
 
             {
                 SpawnPillow();
             }
 
             //flash spawn
-            if (Input.GetKeyDown(KeyCode.K))
+            if (Input.GetKeyDown(Key2.Value))
             {
                 SpawnFlash();
             }
 
             //shuri spawn
-            if (Input.GetKey(KeyCode.B))
+            if (Input.GetKey(Key3.Value))
             {
                 SpawnShuri();
             }
 
             //nade spawn
-            if (Input.GetKeyDown(KeyCode.V))
+            if (Input.GetKeyDown(Key4.Value))
             {
                 SpawnNadeRain();
             }
 
             //hydration spawn
-            if (Input.GetKeyDown(KeyCode.I))
+            if (Input.GetKeyDown(Key5.Value))
             {
                 SpawnHydration();
             }
 
             //jedit tt spawn
-            if (Input.GetKeyDown(KeyCode.U))
+            if (Input.GetKeyDown(Key6.Value))
             {
                 SpawnJeditToy();
             }
 
-            if (GM.CurrentMovementManager.Hands[1].Input.AXButtonDown || Input.GetKeyDown(KeyCode.Space))
+            if (GM.CurrentMovementManager.Hands[1].Input.AXButtonDown || Input.GetKeyDown(Key7.Value))
             {
                 Logger.LogInfo("Detected Right A Press!");
                 SlomoStatus = "Slowing";
@@ -200,17 +158,17 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
                 SlomoStatus = ("Off");
             }
 
-            if (Input.GetKeyDown(KeyCode.M))
+            if (Input.GetKeyDown(Key8.Value))
             {
                 DestroyHeld();
             }
 
-            if (Input.GetKeyDown(KeyCode.N))
+            if (Input.GetKeyDown(Key9.Value))
             {
                 SpawnSkittySubGun();
             }
 
-            if (Input.GetKeyDown(KeyCode.Y))
+            if (Input.GetKeyDown(Key10.Value))
             {
                 ZeroGravityBumpDown();
             }
@@ -225,36 +183,36 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
                 StartCoroutine(RealisticFallWait());
             }
 
-            if (Input.GetKeyDown(KeyCode.G))
+            if (Input.GetKeyDown(Key11.Value))
             {
                 EnableMeatHands();
             }
 
-            if (Input.GetKey(KeyCode.F))
+            if (Input.GetKey(Key12.Value))
             {
                 DangerCloseBarrage();
             }
 
 
-            if (Input.GetKeyDown(KeyCode.E))
+            if (Input.GetKeyDown(Key13.Value))
             {
                 SpawnFlash2();
             }
 
-            if (Input.GetKeyDown(KeyCode.C))
+            if (Input.GetKeyDown(Key14.Value))
             {
                 DestroyQuickbelt();
 
             }
            
-            if (Input.GetKeyDown(KeyCode.O))
+            if (Input.GetKeyDown(Key15.Value))
             {
                 SpawnSkittyBigGun();
             }
         }
 
 
-        private void SpawnWonderfulToy()
+        public void SpawnWonderfulToy()
         {
             // Get the object you want to spawn
             FVRObject obj = IM.OD["TippyToyAnton"];
@@ -271,7 +229,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 25);
         }
 
-        private void SpawnJeditToy()
+        public void SpawnJeditToy()
         {
             // Get the object you want to spawn
             FVRObject obj = IM.OD["JediTippyToy"];
@@ -288,7 +246,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 25);
         }
 
-        private void SpawnPillow()
+        public void SpawnPillow()
         {
 
             // Get the object you want to spawn
@@ -306,7 +264,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
 
         //we want to spawn a flashbang infront of the player with little notice
-        private void SpawnFlash()
+        public void SpawnFlash()
         {
             // Get the object you want to spawn
             FVRObject obj = IM.OD["PinnedGrenadeXM84"];
@@ -330,7 +288,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 500);
         }
 
-        private void SpawnNadeRain()
+        public void SpawnNadeRain()
         {
             //    //Set cartridge speed
             float howFast = 15.0f;
@@ -376,7 +334,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
         }
 
-        private void SpawnShuri()
+        public void SpawnShuri()
 
         {
             //Set cartridge speed
@@ -426,7 +384,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
         }
 
-        private void DangerCloseBarrage()
+        public void DangerCloseBarrage()
 
         {
             //Set cartridge speed
@@ -463,7 +421,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
         }
 
-        private void SlomoScaleDown()
+        public void SlomoScaleDown()
         {
             if (Time.timeScale > MaxSlomo)
             {
@@ -478,7 +436,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             }
         }
 
-        private void SlomoReturn()
+        public void SlomoReturn()
         {
             if (Time.timeScale != 1)
             {
@@ -512,7 +470,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
         //}
 
-        private void SpawnHydration()
+        public void SpawnHydration()
         {
             // Get the object you want to spawn
             FVRObject obj = IM.OD["SuppressorBottle"];
@@ -529,7 +487,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 25);
         }
 
-        private void DestroyHeld()
+        public void DestroyHeld()
 
         {
             if (GM.CurrentMovementManager.Hands[1].CurrentInteractable != null && GM.CurrentMovementManager.Hands[1].CurrentInteractable is FVRPhysicalObject)
@@ -565,15 +523,20 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
         }
 
-        private void SpawnSkittySubGun()
+        public void SpawnSkittySubGun()
         {
-            GunList.Shuffle();
-            MagazineList.Shuffle();
-            string TopGun = GunList.ElementAt(0);
+            // Convert the ConfigEntry<string> to a List<string>
+            List<string> gunList = GunList.Value.Split(',').ToList(); 
+            List<string> magazineList = MagazineList.Value.Split(',').ToList(); 
+
+            gunList.Shuffle(); // Shuffle the gun list
+            magazineList.Shuffle(); // Shuffle the magazine list
+
+            string TopGun = gunList.ElementAt(0);
             string TopGunTruncated = new string(TopGun.Take(5).ToArray());
             Logger.LogInfo(TopGunTruncated);
             Logger.LogInfo(TopGun);
-            string MatchingMagazine = MagazineList.Find(o => o.Contains(TopGunTruncated));
+            string MatchingMagazine = magazineList.Find(o => o.Contains(TopGunTruncated));
             Logger.LogInfo(MatchingMagazine);
 
             // Get the object you want to spawn
@@ -584,18 +547,17 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
             GameObject go2 = Instantiate(obj2.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
 
-            //add some speeeeen
+            // Add some spin
             go.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
             go2.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
 
-            //add force
+            // Add force
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 100);
             go2.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 100);
-
         }
 
         //we want to spawn a flashbang infront of the player with little notice
-        private void SpawnFlash2()
+        public void SpawnFlash2()
         {
             // Get the object you want to spawn
             FVRObject obj = IM.OD["PinnedGrenadeXM84"];
@@ -618,7 +580,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             Logger.LogInfo("Adding Force");
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 500);
         }
-        private void ZeroGravityBumpDown()
+        public void ZeroGravityBumpDown()
         {
             //GM.Options.SimulationOptions.PlayerGravityMode = SimulationOptions.GravityMode.None;
             GM.Options.SimulationOptions.ObjectGravityMode = SimulationOptions.GravityMode.None;
@@ -628,7 +590,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
         }
 
-        private void ZeroGravityBumpUp()
+        public void ZeroGravityBumpUp()
         {
             //GM.Options.SimulationOptions.PlayerGravityMode = SimulationOptions.GravityMode.Playful;
             GM.Options.SimulationOptions.ObjectGravityMode = SimulationOptions.GravityMode.Playful;
@@ -637,7 +599,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             //Logger.LogInfo("Gravity Is Now " + GM.Options.SimulationOptions.PlayerGravityMode);
         }
 
-        private void RealisticFall()
+        public void RealisticFall()
         {
             //GM.Options.SimulationOptions.PlayerGravityMode = SimulationOptions.GravityMode.Realistic;
             GM.Options.SimulationOptions.ObjectGravityMode = SimulationOptions.GravityMode.Realistic;
@@ -645,7 +607,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             //Logger.LogInfo("Gravity Is Now " + GM.Options.SimulationOptions.PlayerGravityMode);
         }
 
-        private void EnableMeatHands()
+        public void EnableMeatHands()
         {
             GM.CurrentMovementManager.Hands[0].SpawnSausageFingers();
             GM.CurrentMovementManager.Hands[1].SpawnSausageFingers();
@@ -653,7 +615,7 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
 
 
-        private void DestroyQuickbelt()
+        public void DestroyQuickbelt()
         {
             List<FVRQuickBeltSlot> slots = new List<FVRQuickBeltSlot>();
 
@@ -678,15 +640,24 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
 
         }
 
-        private void SpawnSkittyBigGun()
+        // Fix for CS1955: Non-invocable member 'H3TVR.GunList' cannot be used like a method.
+        // The issue is that 'GunList' is a ConfigEntry<string>, not a method. 
+        // To fix this, we need to access its 'Value' property instead of trying to invoke it as a method.
+
+        public void SpawnSkittyBigGun()
         {
-            GunList.Shuffle();
-            MagazineList.Shuffle();
-            string TopGun = GunList.ElementAt(0);
+            // Assuming GunList and MagazineList are ConfigEntry<string>, we need to access their 'Value' property.
+            List<string> gunList = GunList.Value.Split(',').ToList(); // Convert the ConfigEntry<string> to a List<string>
+            List<string> magazineList = MagazineList.Value.Split(',').ToList(); // Convert the ConfigEntry<string> to a List<string>
+
+            gunList.Shuffle(); // Shuffle the gun list
+            magazineList.Shuffle(); // Shuffle the magazine list
+
+            string TopGun = gunList.ElementAt(0);
             string TopGunTruncated = new string(TopGun.Take(5).ToArray());
             Logger.LogInfo(TopGunTruncated);
             Logger.LogInfo(TopGun);
-            string MatchingMagazine = MagazineList.Find(o => o.Contains(TopGunTruncated));
+            string MatchingMagazine = magazineList.Find(o => o.Contains(TopGunTruncated));
             Logger.LogInfo(MatchingMagazine);
 
             // Get the object you want to spawn
@@ -697,14 +668,16 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
             GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
             GameObject go2 = Instantiate(obj2.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
 
-            //add some speeeeen
+            // Add some spin
             go.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
             go2.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
 
-            //add force
+            // Add force
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 100);
             go2.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 100);
-            go.transform.localScale = new Vector3(5, 5, 5 );
+
+            // Scale up for "Big Gun"
+            go.transform.localScale = new Vector3(5, 5, 5);
             go2.transform.localScale = new Vector3(5, 5, 5);
         }
 
@@ -730,6 +703,9 @@ ConfigEntry<string> filePathToTextFolderMagzineList = Config.Bind("General",
         }
     }
 }
+
+
+
 
 
 
