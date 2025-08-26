@@ -56,6 +56,7 @@ namespace H3TVR
         private ConfigEntry<float> MalfunctionBoostDurationSeconds; // configurable duration in seconds
         private ConfigEntry<float> MalfunctionBoostDurationMinutes; // optional duration in minutes (overrides seconds if > 0)
         private const float ForcedMalfunctionChance = 0.75f; // 75% each trigger pull during boost
+        private ConfigEntry<float> ShurikenScaleMultiplier; // config entry for shuriken scale
 
         public ConfigFile FilePath { get; set; }
 
@@ -93,6 +94,7 @@ namespace H3TVR
             KeyBoostMalfunction = Config.Bind("General", "KeyBindForMeatyceiverMalfunctionBoost", KeyCode.F9, "Redeem: Boost Meatyceiver malfunction chance (uses configured seconds/minutes)");
             MalfunctionBoostDurationSeconds = Config.Bind("General", "MeatyceiverMalfunctionBoostSeconds", 600f, "Fallback duration in seconds (ignored if minutes > 0). Clamped 5 - 3600.");
             MalfunctionBoostDurationMinutes = Config.Bind("General", "MeatyceiverMalfunctionBoostMinutes", 10f, "Primary duration in minutes (set to 0 to use seconds). Clamped 0.0833 - 60.");
+            ShurikenScaleMultiplier = Config.Bind("General", "ShurikenScaleMultiplier", 10f, "Scale multiplier applied to spawned shuriken (min 0.1, max 200)." );
         }
 
         public void Awake()
@@ -161,7 +163,7 @@ namespace H3TVR
 
             if (SlomoStatus == "Slowing")
             {
-                Logger.LogInfo("Slowing!");
+                //Logger.LogInfo("Slowing!");
                 // Fix for CS1525: Invalid expression term '||'
                 // The issue is likely caused by a misplaced closing parenthesis in the following condition.
                 // Correcting the condition by moving the closing parenthesis to the correct position.
@@ -171,7 +173,7 @@ namespace H3TVR
                     && GM.CurrentMovementManager.Hands.Length > 0
                     && (GM.CurrentMovementManager.Hands[0].Input.AXButtonDown || Input.GetKeyDown(Key7.Value)))
                 {
-                    Logger.LogInfo("Detected Left X Button Press!");
+                    //Logger.LogInfo("Detected Left X Button Press!");
                     SlomoStatus = "Slowing";
                 }
                 SlomoScaleDown();
@@ -186,7 +188,7 @@ namespace H3TVR
 
             if (SlomoStatus == "Return")
             {
-                Logger.LogInfo("Returning!");
+                //Logger.LogInfo("Returning!");
                 SlomoReturn();
             }
 
@@ -269,7 +271,7 @@ namespace H3TVR
                 if (Time.time >= _malfunctionBoostEndTime)
                 {
                     _malfunctionBoostActive = false;
-                    Logger.LogInfo("Meatyceiver malfunction boost ended.");
+                    //Logger.LogInfo("Meatyceiver malfunction boost ended.");
                 }
                 else
                 {
@@ -299,7 +301,7 @@ namespace H3TVR
         public void SpawnJeditToy()
         {
             const string key = "JediTippyToy"; // original desired key
-            string? foundKey = null; // Use nullable string type
+            string foundKey = null; // Use non-nullable string for C# 7.3 compatibility
 
             // 1. Exact match (and not null)
             if (IM.OD.ContainsKey(key) && IM.OD[key] != null)
@@ -322,7 +324,7 @@ namespace H3TVR
             {
                 // Show a larger sample to aid debugging
                 var sample = string.Join(", ", IM.OD.Keys.Take(15).ToArray());
-                Logger.LogError($"SpawnJeditToy: Key '{key}' not found. Sample available keys: {sample}");
+                //Logger.LogError($"SpawnJeditToy: Key '{key}' not found. Sample available keys: {sample}");
                 return;
             }
 
@@ -339,9 +341,9 @@ namespace H3TVR
             }
             else
             {
-                Logger.LogWarning("SpawnJeditToy: Spawned object has no Rigidbody (key resolved to '" + foundKey + "').");
+                //Logger.LogWarning("SpawnJeditToy: Spawned object has no Rigidbody (key resolved to '" + foundKey + "').");
             }
-            Logger.LogInfo("SpawnJeditToy: Spawned object with resolved key '" + foundKey + "'.");
+            //Logger.LogInfo("SpawnJeditToy: Spawned object with resolved key '" + foundKey + "'.");
         }
 
         public void SpawnPillow()
@@ -369,20 +371,20 @@ namespace H3TVR
 
 
             // Instantiate (spawn) the object above the player head
-            Logger.LogInfo("Spawned Object");
+            //Logger.LogInfo("Spawned Object");
             GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
 
 
             //prime the flash object
-            Logger.LogInfo("Getting Component");
+            //Logger.LogInfo("Getting Component");
             PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-            Logger.LogInfo("Releasing Lever");
+            //Logger.LogInfo("Releasing Lever");
             grenade.ReleaseLever();
 
 
 
             //add force
-            Logger.LogInfo("Adding Force");
+            //Logger.LogInfo("Adding Force");
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 500);
         }
 
@@ -401,7 +403,7 @@ namespace H3TVR
 
             // Random number for pull chance
             int pullChance = UnityEngine.Random.Range(1, 20);
-            Logger.LogInfo(pullChance);
+            //Logger.LogInfo(pullChance);
 
             // Get the object you want to spawn
             FVRObject obj = IM.OD["PinnedGrenadeM67"];
@@ -410,23 +412,23 @@ namespace H3TVR
             Vector3 grenadePosition0 = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.up * 0.02f);
 
             // Instantiate (spawn) the object above the player head
-            Logger.LogInfo("Spawned Object");
+            //Logger.LogInfo("Spawned Object");
             GameObject go = Instantiate(obj.GetGameObject(), grenadePosition0, Quaternion.LookRotation(GM.CurrentPlayerBody.Head.up));
 
             //Set Object Direction
             go.transform.Rotate(new Vector3(randRot.x * maxAngle, randRot.y * maxAngle, 0.0f), Space.Self);
 
             //add force
-            Logger.LogInfo("Adding Force");
+            //Logger.LogInfo("Adding Force");
             go.GetComponent<Rigidbody>().velocity = go.transform.forward * howFast;
 
 
             if (pullChance == 10)
             {
                 //prime the grenade object
-                Logger.LogInfo("Getting Component");
+                //Logger.LogInfo("Getting Component");
                 PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-                Logger.LogInfo("Releasing Lever");
+                //Logger.LogInfo("Releasing Lever");
                 grenade.ReleaseLever();
             }
 
@@ -475,10 +477,11 @@ namespace H3TVR
 
             //old spray
             //add scale for funnies
-            go0.transform.localScale = new Vector3(10, 10, 10);
+            float shurikenScale = Mathf.Clamp(ShurikenScaleMultiplier.Value, 0.1f, 200f);
+            go0.transform.localScale = Vector3.one * shurikenScale;
             go0.GetComponent<Rigidbody>().velocity = go0.transform.forward * howFast;
 
-            Destroy(go0, 60f);
+            Destroy(go0, 20f);
 
         }
 
@@ -650,7 +653,7 @@ namespace H3TVR
 
             if (gunList.Length == 0)
             {
-                Logger.LogError("Gun list is empty after parsing.");
+                //Logger.LogError("Gun list is empty after parsing.");
                 return;
             }
 
@@ -658,9 +661,9 @@ namespace H3TVR
             int randomGunIndex = UnityEngine.Random.Range(0, gunList.Length);
             string selectedGun = gunList[randomGunIndex];
             string selectedGunTruncated = new string(selectedGun.Take(5).ToArray());
-            Logger.LogInfo($"Random Gun Index: {randomGunIndex} / {gunList.Length - 1}");
-            Logger.LogInfo("SelectedGun: " + selectedGun);
-            Logger.LogInfo("SelectedGunTruncated: " + selectedGunTruncated);
+            //Logger.LogInfo($"Random Gun Index: {randomGunIndex} / {gunList.Length - 1}");
+            //Logger.LogInfo("SelectedGun: " + selectedGun);
+            //Logger.LogInfo("SelectedGunTruncated: " + selectedGunTruncated);
 
             string magazineListString;
             if (File.Exists(MagazineList.Value))
@@ -688,19 +691,19 @@ namespace H3TVR
             {
                 int randomMagIndex = UnityEngine.Random.Range(0, matchingMagazines.Length);
                 selectedMagazine = matchingMagazines[randomMagIndex];
-                Logger.LogInfo($"Random Magazine Index: {randomMagIndex} / {matchingMagazines.Length - 1}");
+                //Logger.LogInfo($"Random Magazine Index: {randomMagIndex} / {matchingMagazines.Length - 1}");
             }
 
-            Logger.LogInfo("SelectedMagazine: " + selectedMagazine);
+            //Logger.LogInfo("SelectedMagazine: " + selectedMagazine);
 
             if (!IM.OD.ContainsKey(selectedGun))
             {
-                Logger.LogError("Gun key '" + selectedGun + "' not found in IM.OD dictionary.");
+                //Logger.LogError("Gun key '" + selectedGun + "' not found in IM.OD dictionary.");
                 return;
             }
             if (string.IsNullOrEmpty(selectedMagazine) || !IM.OD.ContainsKey(selectedMagazine))
             {
-                Logger.LogError("Matching magazine not found for gun '" + selectedGun + "'.");
+                //Logger.LogError("Matching magazine not found for gun '" + selectedGun + "'.");
                 return;
             }
 
@@ -730,9 +733,9 @@ namespace H3TVR
 
 
             //prime the flash object
-            Logger.LogInfo("Getting Component");
+            //Logger.LogInfo("Getting Component");
             PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-            Logger.LogInfo("Releasing Lever");
+            //Logger.LogInfo("Releasing Lever");
             grenade.ReleaseLever();
 
 
@@ -888,7 +891,7 @@ namespace H3TVR
 
                 if (string.IsNullOrEmpty(matchingMagazine) || !IM.OD.ContainsKey(matchingMagazine))
                 {
-                    Logger.LogWarning("SpawnSkittyBigGun: No matching magazine found for gun '" + topGun + "'. Spawning gun only.");
+                    Logger.LogWarning("SpawnSkittyBigGun: No matching magazine found for gun '" + topGun + ". Spawning gun only.");
                     matchingMagazine = null; // ensure null for spawn logic
                 }
                 else
@@ -1115,74 +1118,129 @@ namespace H3TVR
         {
             try
             {
-                FVRViveHand[] hands = GM.CurrentMovementManager != null ? GM.CurrentMovementManager.Hands : null;
-                if (hands == null || hands.Length == 0) return;
+                var mm = GM.CurrentMovementManager;
+                if (mm == null || mm.Hands == null) return;
                 FVRInteractiveObject inter = null;
-                if (hands.Length > 1 && hands[1] != null && hands[1].CurrentInteractable != null) inter = hands[1].CurrentInteractable;
-                if (inter == null && hands[0] != null && hands[0].CurrentInteractable != null) inter = hands[0].CurrentInteractable;
+                if (mm.Hands.Length > 1 && mm.Hands[1] != null && mm.Hands[1].CurrentInteractable != null)
+                    inter = mm.Hands[1].CurrentInteractable;
+                if (inter == null && mm.Hands.Length > 0 && mm.Hands[0] != null && mm.Hands[0].CurrentInteractable != null)
+                    inter = mm.Hands[0].CurrentInteractable;
                 if (inter == null) return;
 
                 var firearm = inter as FVRFireArm;
                 if (firearm == null && inter.GetType().IsSubclassOf(typeof(FVRFireArm))) firearm = (FVRFireArm)inter;
                 if (firearm == null) return;
 
-                string[] methodNames = { "EjectChamberedRound", "EjectRound", "EjectChambered", "Eject", "ExtractRound", "DumpChamber" };
-                foreach (var mn in methodNames)
+                // Firearm-level eject attempts
+                string[] fireArmLevel = { "EjectChamberedRound", "EjectRound", "EjectChambered", "ExtractRound", "DumpChamber" };
+                var firearmMethods = firearm.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                foreach (var mn in fireArmLevel)
                 {
-                    MethodInfo mi = firearm.GetType().GetMethod(mn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (mi != null && mi.GetParameters().Length == 0) { mi.Invoke(firearm, null); Logger.LogInfo("EmptyHeldGunChamber: Invoked method " + mn); return; }
+                    var mi = firearmMethods.FirstOrDefault(m => m.Name == mn && m.GetParameters().Length == 0);
+                    if (mi != null)
+                    {
+                        try
+                        {
+                            mi.Invoke(firearm, null);
+                            Logger.LogInfo("EmptyHeldGunChamber: Firearm method invoked: " + mn);
+                            return;
+                        }
+                        catch (Exception invokeEx)
+                        {
+                            Logger.LogWarning("EmptyHeldGunChamber: Firearm method '" + mn + "' threw: " + invokeEx.Message);
+                        }
+                    }
                 }
 
+                // Chamber object
                 object chamberObj = firearm.GetType().GetField("Chamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(firearm)
                     ?? firearm.GetType().GetField("m_chamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(firearm)
                     ?? firearm.GetType().GetField("PrimaryChamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(firearm);
                 if (chamberObj == null)
                 {
-                    PropertyInfo chamberProp = firearm.GetType().GetProperty("Chamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    var prop = firearm.GetType().GetProperty("Chamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                         ?? firearm.GetType().GetProperty("PrimaryChamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (chamberProp != null) chamberObj = chamberProp.GetValue(firearm, null);
+                    if (prop != null) chamberObj = prop.GetValue(firearm, null);
                 }
-                if (chamberObj == null) { Logger.LogWarning("EmptyHeldGunChamber: No chamber object found via reflection."); return; }
+                if (chamberObj == null) { Logger.LogWarning("EmptyHeldGunChamber: No chamber object found."); return; }
 
+                var chamberType = chamberObj.GetType();
+
+                // Chamber-level eject attempts
+                string[] chamberLevel = { "EjectRound", "EjectChamberedRound", "ExtractRound", "PopRound", "DumpRound", "ReleaseRound" };
+                var chamberMethods = chamberType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                foreach (var mn in chamberLevel)
+                {
+                    var mi = chamberMethods.FirstOrDefault(m => m.Name == mn && m.GetParameters().Length == 0);
+                    if (mi != null)
+                    {
+                        try
+                        {
+                            mi.Invoke(chamberObj, null);
+                            Logger.LogInfo("EmptyHeldGunChamber: Chamber method invoked: " + mn);
+                            return;
+                        }
+                        catch (Exception invokeEx)
+                        {
+                            Logger.LogWarning("EmptyHeldGunChamber: Chamber method '" + mn + "' threw: " + invokeEx.Message);
+                        }
+                    }
+                }
+
+                // Manual fallback (detach existing round only)
+                string[] roundFieldNames = { "Round", "m_round", "ChamberedRound", "m_chamberedRound", "LoadedRound" };
                 FVRFireArmRound round = null;
-                Type chamberType = chamberObj.GetType();
-                string[] roundNames = { "Round", "m_round", "ChamberedRound", "m_chamberedRound", "LoadedRound" };
-                foreach (var rn in roundNames)
+                FieldInfo roundField = null;
+                foreach (var fn in roundFieldNames)
                 {
-                    FieldInfo rf = chamberType.GetField(rn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (rf != null) { round = rf.GetValue(chamberObj) as FVRFireArmRound; if (round != null) break; }
-                    PropertyInfo rp = chamberType.GetProperty(rn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (rp != null) { round = rp.GetValue(chamberObj, null) as FVRFireArmRound; if (round != null) break; }
+                    var f = chamberType.GetField(fn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (f != null && typeof(FVRFireArmRound).IsAssignableFrom(f.FieldType))
+                    {
+                        var val = f.GetValue(chamberObj) as FVRFireArmRound;
+                        if (val != null) { round = val; roundField = f; break; }
+                    }
+                    var p = chamberType.GetProperty(fn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (p != null && typeof(FVRFireArmRound).IsAssignableFrom(p.PropertyType))
+                    {
+                        var val = p.GetValue(chamberObj, null) as FVRFireArmRound;
+                        if (val != null) { round = val; break; }
+                    }
                 }
-                if (round == null)
-                {
-                    FieldInfo anyRoundField = chamberType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                        .FirstOrDefault(f => typeof(FVRFireArmRound).IsAssignableFrom(f.FieldType));
-                    if (anyRoundField != null) round = anyRoundField.GetValue(chamberObj) as FVRFireArmRound;
-                }
-                if (round == null || round.gameObject == null) { Logger.LogWarning("EmptyHeldGunChamber: No round found in chamber."); return; }
+                if (round == null) { Logger.LogWarning("EmptyHeldGunChamber: No round present (manual path)." ); return; }
 
-                Transform rT = round.transform; rT.parent = null;
-                var rrb = round.GetComponent<Rigidbody>();
-                if (rrb != null)
+                Transform t = round.transform; t.SetParent(null, true);
+                var rb = round.GetComponent<Rigidbody>();
+                if (rb != null)
                 {
-                    rrb.isKinematic = false;
-                    rrb.velocity = firearm.transform.forward * 1.5f + firearm.transform.up * 0.25f;
-                    rrb.angularVelocity = UnityEngine.Random.insideUnitSphere * 5f;
+                    rb.isKinematic = false;
+                    rb.velocity = firearm.transform.forward * 1.5f + firearm.transform.up * 0.25f;
+                    rb.angularVelocity = UnityEngine.Random.insideUnitSphere * 4f;
                 }
 
-                foreach (var rn in roundNames)
+                if (roundField != null) roundField.SetValue(chamberObj, null); else
                 {
-                    FieldInfo rf = chamberType.GetField(rn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (rf != null && rf.FieldType.IsAssignableFrom(typeof(FVRFireArmRound))) rf.SetValue(chamberObj, null);
-                    PropertyInfo rp = chamberType.GetProperty(rn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (rp != null && rp.CanWrite && rp.PropertyType.IsAssignableFrom(typeof(FVRFireArmRound))) rp.SetValue(chamberObj, null, null);
+                    foreach (var fn in roundFieldNames)
+                    {
+                        var p = chamberType.GetProperty(fn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (p != null && p.CanWrite && typeof(FVRFireArmRound).IsAssignableFrom(p.PropertyType))
+                            p.SetValue(chamberObj, null, null);
+                    }
                 }
-                Logger.LogInfo("EmptyHeldGunChamber: Ejected chambered round.");
+
+                string[] loadedFlags = { "IsFull", "m_isFull", "IsLoaded", "m_isLoaded", "HasRound", "m_hasRound" };
+                foreach (var lf in loadedFlags)
+                {
+                    var f = chamberType.GetField(lf, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (f != null && f.FieldType == typeof(bool)) f.SetValue(chamberObj, false);
+                    var p = chamberType.GetProperty(lf, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (p != null && p.CanWrite && p.PropertyType == typeof(bool)) p.SetValue(chamberObj, false, null);
+                }
+
+                Logger.LogInfo("EmptyHeldGunChamber: Manually detached round (fallback path).");
             }
             catch (Exception ex)
             {
-                Logger.LogError("EmptyHeldGunChamber failed: " + ex);
+                Logger.LogError("EmptyHeldGunChamber (reworked) failed: " + ex);
             }
         }
 
