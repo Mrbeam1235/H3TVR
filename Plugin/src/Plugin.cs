@@ -58,6 +58,12 @@ namespace H3TVR
         private const float ForcedMalfunctionChance = 0.75f; // 75% each trigger pull during boost
         private ConfigEntry<float> ShurikenScaleMultiplier; // config entry for shuriken scale
 
+        // Slomo configurable parameters
+        private ConfigEntry<float> SlomoTargetScale; // configurable lowest time scale
+        private ConfigEntry<float> SlomoDownSpeed;   // units of timeScale reduced per second
+        private ConfigEntry<float> SlomoReturnSpeed; // units of timeScale increased per second
+        private ConfigEntry<float> SlomoPauseSeconds; // wait at bottom before returning
+
         public ConfigFile FilePath { get; set; }
 
         public H3TVR()
@@ -95,6 +101,11 @@ namespace H3TVR
             MalfunctionBoostDurationSeconds = Config.Bind("General", "MeatyceiverMalfunctionBoostSeconds", 600f, "Fallback duration in seconds (ignored if minutes > 0). Clamped 5 - 3600.");
             MalfunctionBoostDurationMinutes = Config.Bind("General", "MeatyceiverMalfunctionBoostMinutes", 10f, "Primary duration in minutes (set to 0 to use seconds). Clamped 0.0833 - 60.");
             ShurikenScaleMultiplier = Config.Bind("General", "ShurikenScaleMultiplier", 10f, "Scale multiplier applied to spawned shuriken (min 0.1, max 200)." );
+            // Slomo config entries
+            SlomoTargetScale = Config.Bind("Slomo", "TargetScale", 0.1f, "Lowest time scale to reach (0.01 - 1.0).");
+            SlomoDownSpeed = Config.Bind("Slomo", "DownSpeed", 1.0f, "Speed to decrease time scale per second (0.01 - 5)." );
+            SlomoReturnSpeed = Config.Bind("Slomo", "ReturnSpeed", 0.333f, "Speed to increase time scale per second (0.01 - 5)." );
+            SlomoPauseSeconds = Config.Bind("Slomo", "PauseDuration", 2.0f, "Seconds to pause at lowest time scale before returning (0 - 30)." );
         }
 
         public void Awake()
@@ -524,32 +535,41 @@ namespace H3TVR
 
         public void SlomoScaleDown()
         {
-            if (Time.timeScale > MaxSlomo)
+            float target = Mathf.Clamp(SlomoTargetScale != null ? SlomoTargetScale.Value : 0.1f, 0.01f, 1f);
+            float downSpeed = Mathf.Clamp(SlomoDownSpeed != null ? SlomoDownSpeed.Value : 1f, 0.01f, 5f);
+            if (Time.timeScale > target)
             {
-                Time.timeScale -= (1f) * Time.unscaledDeltaTime;
+                Time.timeScale -= downSpeed * Time.unscaledDeltaTime;
                 Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
                 Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
             }
-
-            if (Time.timeScale <= MaxSlomo)
+            if (Time.timeScale <= target + 0.0001f)
             {
-                SlomoStatus = ("Wait");
+                SlomoStatus = "Wait";
             }
         }
 
         public void SlomoReturn()
         {
-            if (Time.timeScale != 1)
+            float returnSpeed = Mathf.Clamp(SlomoReturnSpeed != null ? SlomoReturnSpeed.Value : 0.333f, 0.01f, 5f);
+            if (Time.timeScale != 1f)
             {
-                Time.timeScale += (1f / 3f) * Time.unscaledDeltaTime;
+                Time.timeScale += returnSpeed * Time.unscaledDeltaTime;
                 Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
                 Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
+                if (Time.timeScale >= 0.999f)
+                {
+                    Time.timeScale = 1f;
+                    SlomoStatus = "Off";
+                }
             }
         }
 
         IEnumerator SlomoWait()
         {
-            yield return new WaitForSecondsRealtime(SlomoWaitTime);
+            float pause = Mathf.Clamp(SlomoPauseSeconds != null ? SlomoPauseSeconds.Value : 2f, 0f, 30f);
+            if (pause > 0f)
+                yield return new WaitForSecondsRealtime(pause);
             SlomoStatus = "Return";
         }
 
@@ -1336,6 +1356,82 @@ namespace H3TVR
             catch (Exception ex) { Logger.LogError("EnsureAllMagazineKeys failed: " + ex); }
         }
 
+        private bool _meatyDetected = false;
+        private FieldInfo _meatyGeneralMultField = null; // static field holding ConfigEntry<float> generalMult
+        private object _meatyGeneralMultEntry = null;    // the ConfigEntry<float> instance
+        private float _meatyOriginalGeneralMult = 0f;
+        private bool _meatyBoostApplied = false;
+
+        private void DetectMeatyceiver()
+        {
+            if (_meatyDetected) return;
+            try
+            {
+                // Try to find the Meatyceiver2 assembly/type
+                var t = Type.GetType("Meatyceiver2.Meatyceiver, Meatyceiver2", false, false) ?? Type.GetType("Meatyceiver2.Meatyceiver", false, false);
+                if (t == null) return;
+                // Field name is 'generalMult' (public static ConfigEntry<float>) based on provided code
+                _meatyGeneralMultField = t.GetField("generalMult", BindingFlags.Public | BindingFlags.Static);
+                if (_meatyGeneralMultField == null) return;
+                _meatyGeneralMultEntry = _meatyGeneralMultField.GetValue(null);
+                if (_meatyGeneralMultEntry == null) return;
+                // Read original value
+                var propVal = _meatyGeneralMultEntry.GetType().GetProperty("Value");
+                if (propVal == null) return;
+                var valObj = propVal.GetValue(_meatyGeneralMultEntry, null);
+                if (valObj is float f) _meatyOriginalGeneralMult = f;
+                _meatyDetected = true;
+                Logger.LogInfo("Detected Meatyceiver2 plugin. Integrating malfunction boost.");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning("DetectMeatyceiver failed: " + ex.Message);
+            }
+        }
+
+        private void ApplyMeatyceiverBoost()
+        {
+            if (!_meatyDetected || _meatyBoostApplied || _meatyGeneralMultEntry == null) return;
+            try
+            {
+                var propVal = _meatyGeneralMultEntry.GetType().GetProperty("Value");
+                if (propVal == null) return;
+                var current = (float)propVal.GetValue(_meatyGeneralMultEntry, null);
+                // Boost strategy: add 5 (i.e., +500% base) but cap at 50 to avoid runaway
+                float boosted = Mathf.Min(current + 5f, 50f);
+                propVal.SetValue(_meatyGeneralMultEntry, boosted, null);
+                _meatyOriginalGeneralMult = current; // store the pre-boost value so we can revert
+                _meatyBoostApplied = true;
+                Logger.LogInfo("Meatyceiver2 generalMult boosted from " + current.ToString("F2") + " to " + boosted.ToString("F2") + ".");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning("ApplyMeatyceiverBoost failed: " + ex.Message);
+            }
+        }
+
+        private void RevertMeatyceiverBoost()
+        {
+            if (!_meatyDetected || !_meatyBoostApplied || _meatyGeneralMultEntry == null) return;
+            try
+            {
+                var propVal = _meatyGeneralMultEntry.GetType().GetProperty("Value");
+                if (propVal != null)
+                {
+                    propVal.SetValue(_meatyGeneralMultEntry, _meatyOriginalGeneralMult, null);
+                    Logger.LogInfo("Meatyceiver2 generalMult reverted to " + _meatyOriginalGeneralMult.ToString("F2") + ".");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning("RevertMeatyceiverBoost failed: " + ex.Message);
+            }
+            finally
+            {
+                _meatyBoostApplied = false;
+            }
+        }
+
         private void ActivateMalfunctionBoost()
         {
             _malfunctionBoostActive = true;
@@ -1345,10 +1441,18 @@ namespace H3TVR
             float appliedSeconds = minutes > 0f ? minutes * 60f : secondsConfigured;
             _malfunctionBoostEndTime = Time.time + appliedSeconds;
             Logger.LogInfo($"Meatyceiver malfunction boost activated for {appliedSeconds:F1} seconds (configured Minutes={MalfunctionBoostDurationMinutes.Value}, Seconds={MalfunctionBoostDurationSeconds.Value}).");
+            DetectMeatyceiver();
+            ApplyMeatyceiverBoost();
         }
 
         private void ApplyMalfunctionLogic()
         {
+            if (_meatyDetected)
+            {
+                // When active, ensure boost applied; when expired, revert.
+                if (!_malfunctionBoostActive) RevertMeatyceiverBoost();
+                return; // Let Meatyceiver2 handle actual malfunctions.
+            }
             try
             {
                 var mm = GM.CurrentMovementManager; if (mm == null || mm.Hands == null) return;
@@ -1366,18 +1470,27 @@ namespace H3TVR
                         ForceMalfunction(firearm);
                 }
             }
-            catch (Exception ex) { Logger.LogError("ApplyMalfunctionLogic failed: " + ex); }
+            catch (Exception ex)
+            {
+                Logger.LogError("ApplyMalfunctionLogic failed: " + ex);
+            }
         }
 
         private void ForceMalfunction(FVRFireArm firearm)
         {
+            if (_meatyDetected) return; // rely on boosted generalMult
             try
             {
                 string[] methods = { "ForceMalfunction", "DoMalfunction", "AttemptMalfunction", "Jam", "CauseMalfunction" };
                 foreach (var m in methods)
                 {
                     var mi = firearm.GetType().GetMethod(m, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (mi != null && mi.GetParameters().Length == 0) { mi.Invoke(firearm, null); Logger.LogInfo("Forced malfunction via method: " + m); return; }
+                    if (mi != null && mi.GetParameters().Length == 0)
+                    {
+                        mi.Invoke(firearm, null);
+                        Logger.LogInfo("Forced malfunction via method: " + m);
+                        return;
+                    }
                 }
                 string[] fields = { "MalfunctionChance", "m_malfunctionChance", "JamChance", "m_jamChance" };
                 foreach (var f in fields)
@@ -1390,7 +1503,10 @@ namespace H3TVR
                     }
                 }
             }
-            catch (Exception ex) { Logger.LogError("ForceMalfunction reflection failed: " + ex); }
+            catch (Exception ex)
+            {
+                Logger.LogError("ForceMalfunction reflection failed: " + ex);
+            }
         }
     }
 }
