@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 271957969, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: Operator Outfit
+  m_EditorClassIdentifier: 
+  Headwear:
+  - {fileID: 11400000, guid: 5b0727da49d3ce896f295266f6ab6c06, type: 2}
+  - {fileID: 11400000, guid: bab39562977a9c49df9bcc015549ba6c, type: 2}
+  Chance_Headwear: 1
+  HeadUsesTorsoIndex: 1
+  Eyewear:
+  - {fileID: 11400000, guid: 8590fe37570d6e0317e2cb4aaacb8a8e, type: 2}
+  - {fileID: 11400000, guid: 4a18ed0f5d8ac1144208565df4790a55, type: 2}
+  - {fileID: 11400000, guid: 3c42f9df4411b01d26225ba638f9803e, type: 2}
+  Chance_Eyewear: 0
+  Facewear: []
+  Chance_Facewear: 0
+  Torsowear:
+  - {fileID: 11400000, guid: 72b42aa0cee765eb28fea6492772fa63, type: 2}
+  - {fileID: 11400000, guid: 876c0ee9f1389d8efbff84f4fa54c7ca, type: 2}
+  Chance_Torsowear: 1
+  Pantswear:
+  - {fileID: 11400000, guid: 005011b855b5bfef8f47c87fd3a0a3eb, type: 2}
+  - {fileID: 11400000, guid: 9327d4451bcec18cf14bf0180fe14361, type: 2}
+  Chance_Pantswear: 1
+  PantsUsesTorsoIndex: 1
+  Pantswear_Lower:
+  - {fileID: 11400000, guid: 85e83521b2d01e7eabd8abb7ac98f774, type: 2}
+  - {fileID: 11400000, guid: 8b6022a7623f253a359915a60a26f5d0, type: 2}
+  Chance_Pantswear_Lower: 1
+  PantsLowerUsesPantsIndex: 1
+  Backpacks: []
+  Chance_Backpacks: 0
+  TorosDecoration: []
+  Chance_TorosDecoration: 0
+  Belt: []
+  Chance_Belt: 0

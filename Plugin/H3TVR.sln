@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36414.22 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "H3TVR", "H3TVR.csproj", "{B96A9DDA-E371-90EF-BC89-4815CCE739DA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B96A9DDA-E371-90EF-BC89-4815CCE739DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B96A9DDA-E371-90EF-BC89-4815CCE739DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B96A9DDA-E371-90EF-BC89-4815CCE739DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B96A9DDA-E371-90EF-BC89-4815CCE739DA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {383D55E1-4BEB-4530-94EE-03784700C8A4}
+	EndGlobalSection
+EndGlobal

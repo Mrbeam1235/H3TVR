@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 271957969, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: JediHeavyOutfit
+  m_EditorClassIdentifier: 
+  Headwear:
+  - {fileID: 11400000, guid: 63633d4ca6dfd7c41bd5453d649641e9, type: 2}
+  Chance_Headwear: 1
+  HeadUsesTorsoIndex: 0
+  Eyewear:
+  - {fileID: 11400000, guid: 0ddc92ed699b0184ba75c5a1749635dc, type: 2}
+  Chance_Eyewear: 0.2
+  Facewear: []
+  Chance_Facewear: 0
+  Torsowear:
+  - {fileID: 11400000, guid: 33ae7124a6a028342886a8211f74a770, type: 2}
+  - {fileID: 11400000, guid: 768ba78ca50416c4ca9d06c3173227ae, type: 2}
+  - {fileID: 11400000, guid: b562dc39678baba4f813968459581cb5, type: 2}
+  Chance_Torsowear: 1
+  Pantswear:
+  - {fileID: 11400000, guid: 768ba78ca50416c4ca9d06c3173227ae, type: 2}
+  - {fileID: 11400000, guid: ec39744176d6e024eb2f908c4d41b0cb, type: 2}
+  - {fileID: 11400000, guid: 33ae7124a6a028342886a8211f74a770, type: 2}
+  - {fileID: 11400000, guid: 9014fc7b3a0b4ad4281c27c834c3c643, type: 2}
+  Chance_Pantswear: 1
+  PantsUsesTorsoIndex: 0
+  Pantswear_Lower:
+  - {fileID: 11400000, guid: ec39744176d6e024eb2f908c4d41b0cb, type: 2}
+  - {fileID: 11400000, guid: 9014fc7b3a0b4ad4281c27c834c3c643, type: 2}
+  Chance_Pantswear_Lower: 1
+  PantsLowerUsesPantsIndex: 0
+  Backpacks:
+  - {fileID: 11400000, guid: 40cdfc79b019f874eac532ac17168ad1, type: 2}
+  - {fileID: 11400000, guid: 0dd03179b35dc934e91b3cab4e9eb729, type: 2}
+  Chance_Backpacks: 0.2
+  TorosDecoration: []
+  Chance_TorosDecoration: 0
+  Belt: []
+  Chance_Belt: 0

@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 271957969, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: Default Outfit HEVSuit
+  m_EditorClassIdentifier: 
+  Headwear: []
+  Chance_Headwear: 1
+  HeadUsesTorsoIndex: 0
+  Eyewear:
+  - {fileID: 11400000, guid: 2f90af57a24592c4cbb671661a432062, type: 2}
+  Chance_Eyewear: 0
+  Facewear: []
+  Chance_Facewear: 0
+  Torsowear:
+  - {fileID: 11400000, guid: 805e97ba9326b9e46aa19507d4f8a3dc, type: 2}
+  Chance_Torsowear: 1
+  Pantswear:
+  - {fileID: 11400000, guid: 11eda1a2844c60749920df947eb97e36, type: 2}
+  Chance_Pantswear: 1
+  PantsUsesTorsoIndex: 0
+  Pantswear_Lower:
+  - {fileID: 11400000, guid: 96f7a01acc20beb4ebbcb1bf47c61402, type: 2}
+  Chance_Pantswear_Lower: 1
+  PantsLowerUsesPantsIndex: 0
+  Backpacks: []
+  Chance_Backpacks: 0
+  TorosDecoration: []
+  Chance_TorosDecoration: 0
+  Belt: []
+  Chance_Belt: 0

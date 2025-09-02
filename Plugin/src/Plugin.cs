@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using BepInEx.Configuration;
 using FistVR;
 using HarmonyLib;
@@ -21,8 +21,18 @@ namespace H3TVR
         private const float SlowdownFactor = .001f;
         private const float SlowdownLength = 6f;
         public string SlomoStatus = "Off";
-        private const float MaxSlomo = .1f;
-        private const float SlomoWaitTime = 2f;
+        
+        // Configurable slomo parameters
+        private ConfigEntry<float> MaxSlomo;
+        private ConfigEntry<float> SlomoWaitTime;
+        private ConfigEntry<float> SlomoScaleSpeed;
+        private ConfigEntry<float> SlomoReturnSpeed;
+        private ConfigEntry<bool> SlomoVRControllerEnabled;
+        private ConfigEntry<string> SlomoVRButton;
+        
+        // Configurable gun randomization
+        private ConfigEntry<bool> UseItemManagerForGunRandomization;
+
         private const float ZeroGWaitTime = 6f;
         private const float RealisticFallTime = 1f;
         private string ZeroGStatus = "Off";
@@ -53,16 +63,9 @@ namespace H3TVR
         private ConfigEntry<KeyCode> KeyBoostMalfunction; // new redeem key
         private bool _malfunctionBoostActive;
         private float _malfunctionBoostEndTime;
-        private ConfigEntry<float> MalfunctionBoostDurationSeconds; // configurable duration in seconds
-        private ConfigEntry<float> MalfunctionBoostDurationMinutes; // optional duration in minutes (overrides seconds if > 0)
+        private const float MalfunctionBoostDuration = 120f; // 2 minutes
         private const float ForcedMalfunctionChance = 0.75f; // 75% each trigger pull during boost
-        private ConfigEntry<float> ShurikenScaleMultiplier; // config entry for shuriken scale
 
-        // Slomo configurable parameters
-        private ConfigEntry<float> SlomoTargetScale; // configurable lowest time scale
-        private ConfigEntry<float> SlomoDownSpeed;   // units of timeScale reduced per second
-        private ConfigEntry<float> SlomoReturnSpeed; // units of timeScale increased per second
-        private ConfigEntry<float> SlomoPauseSeconds; // wait at bottom before returning
 
         public ConfigFile FilePath { get; set; }
 
@@ -78,6 +81,18 @@ namespace H3TVR
             // Update the initialization of GunList and MagazineList to match the correct type
             GunList = Config.Bind("General", "GunList", "DefaultGunList", "List of guns");
             MagazineList = Config.Bind("General", "MagazineList", "DefaultMagazineList", "List of magazines");
+            
+            // Slomo configuration
+            MaxSlomo = Config.Bind("Slomo", "MaxSlowmoScale", 0.1f, "Maximum slomo scale (0.01 = 1% speed, 0.1 = 10% speed)");
+            SlomoWaitTime = Config.Bind("Slomo", "WaitTime", 2f, "Time to wait at max slomo before returning to normal speed");
+            SlomoScaleSpeed = Config.Bind("Slomo", "ScaleDownSpeed", 1f, "Speed at which time slows down (higher = faster transition)");
+            SlomoReturnSpeed = Config.Bind("Slomo", "ReturnSpeed", 0.33f, "Speed at which time returns to normal (higher = faster return)");
+            SlomoVRControllerEnabled = Config.Bind("Slomo", "VRControllerEnabled", true, "Enable VR controller button to trigger slomo");
+            SlomoVRButton = Config.Bind("Slomo", "VRButton", "LeftX", "VR button to trigger slomo (LeftX, RightX, LeftY, RightY, LeftGrip, RightGrip, LeftTrigger, RightTrigger, LeftTouchpad, RightTouchpad)");
+            
+            // Gun randomization configuration
+            UseItemManagerForGunRandomization = Config.Bind("GunRandomization", "UseItemManager", true, 
+    "Use ItemManager for gun randomization (includes all H3VR and modded guns). If false, uses GunList/MagazineList config files.");
             Key0 = Config.Bind("General", "KeyBindForWonderToy", KeyCode.Keypad0, "The key used to spawn WonderToy");
             Key1 = Config.Bind("General", "KeyBindForPillow", KeyCode.Keypad1, "The key used to spawn Pillow");
             Key2 = Config.Bind("General", "KeyBindForFlash", KeyCode.Keypad2, "The key used to spawn Flash");
@@ -97,15 +112,7 @@ namespace H3TVR
             KeyToggleFireMode = Config.Bind("General", "KeyBindForToggleHeldGunFireMode", KeyCode.F6, "Key used to toggle fire mode of currently held gun");
             KeyRandomizeHeldGun = Config.Bind("General", "KeyBindForRandomizeHeldGun", KeyCode.F7, "Key used to replace currently held gun with a random one from GunList");
             KeyEmptyChamber = Config.Bind("General", "KeyBindForEmptyHeldGunChamber", KeyCode.F8, "Key used to eject / empty the chambered round of the currently held gun");
-            KeyBoostMalfunction = Config.Bind("General", "KeyBindForMeatyceiverMalfunctionBoost", KeyCode.F9, "Redeem: Boost Meatyceiver malfunction chance (uses configured seconds/minutes)");
-            MalfunctionBoostDurationSeconds = Config.Bind("General", "MeatyceiverMalfunctionBoostSeconds", 600f, "Fallback duration in seconds (ignored if minutes > 0). Clamped 5 - 3600.");
-            MalfunctionBoostDurationMinutes = Config.Bind("General", "MeatyceiverMalfunctionBoostMinutes", 10f, "Primary duration in minutes (set to 0 to use seconds). Clamped 0.0833 - 60.");
-            ShurikenScaleMultiplier = Config.Bind("General", "ShurikenScaleMultiplier", 10f, "Scale multiplier applied to spawned shuriken (min 0.1, max 200)." );
-            // Slomo config entries
-            SlomoTargetScale = Config.Bind("Slomo", "TargetScale", 0.1f, "Lowest time scale to reach (0.01 - 1.0).");
-            SlomoDownSpeed = Config.Bind("Slomo", "DownSpeed", 1.0f, "Speed to decrease time scale per second (0.01 - 5)." );
-            SlomoReturnSpeed = Config.Bind("Slomo", "ReturnSpeed", 0.333f, "Speed to increase time scale per second (0.01 - 5)." );
-            SlomoPauseSeconds = Config.Bind("Slomo", "PauseDuration", 2.0f, "Seconds to pause at lowest time scale before returning (0 - 30)." );
+            KeyBoostMalfunction = Config.Bind("General", "KeyBindForMeatyceiverMalfunctionBoost", KeyCode.F9, "Redeem: Boost Meatyceiver malfunction chance for 120s");
         }
 
         public void Awake()
@@ -161,32 +168,28 @@ namespace H3TVR
                 SpawnJeditToy();
             }
 
-            // Trigger slomo ONLY on left-hand X button (AX) press
-            if ((GM.CurrentMovementManager != null
-                && GM.CurrentMovementManager.Hands != null
-                && GM.CurrentMovementManager.Hands.Length > 0
-                && GM.CurrentMovementManager.Hands[0].Input.AXButtonDown)
-                || Input.GetKeyDown(Key7.Value))
+            // Trigger slomo - check VR controller if enabled, or keyboard key
+            bool slomoTriggered = Input.GetKeyDown(Key7.Value);
+            if (SlomoVRControllerEnabled.Value && GM.CurrentMovementManager != null 
+                && GM.CurrentMovementManager.Hands != null 
+                && GM.CurrentMovementManager.Hands.Length > 0)
             {
-                Logger.LogInfo("Detected Left X Button Press!");
+                bool vrButtonPressed = CheckVRButtonPress(SlomoVRButton.Value);
+                if (vrButtonPressed)
+                {
+                    slomoTriggered = true;
+                    Logger.LogInfo($"Detected {SlomoVRButton.Value} Button Press!");
+                }
+            }
+            
+            if (slomoTriggered)
+            {
                 SlomoStatus = "Slowing";
             }
 
             if (SlomoStatus == "Slowing")
             {
-                //Logger.LogInfo("Slowing!");
-                // Fix for CS1525: Invalid expression term '||'
-                // The issue is likely caused by a misplaced closing parenthesis in the following condition.
-                // Correcting the condition by moving the closing parenthesis to the correct position.
-
-                if (GM.CurrentMovementManager != null
-                    && GM.CurrentMovementManager.Hands != null
-                    && GM.CurrentMovementManager.Hands.Length > 0
-                    && (GM.CurrentMovementManager.Hands[0].Input.AXButtonDown || Input.GetKeyDown(Key7.Value)))
-                {
-                    //Logger.LogInfo("Detected Left X Button Press!");
-                    SlomoStatus = "Slowing";
-                }
+                Logger.LogInfo("Slowing!");
                 SlomoScaleDown();
             }
 
@@ -199,7 +202,7 @@ namespace H3TVR
 
             if (SlomoStatus == "Return")
             {
-                //Logger.LogInfo("Returning!");
+                Logger.LogInfo("Returning!");
                 SlomoReturn();
             }
 
@@ -254,7 +257,7 @@ namespace H3TVR
                 DestroyQuickbelt();
 
             }
-
+           
             if (Input.GetKeyDown(Key15.Value))
             {
                 SpawnSkittyBigGun();
@@ -282,7 +285,7 @@ namespace H3TVR
                 if (Time.time >= _malfunctionBoostEndTime)
                 {
                     _malfunctionBoostActive = false;
-                    //Logger.LogInfo("Meatyceiver malfunction boost ended.");
+                    Logger.LogInfo("Meatyceiver malfunction boost ended.");
                 }
                 else
                 {
@@ -311,50 +314,19 @@ namespace H3TVR
 
         public void SpawnJeditToy()
         {
-            const string key = "JediTippyToy"; // original desired key
-            string foundKey = null; // Use non-nullable string for C# 7.3 compatibility
+            // Get the object you want to spawn
+            FVRObject obj = IM.OD["JediTippyToy"];
 
-            // 1. Exact match (and not null)
-            if (IM.OD.ContainsKey(key) && IM.OD[key] != null)
-            {
-                foundKey = key;
-            }
-            else
-            {
-                // 2. Case-insensitive exact
-                foundKey = IM.OD.Keys.FirstOrDefault(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase) && IM.OD[k] != null);
-                // 3. Starts with prefix 'Jedi'
-                if (foundKey == null)
-                    foundKey = IM.OD.Keys.FirstOrDefault(k => k.StartsWith("Jedi", StringComparison.OrdinalIgnoreCase) && IM.OD[k] != null);
-                // 4. Contains fragment 'Tippy'
-                if (foundKey == null)
-                    foundKey = IM.OD.Keys.FirstOrDefault(k => k.IndexOf("Tippy", StringComparison.OrdinalIgnoreCase) >= 0 && IM.OD[k] != null);
-            }
 
-            if (foundKey == null)
-            {
-                // Show a larger sample to aid debugging
-                var sample = string.Join(", ", IM.OD.Keys.Take(15).ToArray());
-                //Logger.LogError($"SpawnJeditToy: Key '{key}' not found. Sample available keys: {sample}");
-                return;
-            }
+            // Instantiate (spawn) the object above the player's right hand
+            GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
 
-            FVRObject obj = IM.OD[foundKey];
-            GameObject go = Instantiate(obj.GetGameObject(),
-                GM.CurrentPlayerBody.Head.position + new Vector3(0f, .25f, 0f),
-                GM.CurrentPlayerBody.Head.rotation);
+            //add some speeeeen
+            go.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
 
-            var rb = go.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.AddTorque(new Vector3(.25f, .25f, .25f));
-                rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25);
-            }
-            else
-            {
-                //Logger.LogWarning("SpawnJeditToy: Spawned object has no Rigidbody (key resolved to '" + foundKey + "').");
-            }
-            //Logger.LogInfo("SpawnJeditToy: Spawned object with resolved key '" + foundKey + "'.");
+
+            //add force
+            go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 25);
         }
 
         public void SpawnPillow()
@@ -382,25 +354,32 @@ namespace H3TVR
 
 
             // Instantiate (spawn) the object above the player head
-            //Logger.LogInfo("Spawned Object");
+            Logger.LogInfo("Spawned Object");
             GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
 
 
             //prime the flash object
-            //Logger.LogInfo("Getting Component");
+            Logger.LogInfo("Getting Component");
             PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-            //Logger.LogInfo("Releasing Lever");
+            Logger.LogInfo("Releasing Lever");
             grenade.ReleaseLever();
 
 
 
             //add force
-            //Logger.LogInfo("Adding Force");
+            Logger.LogInfo("Adding Force");
             go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 500);
         }
 
         public void SpawnNadeRain()
         {
+            // Random number for spawn chance - 1 out of 10 times (10% chance)
+            int spawnChance = UnityEngine.Random.Range(1, 11);
+            if (spawnChance != 1)
+            {
+                return; // Don't spawn grenade this time
+            }
+
             //    //Set cartridge speed
             float howFast = 15.0f;
 
@@ -414,7 +393,7 @@ namespace H3TVR
 
             // Random number for pull chance
             int pullChance = UnityEngine.Random.Range(1, 20);
-            //Logger.LogInfo(pullChance);
+            Logger.LogInfo(pullChance);
 
             // Get the object you want to spawn
             FVRObject obj = IM.OD["PinnedGrenadeM67"];
@@ -423,23 +402,23 @@ namespace H3TVR
             Vector3 grenadePosition0 = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.up * 0.02f);
 
             // Instantiate (spawn) the object above the player head
-            //Logger.LogInfo("Spawned Object");
+            Logger.LogInfo("Spawned Object");
             GameObject go = Instantiate(obj.GetGameObject(), grenadePosition0, Quaternion.LookRotation(GM.CurrentPlayerBody.Head.up));
 
             //Set Object Direction
             go.transform.Rotate(new Vector3(randRot.x * maxAngle, randRot.y * maxAngle, 0.0f), Space.Self);
 
             //add force
-            //Logger.LogInfo("Adding Force");
+            Logger.LogInfo("Adding Force");
             go.GetComponent<Rigidbody>().velocity = go.transform.forward * howFast;
 
 
             if (pullChance == 10)
             {
                 //prime the grenade object
-                //Logger.LogInfo("Getting Component");
+                Logger.LogInfo("Getting Component");
                 PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-                //Logger.LogInfo("Releasing Lever");
+                Logger.LogInfo("Releasing Lever");
                 grenade.ReleaseLever();
             }
 
@@ -488,11 +467,10 @@ namespace H3TVR
 
             //old spray
             //add scale for funnies
-            float shurikenScale = Mathf.Clamp(ShurikenScaleMultiplier.Value, 0.1f, 200f);
-            go0.transform.localScale = Vector3.one * shurikenScale;
+            go0.transform.localScale = new Vector3(10, 10, 10);
             go0.GetComponent<Rigidbody>().velocity = go0.transform.forward * howFast;
 
-            Destroy(go0, 20f);
+            Destroy(go0, 60f);
 
         }
 
@@ -506,8 +484,6 @@ namespace H3TVR
             float maxAngle = 2.0f;
 
             Transform PointingTransfrom = transform;
-
-
 
             //Get Random direction for bullet
             Vector2 randRot = UnityEngine.Random.insideUnitCircle;
@@ -535,41 +511,32 @@ namespace H3TVR
 
         public void SlomoScaleDown()
         {
-            float target = Mathf.Clamp(SlomoTargetScale != null ? SlomoTargetScale.Value : 0.1f, 0.01f, 1f);
-            float downSpeed = Mathf.Clamp(SlomoDownSpeed != null ? SlomoDownSpeed.Value : 1f, 0.01f, 5f);
-            if (Time.timeScale > target)
+            if (Time.timeScale > MaxSlomo.Value)
             {
-                Time.timeScale -= downSpeed * Time.unscaledDeltaTime;
+                Time.timeScale -= SlomoScaleSpeed.Value * Time.unscaledDeltaTime;
                 Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
                 Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
             }
-            if (Time.timeScale <= target + 0.0001f)
+
+            if (Time.timeScale <= MaxSlomo.Value)
             {
-                SlomoStatus = "Wait";
+                SlomoStatus = ("Wait");
             }
         }
 
         public void SlomoReturn()
         {
-            float returnSpeed = Mathf.Clamp(SlomoReturnSpeed != null ? SlomoReturnSpeed.Value : 0.333f, 0.01f, 5f);
-            if (Time.timeScale != 1f)
+            if (Time.timeScale != 1)
             {
-                Time.timeScale += returnSpeed * Time.unscaledDeltaTime;
+                Time.timeScale += SlomoReturnSpeed.Value * Time.unscaledDeltaTime;
                 Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
                 Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
-                if (Time.timeScale >= 0.999f)
-                {
-                    Time.timeScale = 1f;
-                    SlomoStatus = "Off";
-                }
             }
         }
 
         IEnumerator SlomoWait()
         {
-            float pause = Mathf.Clamp(SlomoPauseSeconds != null ? SlomoPauseSeconds.Value : 2f, 0f, 30f);
-            if (pause > 0f)
-                yield return new WaitForSecondsRealtime(pause);
+            yield return new WaitForSecondsRealtime(SlomoWaitTime.Value);
             SlomoStatus = "Return";
         }
 
@@ -673,7 +640,7 @@ namespace H3TVR
 
             if (gunList.Length == 0)
             {
-                //Logger.LogError("Gun list is empty after parsing.");
+                Logger.LogError("Gun list is empty after parsing.");
                 return;
             }
 
@@ -681,9 +648,9 @@ namespace H3TVR
             int randomGunIndex = UnityEngine.Random.Range(0, gunList.Length);
             string selectedGun = gunList[randomGunIndex];
             string selectedGunTruncated = new string(selectedGun.Take(5).ToArray());
-            //Logger.LogInfo($"Random Gun Index: {randomGunIndex} / {gunList.Length - 1}");
-            //Logger.LogInfo("SelectedGun: " + selectedGun);
-            //Logger.LogInfo("SelectedGunTruncated: " + selectedGunTruncated);
+            Logger.LogInfo($"Random Gun Index: {randomGunIndex} / {gunList.Length - 1}");
+            Logger.LogInfo("SelectedGun: " + selectedGun);
+            Logger.LogInfo("SelectedGunTruncated: " + selectedGunTruncated);
 
             string magazineListString;
             if (File.Exists(MagazineList.Value))
@@ -711,19 +678,19 @@ namespace H3TVR
             {
                 int randomMagIndex = UnityEngine.Random.Range(0, matchingMagazines.Length);
                 selectedMagazine = matchingMagazines[randomMagIndex];
-                //Logger.LogInfo($"Random Magazine Index: {randomMagIndex} / {matchingMagazines.Length - 1}");
+                Logger.LogInfo($"Random Magazine Index: {randomMagIndex} / {matchingMagazines.Length - 1}");
             }
 
-            //Logger.LogInfo("SelectedMagazine: " + selectedMagazine);
+            Logger.LogInfo("SelectedMagazine: " + selectedMagazine);
 
             if (!IM.OD.ContainsKey(selectedGun))
             {
-                //Logger.LogError("Gun key '" + selectedGun + "' not found in IM.OD dictionary.");
+                Logger.LogError("Gun key '" + selectedGun + "' not found in IM.OD dictionary.");
                 return;
             }
             if (string.IsNullOrEmpty(selectedMagazine) || !IM.OD.ContainsKey(selectedMagazine))
             {
-                //Logger.LogError("Matching magazine not found for gun '" + selectedGun + "'.");
+                Logger.LogError("Matching magazine not found for gun '" + selectedGun + "'.");
                 return;
             }
 
@@ -753,9 +720,9 @@ namespace H3TVR
 
 
             //prime the flash object
-            //Logger.LogInfo("Getting Component");
+            Logger.LogInfo("Getting Component");
             PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-            //Logger.LogInfo("Releasing Lever");
+            Logger.LogInfo("Releasing Lever");
             grenade.ReleaseLever();
 
 
@@ -844,131 +811,105 @@ namespace H3TVR
 
         public void SpawnSkittyBigGun()
         {
-            try
+            string gunListString;
+            if (File.Exists(GunList.Value))
             {
-                // Read gun list (can be path or inline list)
-                string gunListString = File.Exists(GunList.Value) ? File.ReadAllText(GunList.Value) : GunList.Value;
-                string[] gunList = gunListString
-                    .Split(new[] { '\r', '\n', ',', ';', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(g => g.Trim())
-                    .Where(g => g.Length > 0)
-                    .ToArray();
-                if (gunList.Length == 0)
+                using (StreamReader gunListReader = new StreamReader(GunList.Value))
                 {
-                    Logger.LogError("SpawnSkittyBigGun: Gun list empty.");
-                    return;
-                }
-
-                // Filter to guns that actually exist in IM.OD, then pick one at random
-                var validGuns = gunList.Where(k => IM.OD.ContainsKey(k)).ToArray();
-                if (validGuns.Length == 0)
-                {
-                    Logger.LogError("SpawnSkittyBigGun: None of the provided gun keys exist in IM.OD.");
-                    return;
-                }
-                string topGun = validGuns[UnityEngine.Random.Range(0, validGuns.Length)];
-
-                string truncated = new string(topGun.Take(5).ToArray());
-                Logger.LogInfo("SpawnSkittyBigGun PickedGun: " + topGun + " (Trunc: " + truncated + ")");
-
-                // Read magazine list (path or inline)
-                string magazineListString = File.Exists(MagazineList.Value) ? File.ReadAllText(MagazineList.Value) : MagazineList.Value;
-                string[] magazineList = magazineListString
-                    .Split(new[] { '\r', '\n', ',', ';', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(m => m.Trim())
-                    .Where(m => m.Length > 0)
-                    .ToArray();
-
-                string matchingMagazine = string.Empty;
-                if (magazineList.Length > 0)
-                {
-                    // Priority tiers for matching
-                    // 1. Contains full 5-char truncated key
-                    var tier1 = magazineList.Where(m => m.Contains(truncated)).ToArray();
-                    // 2. Starts with first 5
-                    var tier2 = magazineList.Where(m => m.StartsWith(truncated)).ToArray();
-                    // 3. Contains first 4 chars
-                    string short4 = truncated.Length >= 4 ? truncated.Substring(0, 4) : truncated;
-                    var tier3 = magazineList.Where(m => m.Contains(short4)).ToArray();
-                    // 4. Any mag that exists in dictionary whose first 3 chars match
-                    string short3 = truncated.Length >= 3 ? truncated.Substring(0, 3) : truncated;
-                    var tier4 = magazineList.Where(m => m.StartsWith(short3) && IM.OD.ContainsKey(m)).ToArray();
-
-                    string PickRandom(string[] arr) => arr.Length == 0 ? null : arr[UnityEngine.Random.Range(0, arr.Length)];
-
-                    matchingMagazine = PickRandom(tier1)
-                        ?? PickRandom(tier2)
-                        ?? PickRandom(tier3)
-                        ?? PickRandom(tier4)
-                        ?? magazineList.FirstOrDefault(m => IM.OD.ContainsKey(m));
-                }
-
-                if (!IM.OD.ContainsKey(topGun))
-                {
-                    Logger.LogError("SpawnSkittyBigGun: Gun key '" + topGun + "' not in IM.OD.");
-                    return;
-                }
-
-                if (string.IsNullOrEmpty(matchingMagazine) || !IM.OD.ContainsKey(matchingMagazine))
-                {
-                    Logger.LogWarning("SpawnSkittyBigGun: No matching magazine found for gun '" + topGun + ". Spawning gun only.");
-                    matchingMagazine = null; // ensure null for spawn logic
-                }
-                else
-                {
-                    Logger.LogInfo("SpawnSkittyBigGun MatchingMagazine: " + matchingMagazine);
-                }
-
-                // Spawn gun
-                FVRObject gunObj = IM.OD[topGun];
-                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, .25f, 0f);
-                Quaternion spawnRot = GM.CurrentPlayerBody.Head.rotation;
-                GameObject gunGO = Instantiate(gunObj.GetGameObject(), spawnPos, spawnRot);
-                var gunRb = gunGO.GetComponent<Rigidbody>();
-                if (gunRb != null)
-                {
-                    gunRb.AddTorque(new Vector3(.25f, .25f, .25f));
-                    gunRb.AddForce(GM.CurrentPlayerBody.Head.forward * 100f, ForceMode.VelocityChange);
-                }
-
-                // Scale ONLY the gun
-                gunGO.transform.localScale = new Vector3(5f, 5f, 5f);
-
-                // Spawn magazine if available (no scaling to avoid physics / alignment issues)
-                if (matchingMagazine != null)
-                {
-                    FVRObject magObj = IM.OD[matchingMagazine];
-                    GameObject magGO = Instantiate(magObj.GetGameObject(), spawnPos, spawnRot);
-                    var magRb = magGO.GetComponent<Rigidbody>();
-                    if (magRb != null)
-                    {
-                        magRb.AddTorque(new Vector3(.25f, .25f, .25f));
-                        magRb.AddForce(GM.CurrentPlayerBody.Head.forward * 100f, ForceMode.VelocityChange);
-                    }
-                    // Scale magazine as requested
-                    magGO.transform.localScale = new Vector3(5f, 5f, 5f);
+                    gunListString = gunListReader.ReadToEnd();
                 }
             }
-            catch (Exception ex)
+            else
             {
-                Logger.LogError("SpawnSkittyBigGun failed: " + ex);
+                gunListString = GunList.Value;
             }
+
+            string[] gunList = gunListString
+                .Split(new[] { '\r', '\n', ',', ';', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(g => g.Trim())
+                .Where(g => g.Length > 0)
+                .ToArray();
+
+            if (gunList.Length == 0)
+            {
+                Logger.LogError("Gun list is empty after parsing.");
+                return;
+            }
+
+            string magazineListString;
+            if (File.Exists(MagazineList.Value))
+            {
+                using (StreamReader magazineListReader = new StreamReader(MagazineList.Value))
+                {
+                    magazineListString = magazineListReader.ReadToEnd();
+                }
+            }
+            else
+            {
+                magazineListString = MagazineList.Value;
+            }
+
+            string[] magazineList = magazineListString
+                .Split(new[] { '\r', '\n', ',', ';', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(m => m.Trim())
+                .Where(m => m.Length > 0)
+                .ToArray();
+
+            if (magazineList.Length == 0)
+            {
+                Logger.LogError("Magazine list is empty after parsing.");
+                return;
+            }
+
+            string TopGun = gunList[0];
+            string TopGunTruncated = new string(TopGun.Take(5).ToArray());
+            Logger.LogInfo("TopGun: " + TopGun);
+            Logger.LogInfo("TopGunTruncated: " + TopGunTruncated);
+
+            string MatchingMagazine = magazineList.FirstOrDefault(o => o.Contains(TopGunTruncated));
+            Logger.LogInfo("MatchingMagazine: " + MatchingMagazine);
+
+            if (!IM.OD.ContainsKey(TopGun))
+            {
+                Logger.LogError("Gun key '" + TopGun + "' not found in IM.OD dictionary.");
+                return;
+            }
+            if (string.IsNullOrEmpty(MatchingMagazine) || !IM.OD.ContainsKey(MatchingMagazine))
+            {
+                Logger.LogError("Magazine key '" + MatchingMagazine + "' not found in IM.OD dictionary.");
+                return;
+            }
+
+            FVRObject obj = IM.OD[TopGun];
+            FVRObject obj2 = IM.OD[MatchingMagazine];
+
+            GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
+            GameObject go2 = Instantiate(obj2.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
+
+            go.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
+            go2.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
+
+            go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 100);
+            go2.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 100);
+
+            go.transform.localScale = new Vector3(5, 5, 5);
+            go2.transform.localScale = new Vector3(5, 5, 5);
         }
 
 
         [HarmonyPatch(typeof(AudioSource), "pitch", MethodType.Setter)]
-        [HarmonyPrefix]
-        public static void FixPitch(ref float value)
-        {
-            if (Time.timeScale != 1f)
+            [HarmonyPrefix]
+            public static void FixPitch(ref float value)
             {
-                value *= Time.timeScale;
+                if (Time.timeScale != 1f)
+                {
+                    value *= Time.timeScale;
+                }
+                else
+                {
+                    value *= 1f;
+                }
             }
-            else
-            {
-                value *= 1f;
-            }
-        }
 
         private void OnDestroy()
         {
@@ -977,73 +918,214 @@ namespace H3TVR
 
         private void ToggleHeldGunFireMode()
         {
-            try // Add missing try block to fix the unbalanced braces
+            try
             {
-                // Prefer right hand, then left
-                FVRViveHand[] hands = GM.CurrentMovementManager != null ? GM.CurrentMovementManager.Hands : null;
-                if (hands == null || hands.Length == 0) return;
-
-                FVRInteractiveObject inter = null;
-                if (hands.Length > 1 && hands[1] != null && hands[1].CurrentInteractable != null)
-                    inter = hands[1].CurrentInteractable;
-                if (inter == null && hands[0] != null && hands[0].CurrentInteractable != null)
-                    inter = hands[0].CurrentInteractable;
-                if (inter == null) return;
-
-                // Ensure it's a firearm
-                var firearm = inter as FVRFireArm;
-                if (firearm == null && inter.GetType().IsSubclassOf(typeof(FVRFireArm)))
+                FVRFireArm firearm = GetHeldFirearm();
+                if (firearm == null) 
                 {
-                    firearm = (FVRFireArm)inter;
-                }
-                if (firearm == null) return;
-
-                // Try common method names first
-                MethodInfo mi = firearm.GetType().GetMethod("CycleFireMode", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    ?? firearm.GetType().GetMethod("CycleFireSelector", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (mi != null)
-                {
-                    mi.Invoke(firearm, null);
-                    Logger.LogInfo("Toggled fire mode via method reflection.");
+                    Logger.LogWarning("ToggleHeldGunFireMode: No firearm found in hands");
                     return;
                 }
 
-                // Fallback: manipulate selector enum field and call potential setter
-                FieldInfo selectorField = firearm.GetType().GetField("m_fireSelector", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    ?? firearm.GetType().GetField("FireSelector", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    ?? firearm.GetType().GetField("m_selector", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                string gunType = firearm.GetType().Name;
+                Logger.LogInfo($"ToggleHeldGunFireMode: Attempting to toggle fire mode on {gunType}");
 
-                if (selectorField != null)
+                // Strategy 1: Try comprehensive list of method names
+                string[] methodNames = { 
+                    "CycleFireMode", "CycleFireSelector", "ToggleFireMode", "NextFireMode",
+                    "CycleSelectorMode", "AdvanceFireSelector", "SwitchFireMode",
+                    "UpdateFireMode", "ChangeFireMode", "CycleFiringMode",
+                    "AdvanceFireSelectorState", "CycleFireSelectorState", "ToggleSafetyFireSelector"
+                };
+
+                foreach (var methodName in methodNames)
                 {
-                    object currentVal = selectorField.GetValue(firearm);
-                    if (currentVal != null && currentVal.GetType().IsEnum)
+                    MethodInfo mi = firearm.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (mi != null && mi.GetParameters().Length == 0)
                     {
-                        Array vals = Enum.GetValues(currentVal.GetType());
-                        int idx = Array.IndexOf(vals, currentVal);
-                        int next = (idx + 1) % vals.Length;
-                        object nextVal = vals.GetValue(next);
-                        selectorField.SetValue(firearm, nextVal);
-
-                        MethodInfo setMethod = firearm.GetType().GetMethod("SetFireSelector", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                            ?? firearm.GetType().GetMethod("UpdateFireSelector", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                        if (setMethod != null)
-                        {
-                            var ps = setMethod.GetParameters();
-                            if (ps.Length == 1 && ps[0].ParameterType == currentVal.GetType())
-                                setMethod.Invoke(firearm, new object[] { nextVal });
-                            else if (ps.Length == 0)
-                                setMethod.Invoke(firearm, null);
-                        }
-                        Logger.LogInfo("Toggled fire mode via enum field reflection to: " + nextVal);
+                        mi.Invoke(firearm, null);
+                        Logger.LogInfo($"ToggleHeldGunFireMode: Successfully toggled via method '{methodName}'");
                         return;
                     }
                 }
 
-                Logger.LogWarning("Could not toggle fire mode: no suitable method or field found.");
+                // Strategy 2: Try comprehensive list of field names for fire selectors
+                string[] selectorFieldNames = { 
+                    "m_fireSelector", "FireSelector", "m_selector", "fireSelector", 
+                    "m_FireSelector", "m_fireSelectorMode", "FireSelectorMode",
+                    "m_firingMode", "FiringMode", "m_mode", "Mode", "SelectorState",
+                    "m_selectorState", "SafetyState", "m_safetyState"
+                };
+
+                foreach (var fieldName in selectorFieldNames)
+                {
+                    FieldInfo selectorField = firearm.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (selectorField != null && selectorField.FieldType.IsEnum)
+                    {
+                        if (TryToggleEnumField(firearm, selectorField, fieldName))
+                        {
+                            Logger.LogInfo($"ToggleHeldGunFireMode: Successfully toggled via field '{fieldName}'");
+                            return;
+                        }
+                    }
+                }
+
+                // Strategy 3: Look for properties with enum types
+                PropertyInfo[] properties = firearm.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                foreach (var prop in properties)
+                {
+                    if (prop.PropertyType.IsEnum && prop.CanWrite && 
+                        (prop.Name.ToLower().Contains("fire") || prop.Name.ToLower().Contains("selector") || 
+                         prop.Name.ToLower().Contains("mode") || prop.Name.ToLower().Contains("safety")))
+                    {
+                        if (TryToggleEnumProperty(firearm, prop))
+                        {
+                            Logger.LogInfo($"ToggleHeldGunFireMode: Successfully toggled via property '{prop.Name}'");
+                            return;
+                        }
+                    }
+                }
+
+                // Strategy 4: Try to find any enum field/property that might control firing
+                FieldInfo[] allFields = firearm.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                foreach (var field in allFields)
+                {
+                    if (field.FieldType.IsEnum && Enum.GetValues(field.FieldType).Length > 1)
+                    {
+                        string fieldNameLower = field.Name.ToLower();
+                        if (fieldNameLower.Contains("fire") || fieldNameLower.Contains("mode") || 
+                            fieldNameLower.Contains("selector") || fieldNameLower.Contains("safety"))
+                        {
+                            if (TryToggleEnumField(firearm, field, field.Name))
+                            {
+                                Logger.LogInfo($"ToggleHeldGunFireMode: Successfully toggled via discovered field '{field.Name}'");
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                Logger.LogWarning($"ToggleHeldGunFireMode: Could not find fire mode control for {gunType}");
             }
             catch (Exception ex)
             {
                 Logger.LogError("ToggleHeldGunFireMode failed: " + ex);
+            }
+        }
+
+        private FVRFireArm GetHeldFirearm()
+        {
+            FVRViveHand[] hands = GM.CurrentMovementManager?.Hands;
+            if (hands == null || hands.Length == 0) return null;
+
+            // Check right hand first, then left
+            for (int handIndex = hands.Length - 1; handIndex >= 0; handIndex--)
+            {
+                var hand = hands[handIndex];
+                if (hand?.CurrentInteractable == null) continue;
+
+                var firearm = hand.CurrentInteractable as FVRFireArm;
+                if (firearm != null) return firearm;
+
+                // Check if it's a subclass of FVRFireArm
+                if (hand.CurrentInteractable.GetType().IsSubclassOf(typeof(FVRFireArm)))
+                    return (FVRFireArm)hand.CurrentInteractable;
+            }
+            return null;
+        }
+
+        private bool TryToggleEnumField(FVRFireArm firearm, FieldInfo field, string fieldName)
+        {
+            try
+            {
+                object currentVal = field.GetValue(firearm);
+                if (currentVal == null) return false;
+
+                Array enumValues = Enum.GetValues(currentVal.GetType());
+                if (enumValues.Length <= 1) return false;
+
+                int currentIndex = Array.IndexOf(enumValues, currentVal);
+                int nextIndex = (currentIndex + 1) % enumValues.Length;
+                object nextVal = enumValues.GetValue(nextIndex);
+                
+                field.SetValue(firearm, nextVal);
+
+                // Try to call update methods
+                TryCallFireSelectorUpdateMethods(firearm, nextVal, fieldName);
+                
+                Logger.LogInfo($"ToggleHeldGunFireMode: Changed {fieldName} from {currentVal} to {nextVal}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"TryToggleEnumField failed for {fieldName}: {ex}");
+                return false;
+            }
+        }
+
+        private bool TryToggleEnumProperty(FVRFireArm firearm, PropertyInfo property)
+        {
+            try
+            {
+                object currentVal = property.GetValue(firearm, null);
+                if (currentVal == null) return false;
+
+                Array enumValues = Enum.GetValues(currentVal.GetType());
+                if (enumValues.Length <= 1) return false;
+
+                int currentIndex = Array.IndexOf(enumValues, currentVal);
+                int nextIndex = (currentIndex + 1) % enumValues.Length;
+                object nextVal = enumValues.GetValue(nextIndex);
+                
+                property.SetValue(firearm, nextVal, null);
+
+                // Try to call update methods
+                TryCallFireSelectorUpdateMethods(firearm, nextVal, property.Name);
+                
+                Logger.LogInfo($"ToggleHeldGunFireMode: Changed {property.Name} from {currentVal} to {nextVal}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"TryToggleEnumProperty failed for {property.Name}: {ex}");
+                return false;
+            }
+        }
+
+        private void TryCallFireSelectorUpdateMethods(FVRFireArm firearm, object newValue, string changedFieldName)
+        {
+            // Try to call update/setter methods that might need to be invoked after changing the selector
+            string[] updateMethods = { 
+                "SetFireSelector", "UpdateFireSelector", "OnFireSelectorChanged", 
+                "UpdateFireMode", "SetFireMode", "OnFireModeChanged",
+                "UpdateSafetyState", "SetSafetyState", "OnSafetyChanged",
+                "RefreshFireSelector", "ApplyFireMode", "ConfigureFireMode",
+                "UpdateGunState", "RefreshGunState", "UpdateWeaponState"
+            };
+
+            foreach (var methodName in updateMethods)
+            {
+                try
+                {
+                    MethodInfo method = firearm.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (method != null)
+                    {
+                        var parameters = method.GetParameters();
+                        if (parameters.Length == 0)
+                        {
+                            method.Invoke(firearm, null);
+                        }
+                        else if (parameters.Length == 1 && parameters[0].ParameterType == newValue.GetType())
+                        {
+                            method.Invoke(firearm, new object[] { newValue });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Silently continue - not all methods will exist or work
+                    continue;
+                }
             }
         }
 
@@ -1066,406 +1148,587 @@ namespace H3TVR
                     firearm = (FVRFireArm)inter;
                 if (firearm == null) return;
 
-                EnsureAllGunKeys();
-                var gunPool = _allGunKeys.Where(k => IM.OD.ContainsKey(k)).ToList();
-                if (gunPool.Count == 0) { Logger.LogError("RandomizeHeldGun: No guns found in ALL pool."); return; }
-
+                Vector3 pos = inter.transform.position;
+                Quaternion rot = inter.transform.rotation;
                 string currentKey = firearm.ObjectWrapper != null ? firearm.ObjectWrapper.ItemID : null;
-                if (!string.IsNullOrEmpty(currentKey))
+
+                // Check config setting to determine gun source
+                if (UseItemManagerForGunRandomization.Value)
                 {
-                    var filtered = gunPool.Where(k => k != currentKey).ToList();
-                    if (filtered.Count > 0) gunPool = filtered;
+                    RandomizeFromItemManager(firearm, pos, rot, currentKey);
                 }
-
-                string newGunKey = gunPool[UnityEngine.Random.Range(0, gunPool.Count)];
-                if (!IM.OD.ContainsKey(newGunKey)) { Logger.LogError("RandomizeHeldGun: Picked key missing: " + newGunKey); return; }
-
-                Vector3 pos = inter.transform.position; Quaternion rot = inter.transform.rotation; Destroy(inter.gameObject);
-                FVRObject gunObj = IM.OD[newGunKey];
-                GameObject newGunGO = Instantiate(gunObj.GetGameObject(), pos, rot);
-                var gunRB = newGunGO.GetComponent<Rigidbody>(); if (gunRB != null) { gunRB.velocity = Vector3.zero; gunRB.angularVelocity = Vector3.zero; }
-
-                try
+                else
                 {
-                    EnsureAllMagazineKeys();
-                    var magPool = _allMagazineKeys.Where(k => IM.OD.ContainsKey(k)).ToList();
-                    if (magPool.Count > 0)
+                    RandomizeFromConfigLists(firearm, pos, rot, currentKey);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("RandomizeHeldGun failed: " + ex);
+            }
+        }
+
+        private void RandomizeFromItemManager(FVRFireArm firearm, Vector3 pos, Quaternion rot, string currentKey)
+        {
+            // Get all firearms from ItemManager's ObjectDictionary (includes H3VR and modded guns)
+            var allFirearms = IM.OD.Values
+                .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Firearm)
+                .ToArray();
+
+            if (allFirearms.Length == 0) 
+            { 
+                Logger.LogError("RandomizeHeldGun: No firearms found in ItemManager."); 
+                return; 
+            }
+
+            // Filter out the current gun if possible
+            FVRObject[] selectableFirearms = currentKey != null 
+                ? allFirearms.Where(obj => obj.ItemID != currentKey).ToArray() 
+                : allFirearms;
+            
+            if (selectableFirearms.Length == 0) selectableFirearms = allFirearms;
+
+            // Pick a random firearm
+            FVRObject selectedFirearm = selectableFirearms[UnityEngine.Random.Range(0, selectableFirearms.Length)];
+
+            Logger.LogInfo($"RandomizeHeldGun: Selected {selectedFirearm.DisplayName} (ID: {selectedFirearm.ItemID})");
+
+            Destroy(firearm.gameObject);
+
+            // Spawn the new gun
+            GameObject newGunGO = Instantiate(selectedFirearm.GetGameObject(), pos, rot);
+            var gunRB = newGunGO.GetComponent<Rigidbody>();
+            if (gunRB != null) { gunRB.velocity = Vector3.zero; gunRB.angularVelocity = Vector3.zero; }
+
+            // Try to spawn a matching magazine
+            TrySpawnMatchingMagazine(selectedFirearm, pos, rot);
+
+            Logger.LogInfo($"RandomizeHeldGun: Successfully replaced gun with {selectedFirearm.DisplayName}");
+        }
+
+        private void RandomizeFromConfigLists(FVRFireArm firearm, Vector3 pos, Quaternion rot, string currentKey)
+        {
+            // Use the original logic with config file gun lists
+            string gunListString = File.Exists(GunList.Value)
+                ? File.ReadAllText(GunList.Value)
+                : GunList.Value;
+            string[] gunList = gunListString
+                .Split(new[] { '\r', '\n', ',', ';', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(g => g.Trim())
+                .Where(g => g.Length > 0)
+                .ToArray();
+            if (gunList.Length == 0) { Logger.LogError("RandomizeHeldGun: Gun list empty."); return; }
+
+            string[] selectable = currentKey != null ? gunList.Where(k => k != currentKey).ToArray() : gunList;
+            if (selectable.Length == 0) selectable = gunList;
+
+            string newGunKey = selectable[UnityEngine.Random.Range(0, selectable.Length)];
+            if (!IM.OD.ContainsKey(newGunKey)) { Logger.LogError("RandomizeHeldGun: Key '" + newGunKey + "' not found in IM.OD."); return; }
+
+            Destroy(firearm.gameObject);
+
+            FVRObject gunObj = IM.OD[newGunKey];
+            GameObject newGunGO = Instantiate(gunObj.GetGameObject(), pos, rot);
+            var gunRB = newGunGO.GetComponent<Rigidbody>();
+            if (gunRB != null) { gunRB.velocity = Vector3.zero; gunRB.angularVelocity = Vector3.zero; }
+
+            // Try to spawn magazine using config lists
+            try
+            {
+                string magListString = File.Exists(MagazineList.Value)
+                    ? File.ReadAllText(MagazineList.Value)
+                    : MagazineList.Value;
+                string[] magazineList = magListString
+                    .Split(new[] { '\r', '\n', ',', ';', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(m => m.Trim())
+                    .Where(m => m.Length > 0)
+                    .ToArray();
+                if (magazineList.Length > 0)
+                {
+                    string truncated = new string(newGunKey.Take(5).ToArray());
+                    var matchingMags = magazineList.Where(m => m.Contains(truncated)).ToArray();
+                    if (matchingMags.Length > 0)
                     {
-                        string truncated5 = new string(newGunKey.Take(5).ToArray());
-                        string truncated4 = truncated5.Length >= 4 ? truncated5.Substring(0, 4) : truncated5;
-                        string truncated3 = truncated5.Length >= 3 ? truncated5.Substring(0, 3) : truncated5;
-                        System.Func<IEnumerable<string>, string> pick = seq => { var arr = seq.ToArray(); return arr.Length == 0 ? null : arr[UnityEngine.Random.Range(0, arr.Length)]; };
-                        string magKey = pick(magPool.Where(m => m.Contains(truncated5)))
-                            ?? pick(magPool.Where(m => m.StartsWith(truncated5)))
-                            ?? pick(magPool.Where(m => m.Contains(truncated4)))
-                            ?? pick(magPool.Where(m => m.StartsWith(truncated3)))
-                            ?? pick(magPool);
-                        if (magKey != null && IM.OD.ContainsKey(magKey))
+                        string magKey = matchingMags[UnityEngine.Random.Range(0, matchingMags.Length)];
+                        if (IM.OD.ContainsKey(magKey))
                         {
                             FVRObject magObj = IM.OD[magKey];
                             Vector3 magPos = pos + Vector3.up * 0.05f + (GM.CurrentPlayerBody != null ? GM.CurrentPlayerBody.Head.forward * 0.1f : Vector3.forward * 0.1f);
                             GameObject magGO = Instantiate(magObj.GetGameObject(), magPos, rot);
-                            var magRB = magGO.GetComponent<Rigidbody>(); if (magRB != null) { magRB.velocity = Vector3.zero; magRB.angularVelocity = Vector3.zero; }
-                            Logger.LogInfo("RandomizeHeldGun: Spawned magazine '" + magKey + "' (ALL pool).");
+                            var magRB = magGO.GetComponent<Rigidbody>();
+                            if (magRB != null) { magRB.velocity = Vector3.zero; magRB.angularVelocity = Vector3.zero; }
+                            Logger.LogInfo("RandomizeHeldGun: Spawned matching magazine: " + magKey);
                         }
+                        else Logger.LogWarning("RandomizeHeldGun: Matching mag key not in IM.OD: " + magKey);
+                    }
+                    else Logger.LogWarning("RandomizeHeldGun: No matching magazines found for truncated key: " + truncated);
+                }
+                else Logger.LogWarning("RandomizeHeldGun: Magazine list empty.");
+            }
+            catch (Exception magEx) { Logger.LogError("RandomizeHeldGun: Magazine spawn failed: " + magEx); }
+
+            Logger.LogInfo("RandomizeHeldGun: Replaced held gun with: " + newGunKey);
+        }
+
+        // Helper method to spawn a matching magazine for the given firearm
+        private void TrySpawnMatchingMagazine(FVRObject selectedFirearm, Vector3 pos, Quaternion rot)
+        {
+            try
+            {
+                // Get all magazines from ItemManager
+                var allMagazines = IM.OD.Values
+                    .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Magazine)
+                    .ToArray();
+
+                if (allMagazines.Length == 0)
+                {
+                    Logger.LogWarning("RandomizeHeldGun: No magazines found in ItemManager.");
+                    return;
+                }
+
+                FVRObject matchingMag = null;
+                string gunNameLower = selectedFirearm.DisplayName.ToLower();
+                string gunIdLower = selectedFirearm.ItemID.ToLower();
+
+                // Strategy 1: Look for magazines with similar names/IDs
+                string[] gunKeywords = ExtractGunKeywords(gunNameLower, gunIdLower);
+                
+                foreach (string keyword in gunKeywords)
+                {
+                    if (string.IsNullOrEmpty(keyword) || keyword.Length < 2) continue;
+                    
+                    var keywordMatches = allMagazines.Where(mag => 
+                        mag.DisplayName.ToLower().Contains(keyword) || 
+                        mag.ItemID.ToLower().Contains(keyword)).ToArray();
+                    
+                    if (keywordMatches.Length > 0)
+                    {
+                        matchingMag = keywordMatches[UnityEngine.Random.Range(0, keywordMatches.Length)];
+                        Logger.LogInfo($"RandomizeHeldGun: Found magazine match using keyword '{keyword}': {matchingMag.DisplayName}");
+                        break;
                     }
                 }
-                catch (System.Exception magEx) { Logger.LogError("RandomizeHeldGun: Magazine spawn failed: " + magEx); }
+                
+                // Strategy 2: Fallback to truncated ID matching (legacy behavior)
+                if (matchingMag == null && selectedFirearm.ItemID.Length >= 5)
+                {
+                    string truncated = selectedFirearm.ItemID.Substring(0, 5);
+                    var truncatedMatches = allMagazines.Where(mag => 
+                        mag.ItemID.Contains(truncated) || 
+                        mag.DisplayName.ToLower().Contains(truncated.ToLower())).ToArray();
+                    
+                    if (truncatedMatches.Length > 0)
+                    {
+                        matchingMag = truncatedMatches[UnityEngine.Random.Range(0, truncatedMatches.Length)];
+                        Logger.LogInfo($"RandomizeHeldGun: Found magazine match using truncated ID '{truncated}': {matchingMag.DisplayName}");
+                    }
+                }
+                
+                // Strategy 3: Random magazine if no match found
+                if (matchingMag == null)
+                {
+                    matchingMag = allMagazines[UnityEngine.Random.Range(0, allMagazines.Length)];
+                    Logger.LogInfo($"RandomizeHeldGun: Using random magazine: {matchingMag.DisplayName}");
+                }
 
-                Logger.LogInfo("Replaced held gun (ALL pool): " + newGunKey);
+                // Spawn the magazine
+                if (matchingMag != null)
+                {
+                    Vector3 magPos = pos + Vector3.up * 0.05f + (GM.CurrentPlayerBody != null ? GM.CurrentPlayerBody.Head.forward * 0.1f : Vector3.forward * 0.1f);
+                    GameObject magGO = Instantiate(matchingMag.GetGameObject(), magPos, rot);
+                    var magRB = magGO.GetComponent<Rigidbody>();
+                    if (magRB != null) { magRB.velocity = Vector3.zero; magRB.angularVelocity = Vector3.zero; }
+                    Logger.LogInfo("RandomizeHeldGun: Spawned magazine: " + matchingMag.DisplayName);
+                }
             }
-            catch (System.Exception ex)
+            catch (Exception magEx)
             {
-                Logger.LogError("RandomizeHeldGun failed: " + ex);
+                Logger.LogError("RandomizeHeldGun: Magazine spawn failed: " + magEx);
             }
+        }
+
+        // Helper method to extract potential keywords for magazine matching
+        private string[] ExtractGunKeywords(string gunName, string gunId)
+        {
+            var keywords = new List<string>();
+            
+            // Common gun name patterns and abbreviations
+            string[] commonPrefixes = { "rifle", "pistol", "gun", "smg", "lmg", "sniper", "shotgun", "carbine" };
+            string[] separators = { " ", "_", "-", "." };
+            
+            // Extract from display name
+            foreach (string sep in separators)
+            {
+                string[] nameParts = gunName.Split(new string[] { sep }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string part in nameParts)
+                {
+                    string cleanPart = part.Trim();
+                    if (cleanPart.Length >= 2 && !commonPrefixes.Contains(cleanPart))
+                    {
+                        keywords.Add(cleanPart);
+                    }
+                }
+            }
+            
+            // Extract from ID
+            foreach (string sep in separators)
+            {
+                string[] idParts = gunId.Split(new string[] { sep }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string part in idParts)
+                {
+                    string cleanPart = part.Trim();
+                    if (cleanPart.Length >= 2)
+                    {
+                        keywords.Add(cleanPart);
+                    }
+                }
+            }
+            
+            // Remove duplicates and return most relevant keywords first
+            return keywords.Distinct().OrderByDescending(k => k.Length).ToArray();
         }
 
         private void EmptyHeldGunChamber()
         {
             try
             {
-                var mm = GM.CurrentMovementManager;
-                if (mm == null || mm.Hands == null) return;
-                FVRInteractiveObject inter = null;
-                if (mm.Hands.Length > 1 && mm.Hands[1] != null && mm.Hands[1].CurrentInteractable != null)
-                    inter = mm.Hands[1].CurrentInteractable;
-                if (inter == null && mm.Hands.Length > 0 && mm.Hands[0] != null && mm.Hands[0].CurrentInteractable != null)
-                    inter = mm.Hands[0].CurrentInteractable;
-                if (inter == null) return;
-
-                var firearm = inter as FVRFireArm;
-                if (firearm == null && inter.GetType().IsSubclassOf(typeof(FVRFireArm))) firearm = (FVRFireArm)inter;
-                if (firearm == null) return;
-
-                bool roundEjected = false;
-
-                string[] fireArmLevel = { "EjectChamberedRound", "EjectRound", "EjectChambered", "ExtractRound", "DumpChamber" };
-                var firearmMethods = firearm.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                foreach (var mn in fireArmLevel)
+                FVRFireArm firearm = GetHeldFirearm();
+                if (firearm == null)
                 {
-                    var mi = firearmMethods.FirstOrDefault(m => m.Name == mn && m.GetParameters().Length == 0);
-                    if (mi != null)
-                    {
-                        try { mi.Invoke(firearm, null); Logger.LogInfo("EmptyHeldGunChamber: Firearm method invoked: " + mn); roundEjected = true; break; }
-                        catch (Exception invokeEx) { Logger.LogWarning("EmptyHeldGunChamber: Firearm method '" + mn + "' threw: " + invokeEx.Message); }
+                    Logger.LogWarning("EmptyHeldGunChamber: No firearm found in hands");
+                    return;
+                }
+
+                string gunType = firearm.GetType().Name;
+                Logger.LogInfo($"EmptyHeldGunChamber: Attempting to empty chamber on {gunType}");
+
+                // Strategy 1: Try comprehensive list of eject methods
+                string[] methodNames = { 
+                    "EjectChamberedRound", "EjectRound", "EjectChambered", "Eject", 
+                    "ExtractRound", "DumpChamber", "ClearChamber", "EmptyChamber",
+                    "EjectCurrentRound", "DropChamberedRound", "UnloadChamber",
+                    "EjectCartridge", "ExtractCartridge", "ClearChamberedRound"
+                };
+
+                foreach (var methodName in methodNames)
+                {
+                    MethodInfo mi = firearm.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (mi != null && mi.GetParameters().Length == 0) 
+                    { 
+                        mi.Invoke(firearm, null); 
+                        Logger.LogInfo($"EmptyHeldGunChamber: Successfully ejected via method '{methodName}'"); 
+                        return; 
                     }
                 }
 
-                if (!roundEjected)
+                // Strategy 2: Try to find and manipulate chamber objects directly
+                if (TryDirectChamberManipulation(firearm, gunType)) return;
+
+                // Strategy 3: Try multi-barrel/cylinder weapons
+                if (TryMultiChamberWeapons(firearm, gunType)) return;
+
+                Logger.LogWarning($"EmptyHeldGunChamber: Could not find chamber eject method for {gunType}");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("EmptyHeldGunChamber failed: " + ex);
+            }
+        }
+
+        private bool TryDirectChamberManipulation(FVRFireArm firearm, string gunType)
+        {
+            try
+            {
+                // Strategy A: Try chamber-specific eject methods first
+                string[] chamberMethods = { "EjectRound", "Eject", "ExtractRound", "Clear", "Empty", "DumpRound" };
+                foreach (var method in chamberMethods)
                 {
-                    object chamberObj = firearm.GetType().GetField("Chamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(firearm)
-                        ?? firearm.GetType().GetField("m_chamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(firearm)
-                        ?? firearm.GetType().GetField("PrimaryChamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(firearm);
-                    if (chamberObj == null)
+                    MethodInfo mi = firearm.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (mi != null && mi.GetParameters().Length == 0)
                     {
-                        var prop = firearm.GetType().GetProperty("Chamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                            ?? firearm.GetType().GetProperty("PrimaryChamber", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                        if (prop != null) chamberObj = prop.GetValue(firearm, null);
+                        mi.Invoke(firearm, null);
+                        Logger.LogInfo($"EmptyHeldGunChamber: Ejected via method '{method}' on {gunType}");
+                        return true;
                     }
-                    if (chamberObj != null)
+                }
+
+                // Strategy B: Find and manually eject the round
+                FVRFireArmRound round = FindRoundInChamber(firearm);
+                if (round != null && round.gameObject != null)
+                {
+                    // Physically eject the round
+                    Transform rT = round.transform; 
+                    rT.parent = null;
+                    
+                    var rrb = round.GetComponent<Rigidbody>();
+                    if (rrb != null)
                     {
-                        var chamberType = chamberObj.GetType();
-                        string[] chamberLevel = { "EjectRound", "EjectChamberedRound", "ExtractRound", "PopRound", "DumpRound", "ReleaseRound" };
-                        var chamberMethods = chamberType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                        foreach (var mn in chamberLevel)
+                        rrb.isKinematic = false;
+                        rrb.velocity = firearm.transform.forward * 2f + firearm.transform.up * 1f;
+                        rrb.angularVelocity = UnityEngine.Random.insideUnitSphere * 10f;
+                    }
+
+                    // Clear the round reference from the chamber
+                    ClearRoundFromChamber(firearm, round);
+                    
+                    Logger.LogInfo($"EmptyHeldGunChamber: Manually ejected round from {gunType}");
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"TryDirectChamberManipulation failed for {gunType}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryMultiChamberWeapons(FVRFireArm firearm, string gunType)
+        {
+            try
+            {
+                // Handle revolvers, break-action shotguns, etc.
+                string[] multiChamberFields = { 
+                    "Chambers", "m_chambers", "Cylinder", "m_cylinder", 
+                    "Barrels", "m_barrels", "ChamberArray", "m_chamberArray"
+                };
+
+                foreach (var fieldName in multiChamberFields)
+                {
+                    FieldInfo field = firearm.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (field != null)
+                    {
+                        object chambersObj = field.GetValue(firearm);
+                        if (chambersObj != null)
                         {
-                            var mi = chamberMethods.FirstOrDefault(m => m.Name == mn && m.GetParameters().Length == 0);
-                            if (mi != null)
-                            {
-                                try { mi.Invoke(chamberObj, null); Logger.LogInfo("EmptyHeldGunChamber: Chamber method invoked: " + mn); roundEjected = true; break; }
-                                catch (Exception invokeEx) { Logger.LogWarning("EmptyHeldGunChamber: Chamber method '" + mn + "' threw: " + invokeEx.Message); }
-                            }
+                            if (TryEjectFromMultiChamber(chambersObj, firearm, fieldName)) return true;
                         }
-                        if (!roundEjected)
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"TryMultiChamberWeapons failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryEjectFromMultiChamber(object chambersObj, FVRFireArm firearm, string fieldName)
+        {
+            try
+            {
+                // Handle arrays or lists of chambers
+                if (chambersObj is System.Collections.IList chamberList)
+                {
+                    bool ejectedAny = false;
+                    for (int i = 0; i < chamberList.Count; i++)
+                    {
+                        if (chamberList[i] != null && TryEjectFromChamber(chamberList[i], firearm, $"{fieldName}[{i}]"))
                         {
-                            string[] roundFieldNames = { "Round", "m_round", "ChamberedRound", "m_chamberedRound", "LoadedRound" };
-                            FVRFireArmRound round = null; FieldInfo roundField = null;
-                            foreach (var fn in roundFieldNames)
-                            {
-                                var f = chamberType.GetField(fn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                                if (f != null && typeof(FVRFireArmRound).IsAssignableFrom(f.FieldType))
-                                {
-                                    var val = f.GetValue(chamberObj) as FVRFireArmRound; if (val != null) { round = val; roundField = f; break; }
-                                }
-                                var p = chamberType.GetProperty(fn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                                if (p != null && typeof(FVRFireArmRound).IsAssignableFrom(p.PropertyType))
-                                {
-                                    var val = p.GetValue(chamberObj, null) as FVRFireArmRound; if (val != null) { round = val; break; }
-                                }
-                            }
-                            if (round != null)
-                            {
-                                Transform t = round.transform; t.SetParent(null, true);
-                                var rb = round.GetComponent<Rigidbody>();
-                                if (rb != null)
-                                {
-                                    rb.isKinematic = false;
-                                    rb.velocity = firearm.transform.forward * 1.5f + firearm.transform.up * 0.25f;
-                                    rb.angularVelocity = UnityEngine.Random.insideUnitSphere * 4f;
-                                }
-                                if (roundField != null) roundField.SetValue(chamberObj, null); else
-                                {
-                                    foreach (var fn in roundFieldNames)
-                                    {
-                                        var p = chamberType.GetProperty(fn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                                        if (p != null && p.CanWrite && typeof(FVRFireArmRound).IsAssignableFrom(p.PropertyType)) p.SetValue(chamberObj, null, null);
-                                    }
-                                }
-                                string[] loadedFlags = { "IsFull", "m_isFull", "IsLoaded", "m_isLoaded", "HasRound", "m_hasRound" };
-                                foreach (var lf in loadedFlags)
-                                {
-                                    var f = chamberType.GetField(lf, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                                    if (f != null && f.FieldType == typeof(bool)) f.SetValue(chamberObj, false);
-                                    var p = chamberType.GetProperty(lf, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                                    if (p != null && p.CanWrite && p.PropertyType == typeof(bool)) p.SetValue(chamberObj, false, null);
-                                }
-                                Logger.LogInfo("EmptyHeldGunChamber: Manually detached round (fallback path).");
-                                roundEjected = true;
-                            }
+                            ejectedAny = true;
                         }
                     }
-                    else Logger.LogWarning("EmptyHeldGunChamber: No chamber object found.");
+                    return ejectedAny;
                 }
-
-                DropMagazine(firearm);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError("EmptyHeldGunChamber (reworked) failed: " + ex);
-            }
-        }
-
-        private void DropMagazine(FVRFireArm firearm)
-        {
-            try
-            {
-                if (firearm == null) return;
-                var t = firearm.GetType();
-                string[] magMethodNames = { "EjectMag", "EjectMagazine", "DropMag", "DropMagazine", "ReleaseMag", "ReleaseMagazine", "RemoveMagazine", "TryEjectMagazine" };
-                var methods = t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                foreach (var name in magMethodNames)
+                else if (chambersObj.GetType().IsArray)
                 {
-                    var mi = methods.FirstOrDefault(m => m.Name == name && m.GetParameters().Length == 0);
-                    if (mi != null)
+                    Array chamberArray = (Array)chambersObj;
+                    bool ejectedAny = false;
+                    for (int i = 0; i < chamberArray.Length; i++)
                     {
-                        try { mi.Invoke(firearm, null); Logger.LogInfo("DropMagazine: Invoked method '" + name + "'."); return; }
-                        catch (Exception ex) { Logger.LogWarning("DropMagazine: Method '" + name + "' threw: " + ex.Message); }
-                    }
-                }
-                string[] magFieldNames = { "Magazine", "Mag", "m_mag", "m_magazine", "CurMag", "m_curMag", "LoadedMag", "m_loadedMag", "InsertedMag", "InsertedMagazine" };
-                object magObj = null; FieldInfo magFieldRef = null; PropertyInfo magPropRef = null;
-                foreach (var mn in magFieldNames)
-                {
-                    var f = t.GetField(mn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (f != null)
-                    {
-                        var val = f.GetValue(firearm);
-                        if (val != null) { magObj = val; magFieldRef = f; break; }
-                    }
-                    var p = t.GetProperty(mn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (p != null && p.CanRead)
-                    {
-                        var val = p.GetValue(firearm, null);
-                        if (val != null) { magObj = val; magPropRef = p; break; }
-                    }
-                }
-                var magAsPhys = magObj as FVRPhysicalObject;
-                if (magAsPhys != null)
-                {
-                    Transform mt = magAsPhys.transform; mt.SetParent(null, true);
-                    var rb = magAsPhys.GetComponent<Rigidbody>();
-                    if (rb != null)
-                    {
-                        rb.isKinematic = false;
-                        rb.velocity = firearm.transform.forward * 1.2f + firearm.transform.up * 0.15f + UnityEngine.Random.insideUnitSphere * 0.1f;
-                        rb.angularVelocity = UnityEngine.Random.insideUnitSphere * 3f;
-                    }
-                    if (magFieldRef != null) magFieldRef.SetValue(firearm, null);
-                    if (magPropRef != null && magPropRef.CanWrite) magPropRef.SetValue(firearm, null, null);
-                    Logger.LogInfo("DropMagazine: Detached magazine via field/property.");
-                }
-                else
-                {
-                    Logger.LogDebug("DropMagazine: No magazine object found to detach.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError("DropMagazine failed: " + ex);
-            }
-        }
-
-        // Restored fields and helper caches
-        private static List<string> _allGunKeys = new List<string>();
-        private static bool _allGunKeysBuilt = false;
-        private static List<string> _allMagazineKeys = new List<string>();
-        private static bool _allMagazineKeysBuilt = false;
-
-        private void EnsureAllGunKeys()
-        {
-            if (_allGunKeysBuilt) return;
-            _allGunKeys.Clear();
-            try
-            {
-                foreach (var kvp in IM.OD)
-                {
-                    var obj = kvp.Value; if (obj == null) continue;
-                    try
-                    {
-                        GameObject prefab = null; try { prefab = obj.GetGameObject(); } catch { }
-                        if (prefab != null && prefab.GetComponentInChildren<FVRFireArm>() != null)
-                            _allGunKeys.Add(kvp.Key);
-                    }
-                    catch { }
-                }
-                _allGunKeysBuilt = true;
-                Logger.LogInfo("EnsureAllGunKeys: Collected " + _allGunKeys.Count + " firearm keys.");
-            }
-            catch (Exception ex) { Logger.LogError("EnsureAllGunKeys failed: " + ex); }
-        }
-
-        private void EnsureAllMagazineKeys()
-        {
-            if (_allMagazineKeysBuilt) return;
-            _allMagazineKeys.Clear();
-            try
-            {
-                foreach (var kvp in IM.OD)
-                {
-                    var obj = kvp.Value; if (obj == null) continue;
-                    try
-                    {
-                        GameObject prefab = null; try { prefab = obj.GetGameObject(); } catch { }
-                        if (prefab == null) continue;
-                        var comps = prefab.GetComponentsInChildren<Component>(true);
-                        bool isMag = false;
-                        for (int i = 0; i < comps.Length && !isMag; i++)
+                        object chamber = chamberArray.GetValue(i);
+                        if (chamber != null && TryEjectFromChamber(chamber, firearm, $"{fieldName}[{i}]"))
                         {
-                            string ln = comps[i].GetType().Name.ToLowerInvariant();
-                            if ((ln.Contains("magazine") || (ln.Contains("mag") && !ln.Contains("magnifier")) || ln.Contains("clip") || ln.Contains("speedloader") || ln.Contains("loader"))
-                                && !ln.Contains("firearm") && !ln.Contains("receiver"))
-                                isMag = true;
+                            ejectedAny = true;
                         }
-                        if (isMag) _allMagazineKeys.Add(kvp.Key);
                     }
-                    catch { }
+                    return ejectedAny;
                 }
-                _allMagazineKeysBuilt = true;
-                Logger.LogInfo("EnsureAllMagazineKeys: Collected " + _allMagazineKeys.Count + " magazine-ish keys.");
-            }
-            catch (Exception ex) { Logger.LogError("EnsureAllMagazineKeys failed: " + ex); }
-        }
 
-        private bool _meatyDetected = false;
-        private FieldInfo _meatyGeneralMultField = null; // static field holding ConfigEntry<float> generalMult
-        private object _meatyGeneralMultEntry = null;    // the ConfigEntry<float> instance
-        private float _meatyOriginalGeneralMult = 0f;
-        private bool _meatyBoostApplied = false;
-
-        private void DetectMeatyceiver()
-        {
-            if (_meatyDetected) return;
-            try
-            {
-                // Try to find the Meatyceiver2 assembly/type
-                var t = Type.GetType("Meatyceiver2.Meatyceiver, Meatyceiver2", false, false) ?? Type.GetType("Meatyceiver2.Meatyceiver", false, false);
-                if (t == null) return;
-                // Field name is 'generalMult' (public static ConfigEntry<float>) based on provided code
-                _meatyGeneralMultField = t.GetField("generalMult", BindingFlags.Public | BindingFlags.Static);
-                if (_meatyGeneralMultField == null) return;
-                _meatyGeneralMultEntry = _meatyGeneralMultField.GetValue(null);
-                if (_meatyGeneralMultEntry == null) return;
-                // Read original value
-                var propVal = _meatyGeneralMultEntry.GetType().GetProperty("Value");
-                if (propVal == null) return;
-                var valObj = propVal.GetValue(_meatyGeneralMultEntry, null);
-                if (valObj is float f) _meatyOriginalGeneralMult = f;
-                _meatyDetected = true;
-                Logger.LogInfo("Detected Meatyceiver2 plugin. Integrating malfunction boost.");
+                return false;
             }
             catch (Exception ex)
             {
-                Logger.LogWarning("DetectMeatyceiver failed: " + ex.Message);
+                Logger.LogWarning($"TryEjectFromMultiChamber failed: {ex.Message}");
+                return false;
             }
         }
 
-        private void ApplyMeatyceiverBoost()
+        private bool TryEjectFromChamber(object chamberObj, FVRFireArm firearm, string chamberName)
         {
-            if (!_meatyDetected || _meatyBoostApplied || _meatyGeneralMultEntry == null) return;
             try
             {
-                var propVal = _meatyGeneralMultEntry.GetType().GetProperty("Value");
-                if (propVal == null) return;
-                var current = (float)propVal.GetValue(_meatyGeneralMultEntry, null);
-                // Boost strategy: add 5 (i.e., +500% base) but cap at 50 to avoid runaway
-                float boosted = Mathf.Min(current + 5f, 50f);
-                propVal.SetValue(_meatyGeneralMultEntry, boosted, null);
-                _meatyOriginalGeneralMult = current; // store the pre-boost value so we can revert
-                _meatyBoostApplied = true;
-                Logger.LogInfo("Meatyceiver2 generalMult boosted from " + current.ToString("F2") + " to " + boosted.ToString("F2") + ".");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning("ApplyMeatyceiverBoost failed: " + ex.Message);
-            }
-        }
-
-        private void RevertMeatyceiverBoost()
-        {
-            if (!_meatyDetected || !_meatyBoostApplied || _meatyGeneralMultEntry == null) return;
-            try
-            {
-                var propVal = _meatyGeneralMultEntry.GetType().GetProperty("Value");
-                if (propVal != null)
+                Type chamberType = chamberObj.GetType();
+                
+                // Strategy A: Try chamber-specific eject methods first
+                string[] chamberMethods = { "EjectRound", "Eject", "ExtractRound", "Clear", "Empty", "DumpRound" };
+                foreach (var method in chamberMethods)
                 {
-                    propVal.SetValue(_meatyGeneralMultEntry, _meatyOriginalGeneralMult, null);
-                    Logger.LogInfo("Meatyceiver2 generalMult reverted to " + _meatyOriginalGeneralMult.ToString("F2") + ".");
+                    MethodInfo mi = chamberType.GetMethod(method, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (mi != null && mi.GetParameters().Length == 0)
+                    {
+                        mi.Invoke(chamberObj, null);
+                        Logger.LogInfo($"EmptyHeldGunChamber: Ejected via chamber method '{method}' on {chamberName}");
+                        return true;
+                    }
+                }
+
+                // Strategy B: Find and manually eject the round
+                FVRFireArmRound round = FindRoundInChamber(chamberObj);
+                if (round != null && round.gameObject != null)
+                {
+                    // Physically eject the round
+                    Transform rT = round.transform; 
+                    rT.parent = null;
+                    
+                    var rrb = round.GetComponent<Rigidbody>();
+                    if (rrb != null)
+                    {
+                        rrb.isKinematic = false;
+                        rrb.velocity = firearm.transform.forward * 2f + firearm.transform.up * 1f;
+                        rrb.angularVelocity = UnityEngine.Random.insideUnitSphere * 10f;
+                    }
+
+                    // Clear the round reference from the chamber
+                    ClearRoundFromChamber(chamberObj, round);
+                    
+                    Logger.LogInfo($"EmptyHeldGunChamber: Manually ejected round from {chamberName}");
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"TryEjectFromChamber failed for {chamberName}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private FVRFireArmRound FindRoundInChamber(object chamberObj)
+        {
+            try
+            {
+                Type chamberType = chamberObj.GetType();
+                string[] roundFieldNames = { 
+                    "Round", "m_round", "ChamberedRound", "m_chamberedRound", 
+                    "LoadedRound", "m_loadedRound", "CurrentRound", "m_currentRound",
+                    "Cartridge", "m_cartridge", "LoadedCartridge", "m_loadedCartridge"
+                };
+
+                // Check fields
+                foreach (var fieldName in roundFieldNames)
+                {
+                    FieldInfo rf = chamberType.GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (rf != null)
+                    {
+                        FVRFireArmRound round = rf.GetValue(chamberObj) as FVRFireArmRound;
+                        if (round != null) return round;
+                    }
+                }
+
+                // Check properties
+                PropertyInfo[] properties = chamberType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                foreach (var prop in properties)
+                {
+                    if (typeof(FVRFireArmRound).IsAssignableFrom(prop.PropertyType) && prop.CanRead)
+                    {
+                        try
+                        {
+                            FVRFireArmRound round = prop.GetValue(chamberObj, null) as FVRFireArmRound;
+                            if (round != null) return round;
+                        }
+                        catch { continue; }
+                    }
+                }
+
+                // Last resort: find any FVRFireArmRound field
+                FieldInfo anyRoundField = chamberType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .FirstOrDefault(f => typeof(FVRFireArmRound).IsAssignableFrom(f.FieldType));
+                if (anyRoundField != null)
+                {
+                    return anyRoundField.GetValue(chamberObj) as FVRFireArmRound;
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"FindRoundInChamber failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        private void ClearRoundFromChamber(object chamberObj, FVRFireArmRound round)
+        {
+            try
+            {
+                Type chamberType = chamberObj.GetType();
+                string[] roundFieldNames = { 
+                    "Round", "m_round", "ChamberedRound", "m_chamberedRound", 
+                    "LoadedRound", "m_loadedRound", "CurrentRound", "m_currentRound",
+                    "Cartridge", "m_cartridge", "LoadedCartridge", "m_loadedCartridge"
+                };
+
+                // Clear fields
+                foreach (var fieldName in roundFieldNames)
+                {
+                    FieldInfo rf = chamberType.GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (rf != null && rf.FieldType.IsAssignableFrom(typeof(FVRFireArmRound))) 
+                    {
+                        rf.SetValue(chamberObj, null);
+                    }
+                }
+
+                // Clear properties
+                PropertyInfo[] properties = chamberType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                foreach (var prop in properties)
+                {
+                    if (prop.CanWrite && prop.PropertyType.IsAssignableFrom(typeof(FVRFireArmRound)))
+                    {
+                        try
+                        {
+                            prop.SetValue(chamberObj, null, null);
+                        }
+                        catch { continue; }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Logger.LogWarning("RevertMeatyceiverBoost failed: " + ex.Message);
-            }
-            finally
-            {
-                _meatyBoostApplied = false;
+                Logger.LogWarning($"ClearRoundFromChamber failed: {ex.Message}");
             }
         }
 
         private void ActivateMalfunctionBoost()
         {
             _malfunctionBoostActive = true;
-            float minutes = MalfunctionBoostDurationMinutes.Value;
-            if (minutes > 0f) minutes = Mathf.Clamp(minutes, 0.0833f, 60f);
-            float secondsConfigured = Mathf.Clamp(MalfunctionBoostDurationSeconds.Value, 5f, 3600f);
-            float appliedSeconds = minutes > 0f ? minutes * 60f : secondsConfigured;
-            _malfunctionBoostEndTime = Time.time + appliedSeconds;
-            Logger.LogInfo($"Meatyceiver malfunction boost activated for {appliedSeconds:F1} seconds (configured Minutes={MalfunctionBoostDurationMinutes.Value}, Seconds={MalfunctionBoostDurationSeconds.Value}).");
-            DetectMeatyceiver();
-            ApplyMeatyceiverBoost();
+            _malfunctionBoostEndTime = Time.time + MalfunctionBoostDuration;
+            Logger.LogInfo("Meatyceiver malfunction boost activated for " + MalfunctionBoostDuration + " seconds.");
         }
 
         private void ApplyMalfunctionLogic()
         {
-            if (_meatyDetected)
-            {
-                // When active, ensure boost applied; when expired, revert.
-                if (!_malfunctionBoostActive) RevertMeatyceiverBoost();
-                return; // Let Meatyceiver2 handle actual malfunctions.
-            }
             try
             {
-                var mm = GM.CurrentMovementManager; if (mm == null || mm.Hands == null) return;
+                var mm = GM.CurrentMovementManager;
+                if (mm == null || mm.Hands == null) return;
                 foreach (var hand in mm.Hands)
                 {
                     if (hand == null || hand.CurrentInteractable == null) continue;
                     var firearm = hand.CurrentInteractable as FVRFireArm;
                     if (firearm == null && hand.CurrentInteractable.GetType().IsSubclassOf(typeof(FVRFireArm))) firearm = (FVRFireArm)hand.CurrentInteractable;
                     if (firearm == null) continue;
+
                     string id = null; try { if (firearm.ObjectWrapper != null) id = firearm.ObjectWrapper.ItemID; } catch { }
                     string name = firearm.gameObject != null ? firearm.gameObject.name : string.Empty;
-                    bool isMeaty = (!string.IsNullOrEmpty(id) && id.IndexOf("meaty", StringComparison.OrdinalIgnoreCase) >= 0) || (!string.IsNullOrEmpty(name) && name.IndexOf("meaty", StringComparison.OrdinalIgnoreCase) >= 0);
+                    bool isMeaty = (!string.IsNullOrEmpty(id) && id.IndexOf("meaty", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                   (!string.IsNullOrEmpty(name) && name.IndexOf("meaty", StringComparison.OrdinalIgnoreCase) >= 0);
                     if (!isMeaty) continue;
+
                     if (hand.Input.TriggerDown && UnityEngine.Random.value < ForcedMalfunctionChance)
                         ForceMalfunction(firearm);
                 }
@@ -1478,19 +1741,13 @@ namespace H3TVR
 
         private void ForceMalfunction(FVRFireArm firearm)
         {
-            if (_meatyDetected) return; // rely on boosted generalMult
             try
             {
                 string[] methods = { "ForceMalfunction", "DoMalfunction", "AttemptMalfunction", "Jam", "CauseMalfunction" };
                 foreach (var m in methods)
                 {
                     var mi = firearm.GetType().GetMethod(m, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (mi != null && mi.GetParameters().Length == 0)
-                    {
-                        mi.Invoke(firearm, null);
-                        Logger.LogInfo("Forced malfunction via method: " + m);
-                        return;
-                    }
+                    if (mi != null && mi.GetParameters().Length == 0) { mi.Invoke(firearm, null); Logger.LogInfo("Forced malfunction via method: " + m); return; }
                 }
                 string[] fields = { "MalfunctionChance", "m_malfunctionChance", "JamChance", "m_jamChance" };
                 foreach (var f in fields)
@@ -1506,6 +1763,47 @@ namespace H3TVR
             catch (Exception ex)
             {
                 Logger.LogError("ForceMalfunction reflection failed: " + ex);
+            }
+        }
+
+        private bool CheckVRButtonPress(string buttonName)
+        {
+            try
+            {
+                var hands = GM.CurrentMovementManager?.Hands;
+                if (hands == null || hands.Length == 0) return false;
+
+                switch (buttonName.ToLower())
+                {
+                    case "leftx":
+                        return hands.Length > 0 && hands[0] != null && hands[0].Input.AXButtonDown;
+                    case "rightx":
+                        return hands.Length > 1 && hands[1] != null && hands[1].Input.AXButtonDown;
+                    case "lefty":
+                        return hands.Length > 0 && hands[0] != null && hands[0].Input.BYButtonDown;
+                    case "righty":
+                        return hands.Length > 1 && hands[1] != null && hands[1].Input.BYButtonDown;
+                    case "leftgrip":
+                        return hands.Length > 0 && hands[0] != null && hands[0].Input.GripDown;
+                    case "rightgrip":
+                        return hands.Length > 1 && hands[1] != null && hands[1].Input.GripDown;
+                    case "lefttrigger":
+                        return hands.Length > 0 && hands[0] != null && hands[0].Input.TriggerDown;
+                    case "righttrigger":
+                        return hands.Length > 1 && hands[1] != null && hands[1].Input.TriggerDown;
+                    case "lefttouchpad":
+                        return hands.Length > 0 && hands[0] != null && hands[0].Input.TouchpadDown;
+                    case "righttouchpad":
+                        return hands.Length > 1 && hands[1] != null && hands[1].Input.TouchpadDown;
+                    default:
+                        Logger.LogWarning($"Unknown VR button configuration: {buttonName}. Using default LeftX.");
+                        return hands.Length > 0 && hands[0] != null && hands[0].Input.AXButtonDown;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"CheckVRButtonPress failed for button {buttonName}: {ex.Message}");
+                return false;
             }
         }
     }

@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 1743412743, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: Operator Enemy Template
+  m_EditorClassIdentifier: 
+  DisplayName: Jedi Chatter
+  SosigEnemyCategory: 1
+  SosigEnemyID: 110
+  SosigPrefabs:
+  - {fileID: 11400000, guid: b62ac3f234c78d7409889e9ae258206c, type: 2}
+  ConfigTemplates:
+  - {fileID: 11400000, guid: c687efe2936510c42b5261b438faaa68, type: 2}
+  - {fileID: 11400000, guid: c687efe2936510c42b5261b438faaa68, type: 2}
+  - {fileID: 11400000, guid: c687efe2936510c42b5261b438faaa68, type: 2}
+  - {fileID: 11400000, guid: c687efe2936510c42b5261b438faaa68, type: 2}
+  - {fileID: 11400000, guid: ab64bfd441ac9d542a1263979d8b16f7, type: 2}
+  - {fileID: 11400000, guid: c687efe2936510c42b5261b438faaa68, type: 2}
+  ConfigTemplates_Easy:
+  - {fileID: 11400000, guid: c687efe2936510c42b5261b438faaa68, type: 2}
+  OutfitConfig:
+  - {fileID: 11400000, guid: 8ad5098fe368ed545b6102244a14d8ef, type: 2}
+  WeaponOptions:
+  - {fileID: 11400000, guid: f01873aa8e1babb46b8d73aab10d5808, type: 2}
+  - {fileID: 11400000, guid: b3474e1f50e401f478ff43bae58245d3, type: 2}
+  - {fileID: 11400000, guid: 6eb2c3ebcfa420b42b8a0a12c47b0168, type: 2}
+  - {fileID: 11400000, guid: f941f85284d3e154facbec150b67aff6, type: 2}
+  - {fileID: 11400000, guid: 1ba32eff61265bad8b58d6a454f98817, type: 2}
+  - {fileID: 11400000, guid: b361e70b2f3a50148aec0ad884f04bd1, type: 2}
+  - {fileID: 11400000, guid: ca9e848baf65a0448ab601df09dc7798, type: 2}
+  - {fileID: 11400000, guid: 40741774adb694843a072d58829392ea, type: 2}
+  - {fileID: 11400000, guid: 8b95d754f988c86469ad7e129a2469fa, type: 2}
+  - {fileID: 11400000, guid: 24944b70db0a8b0366f18a39dd0c4473, type: 2}
+  - {fileID: 11400000, guid: 3c68d5e377cbfcc4ebbd6ba8c25504ef, type: 2}
+  - {fileID: 11400000, guid: 98c0aa053d906a243b174ad97b2e4349, type: 2}
+  - {fileID: 11400000, guid: 641f8ef029c6b9f4f8bea6fb86b4e6d1, type: 2}
+  - {fileID: 11400000, guid: 0439a9d8053c7bf44b4f48f57789cb7e, type: 2}
+  - {fileID: 11400000, guid: 8f6d81b76bf10764db87c44b8702f1c0, type: 2}
+  - {fileID: 11400000, guid: 671e998ef463533489a2b1ee15161644, type: 2}
+  - {fileID: 11400000, guid: f2cd871a2b572fd48a4e0e1b2aa1e86f, type: 2}
+  - {fileID: 11400000, guid: 7a880b4e70dfa854bbf17624f42ad541, type: 2}
+  - {fileID: 11400000, guid: 5ca5d97429893de43b221bbea5b9bec3, type: 2}
+  - {fileID: 11400000, guid: 8c0787ae007df21419e88622c80bfd5b, type: 2}
+  - {fileID: 11400000, guid: 75ff0d88769167b428a6fdabe96c2f99, type: 2}
+  - {fileID: 11400000, guid: 4844a92da6303ce4896958a36e593d84, type: 2}
+  - {fileID: 11400000, guid: 568a39674111bcc4fc352859b64639ba, type: 2}
+  WeaponOptions_Secondary:
+  - {fileID: 11400000, guid: 75539416d6349df4f94ce24069bbb21d, type: 2}
+  - {fileID: 11400000, guid: 0a11f2e4fdcd16643a7112f92773bc90, type: 2}
+  - {fileID: 11400000, guid: 34a69fdbbfaced942b2faf260bb1450e, type: 2}
+  - {fileID: 11400000, guid: d888a301907a1fe46a350270ee318d4a, type: 2}
+  - {fileID: 11400000, guid: c4741b8faf408274fa977e7217609642, type: 2}
+  SecondaryChance: 1
+  WeaponOptions_Tertiary:
+  - {fileID: 11400000, guid: 30bccd24bac2fcc4f8ec4204dae636d6, type: 2}
+  - {fileID: 11400000, guid: 04a13774b9abec64593190ea28c0db22, type: 2}
+  - {fileID: 11400000, guid: fd5017c21c909d443b4ec3736a92b309, type: 2}
+  TertiaryChance: 1

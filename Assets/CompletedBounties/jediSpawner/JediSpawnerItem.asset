@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54a1d00d4b41c9f4499068404207acdf, type: 3}
+  m_Name: JediSpawnerItem
+  m_EditorClassIdentifier: 
+  BundleName: JedisSpawner
+  Prefabs:
+  - {fileID: 1007010084493220, guid: 5b462625bc5f5694195e152aa6f1b16c, type: 2}
+  - {fileID: 1176796050521684, guid: 3f3ea2f64eedde9468f5301c9a1cc434, type: 2}
+  - {fileID: 1727564259446762, guid: be1960a9df7ea9542b1b726927a11711, type: 2}
+  - {fileID: 1766189278818706, guid: 98e5cc3ffb5802546b3b7d11e682551a, type: 2}
+  - {fileID: 1852999262417066, guid: cff862b24d5549447bfbabcba4f20b20, type: 2}
+  - {fileID: 1232054870554330, guid: 35e367273348ae643b9700867c9c1e66, type: 2}
+  - {fileID: 1744589560491802, guid: b9e9f73a845276e4b8f394ffe7e4fa7a, type: 2}
+  - {fileID: 1102916427526722, guid: fed631de6390dfd4ca2420e3b821d8d5, type: 2}
+  - {fileID: 1498849386084120, guid: 2739260055d54fd42848b682a05902a2, type: 2}
+  - {fileID: 1724990819766982, guid: fc3f7916fab0547438f97707c6861633, type: 2}
+  SpawnerEntries: []
+  FVRObjects:
+  - {fileID: 11400000, guid: 1a576c61867f83443aeb5ae09d3a662c, type: 2}
+  - {fileID: 11400000, guid: 3f1809740a0255a4d8ad1f1ec93bec5e, type: 2}
+  - {fileID: 11400000, guid: 9378bdf38c9923845b63b481e16139fe, type: 2}
+  - {fileID: 11400000, guid: a71f19ae15e8a144c9557930b164cfbe, type: 2}
+  - {fileID: 11400000, guid: c62750a04570d444f9076f17c579b9a8, type: 2}
+  - {fileID: 11400000, guid: 399d73deeae4bd1489b5de2f94c413bd, type: 2}
+  - {fileID: 11400000, guid: b8e8d2921b2949644819fee1b481c3b5, type: 2}
+  - {fileID: 11400000, guid: f83cde928dca5fa45ad1418d1ccfbdf9, type: 2}
+  - {fileID: 11400000, guid: 0528167f2298b944fb6c272cac494691, type: 2}
+  - {fileID: 11400000, guid: 624d787ae25a2ae4f9bd60ddff2f491f, type: 2}
+  AccuracyCharts: []
+  RoundData: []
+  HandlingGrabSets: []
+  HandlingReleaseSets: []
+  HandlingReleaseSlotSets: []
+  AudioBulletImpactSets: []
+  AudioImpactSets: []
+  TutorialBlocks: []
+  TutorialVideos: []
+  OnDemand: 0
