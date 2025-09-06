@@ -1057,7 +1057,7 @@ namespace H3TVR
 
         private FVRFireArm GetHeldFirearm()
         {
-            FVRViveHand[] hands = GM.CurrentMovementManager?.Hands;
+            FVRViveHand[] hands = GM.CurrentMovementManager.Hands;
             if (hands == null || hands.Length == 0) return null;
 
             // Check right hand first, then left
@@ -1438,7 +1438,7 @@ namespace H3TVR
                 // Spawn the magazine
                 if (matchingMag != null)
                 {
-                    Vector3 magPos = pos + Vector3.up * 0.05f + (GM.CurrentPlayerBody != null ? GM.CurrentPlayerBody.Head.forward * 0.1f : Vector3.forward * 0.1f);
+                    Vector3 magPos = pos + Vector3.up * 0.05f + (GM.CurrentPlayerBody.Head.forward * 0.1f);
                     GameObject magGO = Instantiate(matchingMag.GetGameObject(), magPos, rot);
                     var magRB = magGO.GetComponent<Rigidbody>();
                     if (magRB != null) { magRB.velocity = Vector3.zero; magRB.angularVelocity = Vector3.zero; }
@@ -2013,6 +2013,137 @@ namespace H3TVR
             catch (Exception ex)
             {
                 Logger.LogError("ForceMalfunction reflection failed: " + ex);
+            }
+        }
+
+        // BTN_TryToSpawnRandomGun - Anton's random gun spawner with enhanced magazine matching
+        public void BTN_TryToSpawnRandomGun()
+        {
+            try
+            {
+                // Get all firearms from ItemManager (Anton's complete gun database)
+                var allFirearms = IM.OD.Values
+                    .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Firearm)
+                    .ToArray();
+
+                if (allFirearms.Length == 0)
+                {
+                    Logger.LogError("BTN_TryToSpawnRandomGun: No firearms found in ItemManager.");
+                    return;
+                }
+
+                // Pick a completely random firearm from Anton's database
+                FVRObject selectedFirearm = allFirearms[UnityEngine.Random.Range(0, allFirearms.Length)];
+                
+                Logger.LogInfo($"BTN_TryToSpawnRandomGun: Selected {selectedFirearm.DisplayName} (ID: {selectedFirearm.ItemID})");
+
+                // Spawn position - slightly in front of the player with some variation
+                Vector3 baseSpawnPos = GM.CurrentPlayerBody.Head.position + GM.CurrentPlayerBody.Head.forward * 0.75f;
+                Vector3 spawnPos = baseSpawnPos + Vector3.up * UnityEngine.Random.Range(0.1f, 0.3f) + 
+                                  GM.CurrentPlayerBody.Head.right * UnityEngine.Random.Range(-0.2f, 0.2f);
+                Quaternion spawnRot = GM.CurrentPlayerBody.Head.rotation;
+
+                // Spawn the gun
+                GameObject gunGO = Instantiate(selectedFirearm.GetGameObject(), spawnPos, spawnRot);
+                
+                // Add some physics for a nice spawn effect
+                var gunRB = gunGO.GetComponent<Rigidbody>();
+                if (gunRB != null) 
+                { 
+                    gunRB.AddTorque(UnityEngine.Random.insideUnitSphere * 2f);
+                    gunRB.AddForce(GM.CurrentPlayerBody.Head.forward * UnityEngine.Random.Range(75f, 125f));
+                }
+
+                // Spawn a matching magazine using simplified matching
+                SpawnMatchingMagazineForRandomGun(selectedFirearm, spawnPos, spawnRot);
+
+                Logger.LogInfo($"BTN_TryToSpawnRandomGun: Successfully spawned {selectedFirearm.DisplayName} with matching magazine");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("BTN_TryToSpawnRandomGun failed: " + ex);
+            }
+        }
+
+        // Simplified magazine matching for BTN_TryToSpawnRandomGun
+        private void SpawnMatchingMagazineForRandomGun(FVRObject selectedFirearm, Vector3 pos, Quaternion rot)
+        {
+            try
+            {
+                // Get all magazines from ItemManager
+                var allMagazines = IM.OD.Values
+                    .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Magazine)
+                    .ToArray();
+
+                if (allMagazines.Length == 0)
+                {
+                    Logger.LogWarning("BTN_TryToSpawnRandomGun: No magazines found in ItemManager.");
+                    return;
+                }
+
+                FVRObject matchingMag = null;
+
+                // Strategy 1: Try to find a magazine that matches the gun ID prefix
+                string gunIdPrefix = selectedFirearm.ItemID.Length >= 5 ? selectedFirearm.ItemID.Substring(0, 5) : selectedFirearm.ItemID;
+                var prefixMatches = allMagazines.Where(mag => 
+                    mag.ItemID.StartsWith(gunIdPrefix, StringComparison.OrdinalIgnoreCase) ||
+                    mag.ItemID.Contains(gunIdPrefix)).ToArray();
+                
+                if (prefixMatches.Length > 0)
+                {
+                    matchingMag = prefixMatches[UnityEngine.Random.Range(0, prefixMatches.Length)];
+                    Logger.LogInfo($"BTN_TryToSpawnRandomGun: Found magazine match using prefix '{gunIdPrefix}': {matchingMag.DisplayName}");
+                }
+
+                // Strategy 2: If no prefix match, try brand matching
+                if (matchingMag == null)
+                {
+                    string gunName = selectedFirearm.DisplayName.ToLower();
+                    foreach (var mag in allMagazines)
+                    {
+                        string magName = mag.DisplayName.ToLower();
+                        string[] gunWords = gunName.Split(new char[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                        string[] magWords = magName.Split(new char[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                        
+                        foreach (string gunWord in gunWords)
+                        {
+                            if (gunWord.Length >= 3 && magWords.Any(w => w.Contains(gunWord)))
+                            {
+                                matchingMag = mag;
+                                Logger.LogInfo($"BTN_TryToSpawnRandomGun: Found magazine match using word '{gunWord}': {matchingMag.DisplayName}");
+                                break;
+                            }
+                        }
+                        if (matchingMag != null) break;
+                    }
+                }
+
+                // Strategy 3: Fallback to random magazine
+                if (matchingMag == null)
+                {
+                    matchingMag = allMagazines[UnityEngine.Random.Range(0, allMagazines.Length)];
+                    Logger.LogInfo($"BTN_TryToSpawnRandomGun: Using random magazine: {matchingMag.DisplayName}");
+                }
+
+                // Spawn the magazine
+                if (matchingMag != null)
+                {
+                    Vector3 magPos = pos + Vector3.up * 0.1f + GM.CurrentPlayerBody.Head.right * UnityEngine.Random.Range(-0.1f, 0.1f);
+                    GameObject magGO = Instantiate(matchingMag.GetGameObject(), magPos, rot);
+                    var magRB = magGO.GetComponent<Rigidbody>();
+                    if (magRB != null) 
+                    { 
+                        magRB.velocity = Vector3.zero; 
+                        magRB.angularVelocity = Vector3.zero; 
+                        magRB.AddTorque(UnityEngine.Random.insideUnitSphere * 1f);
+                        magRB.AddForce(GM.CurrentPlayerBody.Head.forward * UnityEngine.Random.Range(50f, 75f));
+                    }
+                    Logger.LogInfo($"BTN_TryToSpawnRandomGun: Successfully spawned magazine: {matchingMag.DisplayName}");
+                }
+            }
+            catch (Exception magEx)
+            {
+                Logger.LogError("BTN_TryToSpawnRandomGun: Magazine spawn failed: " + magEx);
             }
         }
     }
