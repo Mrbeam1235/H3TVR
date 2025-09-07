@@ -35,6 +35,8 @@ namespace H3TVR
         
         // Configurable shuriken settings
         private ConfigEntry<float> ShurikenScale;
+        private ConfigEntry<int> ShurikenMinCount;
+        private ConfigEntry<int> ShurikenMaxCount;
         
         // Configurable pillow settings
         private ConfigEntry<int> PillowMinCount;
@@ -117,6 +119,8 @@ namespace H3TVR
             
             // Shuriken configuration
             ShurikenScale = Config.Bind("Shuriken", "Scale", 10f, "Scale multiplier for spawned shurikens (1.0 = normal size, 10.0 = 10x larger)");
+            ShurikenMinCount = Config.Bind("Shuriken", "MinCount", 15, "Minimum number of shurikens to spawn");
+            ShurikenMaxCount = Config.Bind("Shuriken", "MaxCount", 30, "Maximum number of shurikens to spawn");
             
             // Pillow configuration
             PillowMinCount = Config.Bind("Pillow", "MinCount", 1, "Minimum number of pillows to spawn");
@@ -512,34 +516,35 @@ namespace H3TVR
 
         public void SpawnShuri()
         {
-            //Set cartridge speed
+            // Determine how many shurikens to spawn
+            int shurikenCount = UnityEngine.Random.Range(ShurikenMinCount.Value, ShurikenMaxCount.Value + 1);
+            Logger.LogInfo($"Spawning {shurikenCount} shuriken(s)");
+
+            // Set consistent properties for all shurikens (no individual variation)
             float howFast = 30.0f;
-
-            //Set max angle
-            float maxAngle = 4.0f;
-
-            Transform PointingTransfrom = transform;
-
-            //Get Random direction for bullet
-            Vector2 randRot = UnityEngine.Random.insideUnitCircle;
-
-            // Get the object I want to spawnz
+            
+            // Get the object once
             FVRObject obj = IM.OD["Shuriken"];
+            
+            // Set consistent position and rotation for all shurikens
+            Vector3 shuriPosition = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 0.02f);
+            Quaternion shuriRotation = Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward);
 
-            //Set Object Position
-            Vector3 shuriPosition0 = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 0.02f);
+            // Spawn the shurikens with identical properties
+            for (int i = 0; i < shurikenCount; i++)
+            {
+                // Spawn all shurikens at exact same position and rotation
+                GameObject go = Instantiate(obj.GetGameObject(), shuriPosition, shuriRotation);
 
-            //old spray
-            GameObject go0 = Instantiate(obj.GetGameObject(), shuriPosition0, Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward));
+                // Apply consistent scale to all shurikens
+                go.transform.localScale = new Vector3(ShurikenScale.Value, ShurikenScale.Value, ShurikenScale.Value);
+                
+                // Apply consistent velocity to all shurikens (straight forward, no variation)
+                go.GetComponent<Rigidbody>().velocity = GM.CurrentPlayerBody.Head.forward * howFast;
 
-            //Set Object Direction
-            go0.transform.Rotate(new Vector3(randRot.x * maxAngle, randRot.y * maxAngle, 0.0f), Space.Self);
-
-            //add scale for funnies using configurable value
-            go0.transform.localScale = new Vector3(ShurikenScale.Value, ShurikenScale.Value, ShurikenScale.Value);
-            go0.GetComponent<Rigidbody>().velocity = go0.transform.forward * howFast;
-
-            Destroy(go0, 60f);
+                // Auto-destroy after 60 seconds
+                Destroy(go, 60f);
+            }
         }
 
         public void DangerCloseBarrage()
