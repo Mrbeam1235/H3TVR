@@ -44,6 +44,16 @@ namespace H3TVR
         private ConfigEntry<bool> PillowGrenadeEnabled;
         private ConfigEntry<float> PillowGrenadeChance;
         private ConfigEntry<float> PillowGrenadeArmedChance;
+        private ConfigEntry<bool> PillowZeroGravityEnabled;
+        private ConfigEntry<float> PillowZeroGravityChance;
+        private ConfigEntry<float> PillowZeroGravityDuration;
+        private ConfigEntry<bool> PillowSlomoEnabled;
+        private ConfigEntry<float> PillowSlomoChance;
+        private ConfigEntry<float> PillowSlomoDuration;
+        
+        // Configurable danger close settings
+        private ConfigEntry<int> DangerCloseMinCount;
+        private ConfigEntry<int> DangerCloseMaxCount;
         
         // Movement scaling during slomo
         private ConfigEntry<bool> SlomoAffectsMovement;
@@ -128,6 +138,16 @@ namespace H3TVR
             PillowGrenadeEnabled = Config.Bind("Pillow", "GrenadeEnabled", true, "Enable random grenade spawning with pillows");
             PillowGrenadeChance = Config.Bind("Pillow", "GrenadeChance", 0.1f, "Chance (0.0-1.0) for a grenade to spawn with pillows (0.1 = 10% chance)");
             PillowGrenadeArmedChance = Config.Bind("Pillow", "GrenadeArmedChance", 0.1f, "Chance (0.0-1.0) for spawned grenades to be armed/pin pulled (0.1 = 10% chance)");
+            PillowZeroGravityEnabled = Config.Bind("Pillow", "ZeroGravityEnabled", true, "Enable random zero gravity activation with pillows");
+            PillowZeroGravityChance = Config.Bind("Pillow", "ZeroGravityChance", 0.15f, "Chance (0.0-1.0) for zero gravity to activate with pillows (0.15 = 15% chance)");
+            PillowZeroGravityDuration = Config.Bind("Pillow", "ZeroGravityDuration", 5f, "Duration in seconds for pillow-triggered zero gravity effect");
+            PillowSlomoEnabled = Config.Bind("Pillow", "SlomoEnabled", true, "Enable random slow motion activation with pillows");
+            PillowSlomoChance = Config.Bind("Pillow", "SlomoChance", 0.2f, "Chance (0.0-1.0) for slow motion to activate with pillows (0.2 = 20% chance)");
+            PillowSlomoDuration = Config.Bind("Pillow", "SlomoDuration", 3f, "Duration in seconds for pillow-triggered slow motion effect");
+            
+            // Danger Close configuration
+            DangerCloseMinCount = Config.Bind("DangerClose", "MinCount", 1, "Minimum number of danger close rounds to spawn per barrage");
+            DangerCloseMaxCount = Config.Bind("DangerClose", "MaxCount", 5, "Maximum number of danger close rounds to spawn per barrage");
             
             // Initialize slomo movement controller
             slomoMovementController = new SlomoMovementController();
@@ -389,11 +409,25 @@ namespace H3TVR
                 go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 4000f);
             }
 
-            // Check for grenade spawn chance (10% chance)
+            // Check for grenade spawn chance
             if (PillowGrenadeEnabled.Value && UnityEngine.Random.value < PillowGrenadeChance.Value)
             {
                 Logger.LogInfo("Pillow grenade spawn triggered!");
                 SpawnPillowGrenade();
+            }
+
+            // Check for zero gravity activation chance
+            if (PillowZeroGravityEnabled.Value && UnityEngine.Random.value < PillowZeroGravityChance.Value)
+            {
+                Logger.LogInfo($"Pillow zero gravity triggered! Duration: {PillowZeroGravityDuration.Value}s");
+                StartCoroutine(ActivatePillowZeroGravity());
+            }
+
+            // Check for slow motion activation chance
+            if (PillowSlomoEnabled.Value && UnityEngine.Random.value < PillowSlomoChance.Value)
+            {
+                Logger.LogInfo($"Pillow slow motion triggered! Duration: {PillowSlomoDuration.Value}s");
+                StartCoroutine(ActivatePillowSlomo());
             }
         }
 
@@ -549,33 +583,41 @@ namespace H3TVR
 
         public void DangerCloseBarrage()
         {
-            //Set cartridge speed
-            float howFast = 30.0f;
+            // Determine how many danger close rounds to spawn
+            int dangerCloseCount = UnityEngine.Random.Range(DangerCloseMinCount.Value, DangerCloseMaxCount.Value + 1);
+            Logger.LogInfo($"Spawning {dangerCloseCount} danger close round(s)");
 
-            //Set max angle
-            float maxAngle = 2.0f;
+            // Spawn the danger close rounds
+            for (int i = 0; i < dangerCloseCount; i++)
+            {
+                //Set cartridge speed
+                float howFast = 30.0f;
 
-            Transform PointingTransfrom = transform;
+                //Set max angle for spread
+                float maxAngle = 2.0f;
 
-            //Get Random direction for bullet
-            Vector2 randRot = UnityEngine.Random.insideUnitCircle;
+                Transform PointingTransfrom = transform;
 
-            // Get the object I want to spawnz
-            FVRObject obj = IM.OD["Cartridge50mmFlareDangerClose"];
+                //Get Random direction for each round
+                Vector2 randRot = UnityEngine.Random.insideUnitCircle;
 
-            //Set Object Position
-            Vector3 dangerClosePosition0 = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 0.02f);
+                // Get the object I want to spawn
+                FVRObject obj = IM.OD["Cartridge50mmFlareDangerClose"];
 
-            //old spray
-            GameObject go0 = Instantiate(obj.GetGameObject(), dangerClosePosition0, Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward));
+                //Set Object Position
+                Vector3 dangerClosePosition0 = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 0.02f);
 
-            //Set Object Direction
-            go0.transform.Rotate(new Vector3(randRot.x * maxAngle, randRot.y * maxAngle, 0.0f), Space.Self);
+                //Spawn the round
+                GameObject go0 = Instantiate(obj.GetGameObject(), dangerClosePosition0, Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward));
 
-            //old spray
-            go0.GetComponent<Rigidbody>().velocity = go0.transform.forward * howFast;
-            FVRFireArmRound cartridge = go0.GetComponent<FVRFireArmRound>();
-            cartridge.Splode(0.5f, false, true);
+                //Set Object Direction with random spread
+                go0.transform.Rotate(new Vector3(randRot.x * maxAngle, randRot.y * maxAngle, 0.0f), Space.Self);
+
+                //Apply velocity and explode
+                go0.GetComponent<Rigidbody>().velocity = go0.transform.forward * howFast;
+                FVRFireArmRound cartridge = go0.GetComponent<FVRFireArmRound>();
+                cartridge.Splode(0.5f, false, true);
+            }
         }
 
         public void SlomoScaleDown()
@@ -626,6 +668,54 @@ namespace H3TVR
         {
             yield return new WaitForSecondsRealtime(RealisticFallTime);
             ZeroGravityBumpUp();
+        }
+
+        // Pillow-triggered zero gravity effect
+        IEnumerator ActivatePillowZeroGravity()
+        {
+            // Store original gravity mode
+            var originalGravityMode = GM.Options.SimulationOptions.ObjectGravityMode;
+            
+            // Activate zero gravity
+            GM.Options.SimulationOptions.ObjectGravityMode = SimulationOptions.GravityMode.None;
+            GM.CurrentSceneSettings.RefreshGravity();
+            Logger.LogInfo($"Pillow zero gravity activated for {PillowZeroGravityDuration.Value} seconds");
+
+            // Wait for configured duration
+            yield return new WaitForSecondsRealtime(PillowZeroGravityDuration.Value);
+
+            // Restore original gravity mode
+            GM.Options.SimulationOptions.ObjectGravityMode = originalGravityMode;
+            GM.CurrentSceneSettings.RefreshGravity();
+            Logger.LogInfo("Pillow zero gravity effect ended");
+        }
+
+        // Pillow-triggered slow motion effect
+        IEnumerator ActivatePillowSlomo()
+        {
+            // Store original time scale
+            float originalTimeScale = Time.timeScale;
+            
+            // Activate slow motion
+            Time.timeScale = MaxSlomo.Value;
+            Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
+            
+            // Update movement scaling if enabled
+            slomoMovementController?.UpdateMovementScale(Time.timeScale);
+            
+            Logger.LogInfo($"Pillow slow motion activated for {PillowSlomoDuration.Value} seconds (scale: {MaxSlomo.Value})");
+
+            // Wait for configured duration
+            yield return new WaitForSecondsRealtime(PillowSlomoDuration.Value);
+
+            // Restore original time scale
+            Time.timeScale = originalTimeScale;
+            Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
+            
+            // Update movement scaling back to normal
+            slomoMovementController?.UpdateMovementScale(Time.timeScale);
+            
+            Logger.LogInfo("Pillow slow motion effect ended");
         }
 
         public void SpawnHydration()
