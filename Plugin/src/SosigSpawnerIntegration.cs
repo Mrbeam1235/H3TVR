@@ -14,12 +14,20 @@ namespace H3TVR
     public class SosigSpawnerIntegration : MonoBehaviour
     {
         private SosigSpawnerManager spawnerManager;
+        private SosigWeaponManager weaponManager;
+        private SosigScenarioManager scenarioManager;
+        private SosigStatsManager statsManager;
         private bool isInitialized = false;
 
         // Configuration entries
         public static ConfigEntry<bool> EnableSosigSpawner;
         public static ConfigEntry<bool> ShowSpawnerTips;
         public static ConfigEntry<float> SpawnerUpdateInterval;
+        public static ConfigEntry<bool> EnableWeaponSystem;
+        public static ConfigEntry<bool> EnableScenarioSystem;
+        public static ConfigEntry<bool> EnableStatsTracking;
+        public static ConfigEntry<KeyCode> ShowStatsKey;
+        public static ConfigEntry<bool> AutoSaveStats;
 
         void Start()
         {
@@ -58,6 +66,21 @@ namespace H3TVR
             
             SpawnerUpdateInterval = config.Bind("Sosig Spawner Integration", "SpawnerUpdateInterval", 1.0f, 
                 "Update interval for spawner system checks (in seconds)");
+                
+            EnableWeaponSystem = config.Bind("Sosig Spawner Integration", "EnableWeaponSystem", true,
+                "Enable advanced weapon management for sosigs");
+                
+            EnableScenarioSystem = config.Bind("Sosig Spawner Integration", "EnableScenarioSystem", true,
+                "Enable scenario and wave-based spawning system");
+                
+            EnableStatsTracking = config.Bind("Sosig Spawner Integration", "EnableStatsTracking", true,
+                "Enable statistics tracking for spawned sosigs");
+                
+            ShowStatsKey = config.Bind("Sosig Spawner Integration", "ShowStatsKey", KeyCode.Tab,
+                "Key to display spawner statistics");
+                
+            AutoSaveStats = config.Bind("Sosig Spawner Integration", "AutoSaveStats", true,
+                "Automatically save statistics periodically");
         }
 
         private void InitializeSpawner()
@@ -65,12 +88,50 @@ namespace H3TVR
             GameObject spawnerObject = new GameObject("SosigSpawnerManager");
             spawnerObject.transform.SetParent(transform);
             
+            // Initialize H3VR asset loading with fallback handling
+            Debug.Log("[SosigSpawnerIntegration] Initializing H3VR asset loading...");
+            H3VRAssetLoader.TryInitializeWithDelay();
+            
+            // If immediate initialization failed, set up delayed initialization
+            if (!H3VRAssetLoader.IsInitialized)
+            {
+                Debug.Log("[SosigSpawnerIntegration] H3VR not ready, setting up delayed initialization...");
+                H3VRDelayedInitializer.EnsureInstance();
+            }
+            else
+            {
+                SosigLoadoutManager.Initialize();
+            }
+            
             spawnerManager = spawnerObject.AddComponent<SosigSpawnerManager>();
+            
+            // Initialize weapon system
+            if (EnableWeaponSystem.Value)
+            {
+                weaponManager = spawnerObject.AddComponent<SosigWeaponManager>();
+                Debug.Log("Sosig Weapon System initialized");
+            }
+            
+            // Initialize scenario system
+            if (EnableScenarioSystem.Value)
+            {
+                scenarioManager = spawnerObject.AddComponent<SosigScenarioManager>();
+                scenarioManager.InitializeScenarios();
+                Debug.Log("Sosig Scenario System initialized");
+            }
+            
+            // Initialize stats system
+            if (EnableStatsTracking.Value)
+            {
+                statsManager = spawnerObject.AddComponent<SosigStatsManager>();
+                Debug.Log("Sosig Statistics System initialized");
+            }
             
             if (spawnerManager != null)
             {
                 isInitialized = true;
-                Debug.Log("Advanced Sosig Spawner initialized successfully!");
+                Debug.Log("Advanced Sosig Spawner with H3VR asset loading and all systems initialized successfully!");
+                LogAssetLoadingResults();
                 
                 if (ShowSpawnerTips.Value)
                 {
@@ -81,6 +142,32 @@ namespace H3TVR
             {
                 Debug.LogError("Failed to initialize SosigSpawnerManager!");
             }
+        }
+        
+        /// <summary>
+        /// Log the results of H3VR asset loading
+        /// </summary>
+        private void LogAssetLoadingResults()
+        {
+            if (!H3VRAssetLoader.IsInitialized) return;
+            
+            var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
+            var weapons = H3VRAssetLoader.GetAllWeapons();
+            var templates = H3VRAssetLoader.GetAllSosigTemplates();
+            var outfits = H3VRAssetLoader.GetAllOutfitConfigs();
+            var loadouts = SosigLoadoutManager.GetLoadouts();
+            
+            Debug.Log("=== H3VR ASSET LOADING RESULTS ===");
+            Debug.Log($"Armor pieces loaded: {armorCategories.Values.Sum(list => list.Count)}");
+            foreach (var category in armorCategories)
+            {
+                Debug.Log($"  {category.Key}: {category.Value.Count} items");
+            }
+            Debug.Log($"Weapons loaded: {weapons.Count}");
+            Debug.Log($"Sosig templates: {templates.Count}");
+            Debug.Log($"Outfit configs: {outfits.Count}");
+            Debug.Log($"Advanced loadouts: {loadouts.Count}");
+            Debug.Log("==================================");
         }
 
         private IEnumerator ShowInitializationTip()
@@ -100,8 +187,24 @@ namespace H3TVR
             if (!isInitialized || spawnerManager == null)
                 return;
 
+            // Handle statistics display
+            if (EnableStatsTracking.Value && Input.GetKeyDown(ShowStatsKey.Value))
+            {
+                DisplayStatistics();
+            }
+
             // Handle any integration-specific updates here
             HandleSpawnerIntegration();
+        }
+        
+        private void DisplayStatistics()
+        {
+            if (statsManager != null)
+            {
+                string statsReport = statsManager.GetStatsReport();
+                Debug.Log(statsReport);
+                // Could also display in GUI or send to chat
+            }
         }
 
         private void HandleSpawnerIntegration()
@@ -156,10 +259,33 @@ namespace H3TVR
         {
             return spawnerManager;
         }
+        
+        public SosigWeaponManager GetWeaponManager()
+        {
+            return weaponManager;
+        }
+        
+        public SosigScenarioManager GetScenarioManager()
+        {
+            return scenarioManager;
+        }
+        
+        public SosigStatsManager GetStatsManager()
+        {
+            return statsManager;
+        }
 
         public bool IsSpawnerInitialized()
         {
             return isInitialized && spawnerManager != null;
+        }
+        
+        public bool AreAllSystemsInitialized()
+        {
+            return isInitialized && spawnerManager != null &&
+                   (!EnableWeaponSystem.Value || weaponManager != null) &&
+                   (!EnableScenarioSystem.Value || scenarioManager != null) &&
+                   (!EnableStatsTracking.Value || statsManager != null);
         }
 
         void OnDestroy()

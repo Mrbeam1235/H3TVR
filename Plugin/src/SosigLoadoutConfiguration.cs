@@ -135,14 +135,18 @@ namespace H3TVR
         {
             if (initialized) return;
 
+            // Initialize H3VR asset loader first
+            H3VRAssetLoader.Initialize();
+            
             LoadDefaultLoadouts();
             LoadCustomLoadouts();
+            LoadAssetsFromH3VR();
             initialized = true;
         }
 
         private static void LoadDefaultLoadouts()
         {
-            // Friendly Soldier Loadout
+            // Friendly Soldier Loadout using H3VR assets
             var friendlyLoadout = new AdvancedSosigLoadout
             {
                 loadoutName = "Friendly Soldier",

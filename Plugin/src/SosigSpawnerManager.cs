@@ -117,6 +117,10 @@ namespace H3TVR
         #region Unity Lifecycle
         void Start()
         {
+            // Initialize H3VR asset loading first
+            H3VRAssetLoader.Initialize();
+            SosigLoadoutManager.Initialize();
+            
             InitializeConfiguration();
             LoadINIConfigurations();
             LoadDefaultLoadouts();
@@ -127,6 +131,8 @@ namespace H3TVR
             {
                 Debug.Log("Boss spawning system initialized");
             }
+            
+            Debug.Log("[SosigSpawnerManager] Advanced Sosig Spawner initialized with H3VR asset loading!");
         }
 
         void Update()
@@ -773,7 +779,7 @@ namespace H3TVR
 
         private SosigOutfitConfig CreateCustomOutfitConfig()
         {
-            // Create a custom outfit config based on current armor configuration and INI settings
+            // Create a custom outfit config using H3VR loaded assets
             SosigOutfitConfig config = ScriptableObject.CreateInstance<SosigOutfitConfig>();
             
             // Get INI config for current loadout
@@ -801,6 +807,18 @@ namespace H3TVR
                 config.Chance_Backpacks = currentArmorConfig.useBackpacks ? currentArmorConfig.backpackChance : 0f;
                 config.Chance_TorosDecoration = currentArmorConfig.useDecorations ? currentArmorConfig.decorationChance : 0f;
             }
+            
+            // Load armor pieces from H3VR assets
+            config.Headwear = H3VRAssetLoader.GetArmorByCategory("Headwear");
+            config.Facewear = H3VRAssetLoader.GetArmorByCategory("Facewear");
+            config.Eyewear = H3VRAssetLoader.GetArmorByCategory("Eyewear");
+            config.Torsowear = H3VRAssetLoader.GetArmorByCategory("Torsowear");
+            config.Pantswear = H3VRAssetLoader.GetArmorByCategory("Pantswear");
+            config.Pantswear_Lower = H3VRAssetLoader.GetArmorByCategory("PantswearLower");
+            config.Backpacks = H3VRAssetLoader.GetArmorByCategory("Backpacks");
+            config.TorosDecoration = H3VRAssetLoader.GetArmorByCategory("Decorations");
+            
+            Debug.Log($"[SosigSpawnerManager] Created outfit config with {config.Headwear.Count} headwear, {config.Torsowear.Count} torsowear, {config.Backpacks.Count} backpacks from H3VR assets");
             
             return config;
         }
@@ -2044,6 +2062,121 @@ decorationchance=1.0";
                 bossImmunityTimers.Remove(key);
             }
         }
+        
+        #region H3VR Asset Integration
+        
+        /// <summary>
+        /// Spawn a sosig using advanced loadout configuration and H3VR assets
+        /// </summary>
+        public void SpawnSosigFromAdvancedLoadout(string loadoutName, Vector3? position = null)
+        {
+            try
+            {
+                var loadout = SosigLoadoutManager.GetLoadout(loadoutName);
+                if (loadout == null)
+                {
+                    Debug.LogWarning($"Loadout not found: {loadoutName}");
+                    return;
+                }
+                
+                Vector3 spawnPos = position ?? (GM.CurrentPlayerBody.transform.position + GM.CurrentPlayerBody.transform.forward * 3f);
+                Quaternion rotation = Quaternion.LookRotation(GM.CurrentPlayerBody.transform.forward);
+                
+                Sosig spawnedSosig = SosigLoadoutUtility.CreateSosigFromLoadout(loadout, spawnPos, rotation);
+                
+                if (spawnedSosig != null)
+                {
+                    Debug.Log($"Successfully spawned sosig using H3VR loadout: {loadout.loadoutName}");
+                    
+                    // Add to tracking
+                    var statsManager = FindObjectOfType<SosigStatsManager>();
+                    if (statsManager != null)
+                    {
+                        // Track the spawn
+                        Debug.Log($"Tracked spawn for loadout: {loadout.loadoutName}");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"Failed to spawn sosig from H3VR loadout: {loadout.loadoutName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error spawning sosig from H3VR loadout {loadoutName}: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Get list of available H3VR loadouts
+        /// </summary>
+        public List<string> GetAvailableH3VRLoadouts()
+        {
+            var loadouts = SosigLoadoutManager.GetLoadouts();
+            return loadouts.Select(l => l.loadoutName).ToList();
+        }
+        
+        /// <summary>
+        /// Test H3VR asset loading (for debugging)
+        /// </summary>
+        public void TestH3VRAssetLoading()
+        {
+            Debug.Log("[SosigSpawnerManager] Running H3VR asset loading test...");
+            H3VRAssetLoadingTest.RunAssetLoadingTest();
+            H3VRAssetLoadingTest.TestSosigCreationDryRun();
+        }
+        
+        /// <summary>
+        /// Refresh H3VR assets (useful if assets change)
+        /// </summary>
+        public void RefreshH3VRAssets()
+        {
+            Debug.Log("[SosigSpawnerManager] Refreshing H3VR assets...");
+            H3VRAssetLoader.ForceReload();
+            SosigLoadoutManager.RefreshFromH3VR();
+            Debug.Log("[SosigSpawnerManager] H3VR assets refreshed");
+        }
+        
+        /// <summary>
+        /// Get the current status of H3VR asset loading
+        /// </summary>
+        /// <returns>Status report string</returns>
+        public string GetH3VRAssetStatus()
+        {
+            var status = new System.Text.StringBuilder();
+            status.AppendLine("=== H3VR Asset Loading Status ===");
+            
+            // Check if H3VR systems are initialized
+            bool h3vrReady = H3VRAssetLoader.IsH3VRSystemReady();
+            status.AppendLine($"H3VR System Ready: {h3vrReady}");
+            
+            if (h3vrReady)
+            {
+                var stats = H3VRAssetLoader.GetLoadingStats();
+                status.AppendLine($"Armor Pieces Loaded: {stats.armorCount}");
+                status.AppendLine($"Weapons Loaded: {stats.weaponCount}");
+                status.AppendLine($"Sosig Templates Loaded: {stats.sosigTemplateCount}");
+                status.AppendLine($"Last Update: {stats.lastUpdateTime}");
+            }
+            else
+            {
+                status.AppendLine("H3VR systems not yet initialized - using delayed initialization");
+            }
+            
+            return status.ToString();
+        }
+        
+        /// <summary>
+        /// Check if H3VR asset loading is ready for sosig spawning
+        /// </summary>
+        /// <returns>True if ready, false if still initializing</returns>
+        public bool IsH3VRAssetLoadingReady()
+        {
+            return H3VRAssetLoader.IsH3VRSystemReady();
+        }
+        
+        #endregion
+        
         #endregion
     }
 }

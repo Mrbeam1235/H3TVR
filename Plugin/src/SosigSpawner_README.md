@@ -382,7 +382,82 @@ voiceclips=soldier_ready.wav,soldier_roger.wav,soldier_covering.wav
 - **Per-loadout control** via INI enable/disable
 - **Automatic 3D positioning** for realistic audio
 
+## Additional Enhancement Systems
+
+### Advanced Weapon Management System
+The weapon management system provides comprehensive control over sosig armaments:
+
+**Features:**
+- Advanced weapon loadout system with attachment support
+- Dynamic weapon assignment based on sosig role and scenario
+- Customizable accuracy, damage, and fire rate modifiers
+- Support for historical, modern, and futuristic weapon sets
+- Automatic weapon caching for improved performance
+
+**Configuration:** Use `H3TVR_WeaponLoadouts_Example.ini` to define custom weapon loadouts.
+
+### Scenario and Wave Management
+Wave-based scenario system with multiple game modes:
+
+**Game Modes:**
+- **Survival Mode** - Endless waves with increasing difficulty
+- **Boss Rush** - Face powerful boss sosigs in succession  
+- **Defense Mode** - Protect your position from attackers
+- **Assault Mode** - Clear enemy positions in structured waves
+- **Training Mode** - Practice with controllable enemy spawns
+
+**Features:**
+- Configurable difficulty scaling and wave compositions
+- Special events system with random gameplay modifications
+- Custom wave timing and sosig limits
+- Dynamic difficulty adjustment based on player performance
+
+**Configuration:** Use `H3TVR_ScenarioConfig_Example.ini` to customize scenarios.
+
+### Statistics and Analytics System
+Comprehensive statistics tracking with detailed reporting:
+
+**Tracked Statistics:**
+- Spawn counts by type, faction, and scenario
+- Player performance metrics and survival statistics
+- System performance data and optimization suggestions
+- Session and lifetime achievement tracking
+
+**Features:**
+- JSON-based persistence for session and lifetime statistics
+- Real-time performance monitoring and reporting
+- Detailed analytics with visual breakdowns
+- Automatic backup and data recovery
+
+### Performance Monitoring System
+Real-time system monitoring with automatic optimization:
+
+**Monitoring Features:**
+- FPS tracking with performance alerts
+- Memory usage monitoring and cleanup
+- Spawn time tracking and optimization
+- Active sosig count management
+
+**Optimization Features:**
+- Automatic sosig cleanup when limits are exceeded
+- Performance threshold alerts and recommendations
+- Memory garbage collection optimization
+- Detailed performance reporting with recommendations
+
+**GUI Features:**
+- Real-time performance overlay
+- One-click optimization button
+- Performance report generation
+- Visual performance statistics
+
 ## Version History
+
+### v3.0.0
+- **Advanced Weapon Management System** with comprehensive loadout support
+- **Scenario and Wave Management** with multiple game modes
+- **Statistics and Analytics System** with detailed tracking
+- **Performance Monitoring System** with real-time optimization
+- **Enhanced Integration** with all systems working together seamlessly
 
 ### v2.0.0
 - **INI-based configuration system** for loadouts
