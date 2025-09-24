@@ -181,7 +181,19 @@ namespace H3TVR
             // Initialize movement controller with config values
             slomoMovementController.Initialize(SlomoMovementScale.Value, SlomoAffectsMovement.Value, Logger);
             
+            // Initialize sosig spawner integration
+            InitializeSosigSpawner();
+            
             Logger.LogInfo("Successfully loaded H3TVR!");
+        }
+
+        private void InitializeSosigSpawner()
+        {
+            GameObject sosigSpawnerObject = new GameObject("SosigSpawnerIntegration");
+            sosigSpawnerObject.transform.SetParent(transform);
+            sosigSpawnerObject.AddComponent<SosigSpawnerIntegration>();
+            
+            Logger.LogInfo("Sosig Spawner Integration initialized!");
         }
 
         public void Update()
@@ -866,7 +878,7 @@ namespace H3TVR
             for (int i = 0; i < 4; i++)
             {
                 // Calculate spread positions around the player's head
-                float angle = i * 90f; // 0°, 90°, 180°, 270° for even distribution
+                float angle = i * 90f; // 0ï¿½, 90ï¿½, 180ï¿½, 270ï¿½ for even distribution
                 Vector3 offsetDirection = new Vector3(
                     Mathf.Sin(angle * Mathf.Deg2Rad) * 0.3f, // X offset
                     UnityEngine.Random.Range(-0.1f, 0.2f),   // Y offset (slight vertical variation)
