@@ -407,7 +407,110 @@ namespace H3TVR
         }
         #endregion
 
-        #region Username Management
+        #region Public API Methods
+        /// <summary>
+        /// Public method for external systems to add usernames to ally queue
+        /// </summary>
+        /// <param name="username">Twitch username to add</param>
+        /// <returns>True if added successfully</returns>
+        public static bool AddUsernameToAllyQueue(string username)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                instance.AddToAllyQueue(username);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Public method for external systems to add usernames to enemy queue
+        /// </summary>
+        /// <param name="username">Twitch username to add</param>
+        /// <returns>True if added successfully</returns>
+        public static bool AddUsernameToEnemyQueue(string username)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                instance.AddToEnemyQueue(username);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Public method for external systems to trigger ally spawning
+        /// </summary>
+        /// <param name="username">Optional specific username to use</param>
+        /// <returns>True if spawn was triggered</returns>
+        public static bool TriggerAllySpawn(string username = null)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                var request = new LioranBoard2IntegrationManager.LioranBoardRequest { username = username };
+                string targetUsername = instance.GetUsernameForSpawn(request, true);
+                if (!string.IsNullOrEmpty(targetUsername))
+                {
+                    instance.StartCoroutine(instance.SpawnSosigWithUsername(targetUsername, false));
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Public method for external systems to trigger enemy spawning
+        /// </summary>
+        /// <param name="username">Optional specific username to use</param>
+        /// <returns>True if spawn was triggered</returns>
+        public static bool TriggerEnemySpawn(string username = null)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                var request = new LioranBoard2IntegrationManager.LioranBoardRequest { username = username };
+                string targetUsername = instance.GetUsernameForSpawn(request, false);
+                if (!string.IsNullOrEmpty(targetUsername))
+                {
+                    instance.StartCoroutine(instance.SpawnSosigWithUsername(targetUsername, true));
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Get current queue status for external systems
+        /// </summary>
+        /// <returns>Queue status information</returns>
+        public static QueueStatus GetQueueStatus()
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                return new QueueStatus
+                {
+                    allyQueueSize = instance.allyUsernameQueue.Count,
+                    enemyQueueSize = instance.enemyUsernameQueue.Count,
+                    recentChattersCount = instance.recentChatters.Count,
+                    maxQueueSize = MaxQueueSize?.Value ?? 50
+                };
+            }
+            return new QueueStatus();
+        }
+
+        [System.Serializable]
+        public struct QueueStatus
+        {
+            public int allyQueueSize;
+            public int enemyQueueSize;
+            public int recentChattersCount;
+            public int maxQueueSize;
+        }
+        #endregion
         private string GetUsernameForSpawn(LioranBoard2IntegrationManager.LioranBoardRequest request, bool isAlly)
         {
             // First, check if a specific username was provided
@@ -479,6 +582,111 @@ namespace H3TVR
         }
         #endregion
 
+        #region Public API Methods
+        /// <summary>
+        /// Public method for external systems to add usernames to ally queue
+        /// </summary>
+        /// <param name="username">Twitch username to add</param>
+        /// <returns>True if added successfully</returns>
+        public static bool AddUsernameToAllyQueue(string username)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                instance.AddToAllyQueue(username);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Public method for external systems to add usernames to enemy queue
+        /// </summary>
+        /// <param name="username">Twitch username to add</param>
+        /// <returns>True if added successfully</returns>
+        public static bool AddUsernameToEnemyQueue(string username)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                instance.AddToEnemyQueue(username);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Public method for external systems to trigger ally spawning
+        /// </summary>
+        /// <param name="username">Optional specific username to use</param>
+        /// <returns>True if spawn was triggered</returns>
+        public static bool TriggerAllySpawn(string username = null)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                var request = new LioranBoard2IntegrationManager.LioranBoardRequest { username = username };
+                string targetUsername = instance.GetUsernameForSpawn(request, true);
+                if (!string.IsNullOrEmpty(targetUsername))
+                {
+                    instance.StartCoroutine(instance.SpawnSosigWithUsername(targetUsername, false));
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Public method for external systems to trigger enemy spawning
+        /// </summary>
+        /// <param name="username">Optional specific username to use</param>
+        /// <returns>True if spawn was triggered</returns>
+        public static bool TriggerEnemySpawn(string username = null)
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                var request = new LioranBoard2IntegrationManager.LioranBoardRequest { username = username };
+                string targetUsername = instance.GetUsernameForSpawn(request, false);
+                if (!string.IsNullOrEmpty(targetUsername))
+                {
+                    instance.StartCoroutine(instance.SpawnSosigWithUsername(targetUsername, true));
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Get current queue status for external systems
+        /// </summary>
+        /// <returns>Queue status information</returns>
+        public static QueueStatus GetQueueStatus()
+        {
+            var instance = FindObjectOfType<LioranBoard2IntegrationManager>();
+            if (instance != null)
+            {
+                return new QueueStatus
+                {
+                    allyQueueSize = instance.allyUsernameQueue.Count,
+                    enemyQueueSize = instance.enemyUsernameQueue.Count,
+                    recentChattersCount = instance.recentChatters.Count,
+                    maxQueueSize = MaxQueueSize?.Value ?? 50
+                };
+            }
+            return new QueueStatus();
+        }
+
+        [System.Serializable]
+        public struct QueueStatus
+        {
+            public int allyQueueSize;
+            public int enemyQueueSize;
+            public int recentChattersCount;
+            public int maxQueueSize;
+        }
+        #endregion
+
         #region Sosig Spawning Integration
         private void SpawnAllyWithUsername()
         {
@@ -518,6 +726,9 @@ namespace H3TVR
                 {
                     chatWatcher.SpawnerName = username;
                     Debug.Log($"Set username for spawning: {username}");
+                    
+                    // Also write to file paths if they're configured (for compatibility)
+                    WriteUsernameToFile(username, isEnemy);
                 }
 
                 if (sosigManager != null)
@@ -541,18 +752,8 @@ namespace H3TVR
                 else
                 {
                     // Fallback to the original ChatWatcher system
-                    if (chatWatcher != null && isEnemy)
+                    if (chatWatcher != null)
                     {
-                        // Use reflection to call the enemy spawn method
-                        var method = chatWatcher.GetType().GetMethod("Update", 
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
-                        
-                        // Simulate keypress for enemy spawn by setting the static username and calling spawn
-                        SpawnUsingChatWatcher(username, isEnemy);
-                    }
-                    else if (chatWatcher != null)
-                    {
-                        // Spawn ally using ChatWatcher
                         SpawnUsingChatWatcher(username, isEnemy);
                     }
                     else
@@ -564,6 +765,46 @@ namespace H3TVR
             catch (Exception ex)
             {
                 Debug.LogError($"Error spawning sosig with username {username}: {ex.Message}");
+            }
+        }
+
+        private void WriteUsernameToFile(string username, bool isEnemy)
+        {
+            try
+            {
+                if (chatWatcher == null) return;
+
+                // Get the file paths from ChatWatcher configuration
+                var filePathField = isEnemy ? 
+                    chatWatcher.GetType().GetField("filePathToTextFolderforEnemySosig", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) :
+                    chatWatcher.GetType().GetField("filePathToTextFolder", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+                if (filePathField != null)
+                {
+                    var configEntry = filePathField.GetValue(chatWatcher);
+                    if (configEntry != null)
+                    {
+                        // Get the Value property from ConfigEntry
+                        var valueProperty = configEntry.GetType().GetProperty("Value");
+                        if (valueProperty != null)
+                        {
+                            string filePath = valueProperty.GetValue(configEntry) as string;
+                            if (!string.IsNullOrEmpty(filePath) && filePath != "null")
+                            {
+                                // Write username in the expected JSON format
+                                string jsonContent = $"\"{{\\\"username\\\":\\\"{username}\\\"}}\"";
+                                File.WriteAllText(filePath, jsonContent);
+                                Debug.Log($"Written username {username} to file: {filePath}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Could not write username to file: {ex.Message}");
             }
         }
 

@@ -1,0 +1,193 @@
+{
+  "deck_name": "H3VR Sosig Spawner",
+  "version": "1.0",
+  "description": "Example LioranBoard 2 deck for H3VR sosig spawning with Twitch integration",
+  "buttons": [
+    {
+      "button_id": "spawn_ally",
+      "name": "Spawn Ally",
+      "color": "#00FF00",
+      "position": {"x": 0, "y": 0},
+      "actions": [
+        {
+          "type": "HTTP Request",
+          "method": "POST",
+          "url": "http://localhost:8080/",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"command\": \"spawn_ally\"}",
+          "expected_response": 200
+        },
+        {
+          "type": "Chat Message",
+          "message": "Spawning ally sosig! 🎮"
+        }
+      ]
+    },
+    {
+      "button_id": "spawn_enemy",
+      "name": "Spawn Enemy", 
+      "color": "#FF0000",
+      "position": {"x": 1, "y": 0},
+      "actions": [
+        {
+          "type": "HTTP Request",
+          "method": "POST",
+          "url": "http://localhost:8080/",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"command\": \"spawn_enemy\"}",
+          "expected_response": 200
+        },
+        {
+          "type": "Chat Message",
+          "message": "Spawning enemy sosig! ⚔️"
+        }
+      ]
+    },
+    {
+      "button_id": "add_ally_viewer",
+      "name": "Add Ally Queue",
+      "color": "#0080FF",
+      "position": {"x": 0, "y": 1},
+      "actions": [
+        {
+          "type": "HTTP Request",
+          "method": "POST",
+          "url": "http://localhost:8080/",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"command\": \"add_to_ally_queue\", \"username\": \"$target$\"}",
+          "expected_response": 200
+        },
+        {
+          "type": "Chat Message",
+          "message": "$target$ has been added to the ally queue! 🤝"
+        }
+      ],
+      "notes": "Use $target$ variable to get username from chat command"
+    },
+    {
+      "button_id": "add_enemy_viewer",
+      "name": "Add Enemy Queue",
+      "color": "#FF8000",
+      "position": {"x": 1, "y": 1},
+      "actions": [
+        {
+          "type": "HTTP Request",
+          "method": "POST",
+          "url": "http://localhost:8080/",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"command\": \"add_to_enemy_queue\", \"username\": \"$target$\"}",
+          "expected_response": 200
+        },
+        {
+          "type": "Chat Message",
+          "message": "$target$ has been added to the enemy queue! ⚔️"
+        }
+      ],
+      "notes": "Use $target$ variable to get username from chat command"
+    },
+    {
+      "button_id": "queue_status",
+      "name": "Queue Status",
+      "color": "#808080",
+      "position": {"x": 0, "y": 2},
+      "actions": [
+        {
+          "type": "HTTP Request",
+          "method": "POST",
+          "url": "http://localhost:8080/",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"command\": \"get_queue_status\"}",
+          "expected_response": 200,
+          "save_response": "queue_data"
+        },
+        {
+          "type": "Chat Message",
+          "message": "Queue Status - Allies: $queue_data.allyQueueSize$, Enemies: $queue_data.enemyQueueSize$ 📊"
+        }
+      ]
+    },
+    {
+      "button_id": "clear_queues",
+      "name": "Clear Queues",
+      "color": "#FF00FF",
+      "position": {"x": 1, "y": 2},
+      "actions": [
+        {
+          "type": "HTTP Request",
+          "method": "POST",
+          "url": "http://localhost:8080/",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"command\": \"clear_queues\"}",
+          "expected_response": 200
+        },
+        {
+          "type": "Chat Message",
+          "message": "All queues have been cleared! 🧹"
+        }
+      ]
+    }
+  ],
+  "chat_commands": [
+    {
+      "command": "!joinally",
+      "description": "Join the ally sosig queue",
+      "action": "trigger_button",
+      "button_id": "add_ally_viewer",
+      "permission": "everyone"
+    },
+    {
+      "command": "!joinenemy", 
+      "description": "Join the enemy sosig queue",
+      "action": "trigger_button",
+      "button_id": "add_enemy_viewer",
+      "permission": "everyone"
+    },
+    {
+      "command": "!spawnally",
+      "description": "Spawn an ally sosig",
+      "action": "trigger_button",
+      "button_id": "spawn_ally",
+      "permission": "moderator"
+    },
+    {
+      "command": "!spawnenemy",
+      "description": "Spawn an enemy sosig", 
+      "action": "trigger_button",
+      "button_id": "spawn_enemy",
+      "permission": "moderator"
+    },
+    {
+      "command": "!queuestatus",
+      "description": "Check queue status",
+      "action": "trigger_button", 
+      "button_id": "queue_status",
+      "permission": "moderator"
+    }
+  ],
+  "setup_instructions": [
+    "1. Import this deck configuration into LioranBoard 2",
+    "2. Ensure H3VR is running with the H3TVR mod loaded",
+    "3. Verify the HTTP server is running on port 8080 (check H3VR console)",
+    "4. Test the 'Queue Status' button to verify connectivity",
+    "5. Customize chat command permissions as needed",
+    "6. Add sound effects or additional actions to buttons as desired"
+  ],
+  "troubleshooting": [
+    "If buttons fail: Check if HTTP server is running in H3VR console",
+    "If sosigs don't spawn: Ensure you're in a compatible H3VR game mode",
+    "If usernames don't appear: Check ChatWatcher integration is working",
+    "For connection issues: Verify port 8080 is not blocked by firewall"
+  ]
+}
