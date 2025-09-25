@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net35</TargetFramework>
-    <AssemblyName>H3TVR</AssemblyName>
+    <AssemblyName>H3TVR_Performance</AssemblyName>
     <RootNamespace>H3TVR</RootNamespace>
     <LangVersion>7.3</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -13,68 +13,41 @@
     <OutputPath>$(USERPROFILE)\Downloads\</OutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IncludeSymbols>false</IncludeSymbols>
-    <DefineConstants>H3TVR_PLUGIN</DefineConstants>
+    <DefineConstants>H3TVR_PLUGIN;PERFORMANCE_OPTIMIZED</DefineConstants>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <RuntimeIdentifiers>win;win-x64</RuntimeIdentifiers>
-    <RuntimeIdentifier>win</RuntimeIdentifier>
-    <SkipValidateGameAssemblies Condition=" '$(SkipValidateGameAssemblies)' == '' ">false</SkipValidateGameAssemblies>
   </PropertyGroup>
 
   <PropertyGroup>
     <AssemblyVersion>1.2.0.0</AssemblyVersion>
     <FileVersion>1.2.0.0</FileVersion>
-    <InformationalVersion>1.2.0</InformationalVersion>
+    <InformationalVersion>1.2.0-Performance</InformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup>
     <UnityManagedDir Condition=" '$(UnityManagedDir)' == '' ">C:\Program Files (x86)\Steam\steamapps\common\H3VR\h3vr_Data\Managed</UnityManagedDir>
-    <BepInExDir Condition=" '$(BepInExDir)' == '' ">$(UnityManagedDir)</BepInExDir>
+    <LocalLibsDir Condition=" '$(LocalLibsDir)' == '' ">.\libs</LocalLibsDir>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- New Improved Modular Architecture -->
+    <!-- Optimized Core Components Only -->
     <Compile Include="H3TVRImproved.cs" />
     <Compile Include="InputHandler.cs" />
     <Compile Include="SpawnManager.cs" />
     <Compile Include="EffectsManager.cs" />
     <Compile Include="WeaponManager.cs" />
-    
-    <!-- Core Components -->
     <Compile Include="PluginInfo.cs" />
     <Compile Include="SlomoMovementController.cs" />
     <Compile Include="Hooks.cs" />
-    
-    <!-- Sosig Integration -->
-    <Compile Include="SosigSpawnerIntegration.cs" />
-    <Compile Include="SosigSpawnerManager.cs" />
-    <Compile Include="SosigWeaponManager.cs" />
-    <Compile Include="SosigLoadoutConfiguration.cs" />
-    <Compile Include="SosigLoadoutUtility.cs" />
-    <Compile Include="SosigStatsManager.cs" />
-    <Compile Include="SosigPerformanceMonitor2.cs" />
-    <Compile Include="SosigScenarioManager.cs" />
-    
-    <!-- H3VR Integration -->
-    <Compile Include="H3VRAssetLoader.cs" />
-    <Compile Include="H3VRDelayedInitializer.cs" />
-    <Compile Include="H3VRAssetLoadingTest.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Unity and H3VR References -->
     <Reference Include="UnityEngine" Condition="Exists('$(UnityManagedDir)\UnityEngine.dll')">
       <HintPath>$(UnityManagedDir)\UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule" Condition="Exists('$(UnityManagedDir)\UnityEngine.CoreModule.dll')">
       <HintPath>$(UnityManagedDir)\UnityEngine.CoreModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.IMGUIModule" Condition="Exists('$(UnityManagedDir)\UnityEngine.IMGUIModule.dll')">
-      <HintPath>$(UnityManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.UI" Condition="Exists('$(UnityManagedDir)\UnityEngine.UI.dll')">
-      <HintPath>$(UnityManagedDir)\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp" Condition="Exists('$(UnityManagedDir)\Assembly-CSharp.dll')">
@@ -85,27 +58,42 @@
       <HintPath>$(UnityManagedDir)\FistVR.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="Sodalite" Condition="Exists('$(UnityManagedDir)\Sodalite.dll')">
-      <HintPath>$(UnityManagedDir)\Sodalite.dll</HintPath>
+    
+    <!-- BepInEx References - Use local libs directory -->
+    <Reference Include="BepInEx" Condition="Exists('$(LocalLibsDir)\BepInEx.dll')">
+      <HintPath>$(LocalLibsDir)\BepInEx.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="BepInEx" Condition="Exists('$(BepInExDir)\BepInEx.dll')">
-      <HintPath>$(BepInExDir)\BepInEx.dll</HintPath>
+    <Reference Include="0Harmony" Condition="Exists('$(LocalLibsDir)\0Harmony.dll')">
+      <HintPath>$(LocalLibsDir)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="0Harmony" Condition="Exists('$(BepInExDir)\0Harmony.dll')">
-      <HintPath>$(BepInExDir)\0Harmony.dll</HintPath>
+    
+    <!-- Fallback BepInEx References - Try Unity managed directory as secondary option -->
+    <Reference Include="BepInEx" Condition="!Exists('$(LocalLibsDir)\BepInEx.dll') AND Exists('$(UnityManagedDir)\BepInEx.dll')">
+      <HintPath>$(UnityManagedDir)\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony" Condition="!Exists('$(LocalLibsDir)\0Harmony.dll') AND Exists('$(UnityManagedDir)\0Harmony.dll')">
+      <HintPath>$(UnityManagedDir)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
 
-  <Target Name="ValidateGameAssemblies" BeforeTargets="CoreCompile" Condition=" '$(SkipValidateGameAssemblies)' != 'true' ">
-    <Message Importance="high" Text="Using Unity Managed Dir: $(UnityManagedDir)" />
+  <Target Name="ValidateGameAssemblies" BeforeTargets="CoreCompile">
+    <Message Importance="high" Text="Building Performance-Optimized H3TVR using Unity Managed Dir: $(UnityManagedDir)" />
+    <Message Importance="high" Text="Using Local Libs Dir: $(LocalLibsDir)" />
+    
+    <!-- Check for required assemblies -->
     <Error Condition="!Exists('$(UnityManagedDir)\Assembly-CSharp.dll')" Text="Could not find Assembly-CSharp.dll. Set UnityManagedDir property to your H3VR h3vr_Data\Managed folder." />
     <Warning Condition="!Exists('$(UnityManagedDir)\FistVR.dll')" Text="Could not find FistVR.dll. Gameplay-specific types will fail at runtime." />
+    
+    <!-- Check BepInEx availability -->
+    <Warning Condition="!Exists('$(LocalLibsDir)\BepInEx.dll') AND !Exists('$(UnityManagedDir)\BepInEx.dll')" Text="Could not find BepInEx.dll in libs directory or Unity managed directory. Plugin features will be limited." />
+    <Warning Condition="!Exists('$(LocalLibsDir)\0Harmony.dll') AND !Exists('$(UnityManagedDir)\0Harmony.dll')" Text="Could not find 0Harmony.dll in libs directory or Unity managed directory. Harmony patches will not work." />
   </Target>
 
   <Target Name="PostBuild" AfterTargets="Build">
-    <Message Text="Built plugin: $(TargetPath)" Importance="high" />
+    <Message Text="Built performance-optimized H3TVR plugin: $(TargetPath)" Importance="high" />
   </Target>
 </Project>

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>H3TVR</AssemblyName>
+    <RootNamespace>H3TVR</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <Deterministic>true</Deterministic>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>$(USERPROFILE)\Downloads\</OutputPath>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IncludeSymbols>false</IncludeSymbols>
+    <DefineConstants>H3TVR_PLUGIN</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RuntimeIdentifiers>win;win-x64</RuntimeIdentifiers>
+    <RuntimeIdentifier>win</RuntimeIdentifier>
+    <SkipValidateGameAssemblies Condition=" '$(SkipValidateGameAssemblies)' == '' ">true</SkipValidateGameAssemblies>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
+    <InformationalVersion>1.2.0</InformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Try different common BepInEx paths -->
+    <BepInExDir Condition=" '$(BepInExDir)' == '' and Exists('C:\Program Files (x86)\Steam\steamapps\common\H3VR\BepInEx\core') ">C:\Program Files (x86)\Steam\steamapps\common\H3VR\BepInEx\core</BepInExDir>
+    <BepInExDir Condition=" '$(BepInExDir)' == '' and Exists('C:\Program Files (x86)\Steam\steamapps\common\H3VR\h3vr_Data\Managed') ">C:\Program Files (x86)\Steam\steamapps\common\H3VR\h3vr_Data\Managed</BepInExDir>
+    <BepInExDir Condition=" '$(BepInExDir)' == '' ">C:\Program Files (x86)\Steam\steamapps\common\H3VR\BepInEx\core</BepInExDir>
+    
+    <UnityManagedDir Condition=" '$(UnityManagedDir)' == '' ">C:\Program Files (x86)\Steam\steamapps\common\H3VR\h3vr_Data\Managed</UnityManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Simple test version -->
+    <Compile Include="H3TVRSimple.cs" />
+    <Compile Include="PluginInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Unity References -->
+    <Reference Include="UnityEngine" Condition="Exists('$(UnityManagedDir)\UnityEngine.dll')">
+      <HintPath>$(UnityManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule" Condition="Exists('$(UnityManagedDir)\UnityEngine.CoreModule.dll')">
+      <HintPath>$(UnityManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp" Condition="Exists('$(UnityManagedDir)\Assembly-CSharp.dll')">
+      <HintPath>$(UnityManagedDir)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    
+    <!-- H3VR References -->
+    <Reference Include="FistVR" Condition="Exists('$(UnityManagedDir)\FistVR.dll')">
+      <HintPath>$(UnityManagedDir)\FistVR.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    
+    <!-- BepInEx References (try multiple locations) -->
+    <Reference Include="BepInEx" Condition="Exists('$(BepInExDir)\BepInEx.dll')">
+      <HintPath>$(BepInExDir)\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx" Condition="!Exists('$(BepInExDir)\BepInEx.dll') and Exists('$(UnityManagedDir)\BepInEx.dll')">
+      <HintPath>$(UnityManagedDir)\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="Build">
+    <Message Text="Built H3TVR plugin: $(TargetPath)" Importance="high" />
+  </Target>
+</Project>
