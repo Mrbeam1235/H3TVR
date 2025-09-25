@@ -277,4 +277,52 @@ Enable `LogHttpRequests = true` in config to see all incoming requests in the H3
 }
 ```
 
-This integration provides a robust foundation for interactive Twitch streaming with H3VR, allowing viewers to participate directly in your gameplay through sosig spawning.
+## Testing the Integration
+
+### Using the Test Client
+
+A Python test client is provided at `/tmp/test_lioranboard_api.py`:
+
+```bash
+python3 test_lioranboard_api.py
+```
+
+This will test all API endpoints and show the expected responses. The client gracefully handles connection failures if the server isn't running.
+
+### Manual Testing with curl
+
+You can also test manually with curl:
+
+```bash
+# Test queue status
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"command":"get_queue_status"}' \
+     http://localhost:8080/
+
+# Add user to ally queue  
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"command":"add_to_ally_queue","username":"TestUser"}' \
+     http://localhost:8080/
+
+# Spawn ally sosig
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"command":"spawn_ally"}' \
+     http://localhost:8080/
+```
+
+## Integration Architecture
+
+The system consists of several key components:
+
+1. **HTTP Server**: Runs in a separate thread to handle LioranBoard 2 requests
+2. **Queue Manager**: Maintains separate queues for ally and enemy usernames  
+3. **Spawning Integration**: Interfaces with existing ChatWatcher and SosigSpawnerManager
+4. **Username Assignment**: Assigns usernames to spawned sosigs via nameplate system
+5. **Public API**: Provides static methods for external mod integration
+
+## Compatibility Notes
+
+- **File-based Integration**: Writes usernames to ChatWatcher's configured file paths for compatibility
+- **Direct Integration**: Also sets usernames directly in ChatWatcher.SpawnerName
+- **Fallback System**: Falls back to ChatWatcher spawning if SosigSpawnerManager isn't available
+- **Error Recovery**: Handles missing components gracefully with informative error messages
