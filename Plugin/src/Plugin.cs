@@ -193,7 +193,12 @@ namespace H3TVR
             sosigSpawnerObject.transform.SetParent(transform);
             sosigSpawnerObject.AddComponent<SosigSpawnerIntegration>();
             
-            Logger.LogInfo("Sosig Spawner Integration initialized!");
+            // Initialize the standalone Twitch Chat Sosig Manager
+            GameObject twitchChatSosigObject = new GameObject("TwitchChatSosigManager");
+            twitchChatSosigObject.transform.SetParent(transform);
+            twitchChatSosigObject.AddComponent<TwitchChatSosigManager>();
+            
+            Logger.LogInfo("Sosig Spawner Integration and Twitch Chat Sosig Manager initialized!");
         }
 
         public void Update()
