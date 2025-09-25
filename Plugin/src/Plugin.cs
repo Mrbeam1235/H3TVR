@@ -184,6 +184,9 @@ namespace H3TVR
             // Initialize sosig spawner integration
             InitializeSosigSpawner();
             
+            // Initialize LioranBoard 2 integration
+            InitializeLioranBoardIntegration();
+            
             Logger.LogInfo("Successfully loaded H3TVR!");
         }
 
@@ -194,6 +197,15 @@ namespace H3TVR
             sosigSpawnerObject.AddComponent<SosigSpawnerIntegration>();
             
             Logger.LogInfo("Sosig Spawner Integration initialized!");
+        }
+
+        private void InitializeLioranBoardIntegration()
+        {
+            GameObject lioranBoardObject = new GameObject("LioranBoard2Integration");
+            lioranBoardObject.transform.SetParent(transform);
+            lioranBoardObject.AddComponent<LioranBoard2IntegrationManager>();
+            
+            Logger.LogInfo("LioranBoard 2 Integration initialized!");
         }
 
         public void Update()
