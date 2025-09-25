@@ -3,6 +3,14 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+<<<<<<< HEAD
+=======
+# Unity/Game Engine temporary files
+Temp/
+Library/
+Logs/
+
+>>>>>>> c4a9a65a24fae39491ce60496775392714828587
 # User-specific files
 *.rsuser
 *.suo

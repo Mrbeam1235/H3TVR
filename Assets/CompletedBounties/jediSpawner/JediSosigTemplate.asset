@@ -1,0 +1,75 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 1743412743, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: JediSosigTemplate
+  m_EditorClassIdentifier: 
+  DisplayName: Jedi Chatter
+  SosigEnemyCategory: 1
+  SosigEnemyID: 110
+  SosigPrefabs:
+  - {fileID: 11400000, guid: b62ac3f234c78d7409889e9ae258206c, type: 2}
+  ConfigTemplates:
+  - {fileID: 11400000, guid: 134f2cc7e52247b4e9fe3776ddc1d0d0, type: 2}
+  - {fileID: 11400000, guid: 134f2cc7e52247b4e9fe3776ddc1d0d0, type: 2}
+  - {fileID: 11400000, guid: 134f2cc7e52247b4e9fe3776ddc1d0d0, type: 2}
+  - {fileID: 11400000, guid: 134f2cc7e52247b4e9fe3776ddc1d0d0, type: 2}
+  - {fileID: 11400000, guid: 134f2cc7e52247b4e9fe3776ddc1d0d0, type: 2}
+  - {fileID: 11400000, guid: 8939d478579ffae4d983b2f3e3862e54, type: 2}
+  ConfigTemplates_Easy:
+  - {fileID: 11400000, guid: 134f2cc7e52247b4e9fe3776ddc1d0d0, type: 2}
+  OutfitConfig:
+  - {fileID: 11400000, guid: b1d34b1f09b8c1b4abc3a0d4a9aa1d36, type: 2}
+  WeaponOptions:
+  - {fileID: 11400000, guid: f8e20942798c9224698407cb59a3d90c, type: 2}
+  - {fileID: 11400000, guid: eb3d65b92181fd345ad569cb10d60421, type: 2}
+  - {fileID: 11400000, guid: 901bfbd25726ff14ab99c127e2a9196e, type: 2}
+  - {fileID: 11400000, guid: e7993fce14efbff4d9921ba94080e53d, type: 2}
+  - {fileID: 11400000, guid: 8b95d754f988c86469ad7e129a2469fa, type: 2}
+  - {fileID: 11400000, guid: 964e541d628cd66418b84eee93f6714e, type: 2}
+  - {fileID: 11400000, guid: ca9e848baf65a0448ab601df09dc7798, type: 2}
+  - {fileID: 11400000, guid: b361e70b2f3a50148aec0ad884f04bd1, type: 2}
+  - {fileID: 11400000, guid: 75256eb7127a20e41bbdc718d14b42a4, type: 2}
+  - {fileID: 11400000, guid: 6eb2c3ebcfa420b42b8a0a12c47b0168, type: 2}
+  - {fileID: 11400000, guid: b3474e1f50e401f478ff43bae58245d3, type: 2}
+  - {fileID: 11400000, guid: 18bf17801c897074fb2bae0d52719156, type: 2}
+  - {fileID: 11400000, guid: f01873aa8e1babb46b8d73aab10d5808, type: 2}
+  - {fileID: 11400000, guid: 98c0aa053d906a243b174ad97b2e4349, type: 2}
+  - {fileID: 11400000, guid: 0439a9d8053c7bf44b4f48f57789cb7e, type: 2}
+  - {fileID: 11400000, guid: 8f6d81b76bf10764db87c44b8702f1c0, type: 2}
+  - {fileID: 11400000, guid: 671e998ef463533489a2b1ee15161644, type: 2}
+  - {fileID: 11400000, guid: f2cd871a2b572fd48a4e0e1b2aa1e86f, type: 2}
+  - {fileID: 11400000, guid: 8784673019f70b14ca22b36886667cdc, type: 2}
+  - {fileID: 11400000, guid: 7a880b4e70dfa854bbf17624f42ad541, type: 2}
+  - {fileID: 11400000, guid: f1313da313314e0449d37fbd1a92b1ab, type: 2}
+  - {fileID: 11400000, guid: b404777497bc5bc4a9a6e0e4777cb28d, type: 2}
+  - {fileID: 11400000, guid: e38b353017c517a42a4876c9b8c7e42a, type: 2}
+  - {fileID: 11400000, guid: 75ff0d88769167b428a6fdabe96c2f99, type: 2}
+  - {fileID: 11400000, guid: 1bd3bc28c10aa8745960f81fbd1fd2b2, type: 2}
+  - {fileID: 11400000, guid: 87df9744e51285748b43384d76cfa10e, type: 2}
+  - {fileID: 11400000, guid: f4a71849c51f54941b5cf4f4c4d7fc60, type: 2}
+  WeaponOptions_Secondary:
+  - {fileID: 11400000, guid: 75fd3a73af2262843b7b3391766aa1a2, type: 2}
+  - {fileID: 11400000, guid: a1027445c09707d49a04e34692993ae8, type: 2}
+  - {fileID: 11400000, guid: 470e7e96454bdc3478638b470ab7f987, type: 2}
+  - {fileID: 11400000, guid: a52546010de89594c9d8fcaa31bdb7dd, type: 2}
+  - {fileID: 11400000, guid: 8c6f0761af3cb954e8b2e685875102c8, type: 2}
+  - {fileID: 11400000, guid: a6fac7eb950aa6244afbc484f3fe7436, type: 2}
+  - {fileID: 11400000, guid: f467c099dc441e8458345b6b4272997f, type: 2}
+  - {fileID: 11400000, guid: 5ef0baf9643ef1f4b9888a66ec09c0bb, type: 2}
+  - {fileID: 11400000, guid: 78401ddc33a12e046abe2524c7464a01, type: 2}
+  SecondaryChance: 1
+  WeaponOptions_Tertiary:
+  - {fileID: 11400000, guid: 04a13774b9abec64593190ea28c0db22, type: 2}
+  - {fileID: 11400000, guid: 30bccd24bac2fcc4f8ec4204dae636d6, type: 2}
+  - {fileID: 11400000, guid: ee45b8cab47b31546bd2b96edab917db, type: 2}
+  - {fileID: 11400000, guid: 154ccec84badd264da9ce3c3183489fa, type: 2}
+  - {fileID: 11400000, guid: fd5017c21c909d443b4ec3736a92b309, type: 2}
+  TertiaryChance: 1

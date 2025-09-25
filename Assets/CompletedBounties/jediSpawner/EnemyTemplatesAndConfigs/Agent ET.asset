@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 1743412743, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: Agent ET
+  m_EditorClassIdentifier: 
+  DisplayName: Jedi Chatter
+  SosigEnemyCategory: 1
+  SosigEnemyID: 110
+  SosigPrefabs:
+  - {fileID: 11400000, guid: 1a732d051792a0d4d86cf3cfecddf0b1, type: 2}
+  ConfigTemplates:
+  - {fileID: 11400000, guid: ab10f570a9ea6e4439134e3f59076a2a, type: 2}
+  - {fileID: 11400000, guid: ab10f570a9ea6e4439134e3f59076a2a, type: 2}
+  - {fileID: 11400000, guid: ab10f570a9ea6e4439134e3f59076a2a, type: 2}
+  - {fileID: 11400000, guid: ab10f570a9ea6e4439134e3f59076a2a, type: 2}
+  - {fileID: 11400000, guid: efc444e5406cce147aa0c3a984c76e9e, type: 2}
+  - {fileID: 11400000, guid: ab10f570a9ea6e4439134e3f59076a2a, type: 2}
+  ConfigTemplates_Easy:
+  - {fileID: 11400000, guid: ab10f570a9ea6e4439134e3f59076a2a, type: 2}
+  OutfitConfig:
+  - {fileID: 11400000, guid: 52f36ade7bab40345aa5dc8d3114a596, type: 2}
+  WeaponOptions:
+  - {fileID: 11400000, guid: 18bf17801c897074fb2bae0d52719156, type: 2}
+  - {fileID: 11400000, guid: 75256eb7127a20e41bbdc718d14b42a4, type: 2}
+  - {fileID: 11400000, guid: 2c9b28179d2b9324ca7ad3a541ad7ca1, type: 2}
+  - {fileID: 11400000, guid: 38a71a0a999598f40ad8d96ebfcd7794, type: 2}
+  - {fileID: 11400000, guid: f1313da313314e0449d37fbd1a92b1ab, type: 2}
+  - {fileID: 11400000, guid: 876b82d2afe2e46439262da1cfd5c703, type: 2}
+  WeaponOptions_Secondary:
+  - {fileID: 11400000, guid: a1027445c09707d49a04e34692993ae8, type: 2}
+  - {fileID: 11400000, guid: 8c6f0761af3cb954e8b2e685875102c8, type: 2}
+  - {fileID: 11400000, guid: 5ef0baf9643ef1f4b9888a66ec09c0bb, type: 2}
+  - {fileID: 11400000, guid: a52546010de89594c9d8fcaa31bdb7dd, type: 2}
+  SecondaryChance: 1
+  WeaponOptions_Tertiary:
+  - {fileID: 11400000, guid: 04a13774b9abec64593190ea28c0db22, type: 2}
+  TertiaryChance: 1

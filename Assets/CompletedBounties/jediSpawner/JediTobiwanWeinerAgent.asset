@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 271957969, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: JediTobiwanWeinerAgent
+  m_EditorClassIdentifier: 
+  Headwear: []
+  Chance_Headwear: 1
+  HeadUsesTorsoIndex: 1
+  Eyewear:
+  - {fileID: 11400000, guid: d631c92326b09fc409796dffe70c6378, type: 2}
+  - {fileID: 11400000, guid: eb20524156f850940adbc313252abc27, type: 2}
+  - {fileID: 11400000, guid: 783674b5c66a5854b98f2705c68fb8c0, type: 2}
+  Chance_Eyewear: 1
+  Facewear: []
+  Chance_Facewear: 0
+  Torsowear:
+  - {fileID: 11400000, guid: de2f09bd6df0be047b67785080ab62b9, type: 2}
+  - {fileID: 11400000, guid: b8404b6968d55554daea0b9bd1a85ecc, type: 2}
+  Chance_Torsowear: 1
+  Pantswear:
+  - {fileID: 11400000, guid: a313895b6f08f25448c0ff80bbf5fecc, type: 2}
+  - {fileID: 11400000, guid: 648dbf066917fe14ab3f6a52bcbae496, type: 2}
+  Chance_Pantswear: 1
+  PantsUsesTorsoIndex: 1
+  Pantswear_Lower:
+  - {fileID: 11400000, guid: c115f079373d2cf47a888e1255c3df4a, type: 2}
+  - {fileID: 11400000, guid: ac712541709e4ae4ab15fc70dbd8ddfa, type: 2}
+  Chance_Pantswear_Lower: 1
+  PantsLowerUsesPantsIndex: 1
+  Backpacks: []
+  Chance_Backpacks: 0
+  TorosDecoration: []
+  Chance_TorosDecoration: 0
+  Belt: []
+  Chance_Belt: 0

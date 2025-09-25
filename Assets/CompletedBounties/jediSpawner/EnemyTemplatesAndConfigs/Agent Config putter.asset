@@ -1,0 +1,100 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1580597786, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: Agent Config putter
+  m_EditorClassIdentifier: 
+  ViewDistance: 250
+  StateSightRangeMults: {x: 1, y: 1, z: 1}
+  HearingDistance: 300
+  StateHearingRangeMults: {x: 1, y: 1, z: 1}
+  MaxFOV: 230
+  StateFOVMults: {x: 1, y: 1, z: 1}
+  HasABrain: 1
+  RegistersPassiveThreats: 1
+  DoesAggroOnFriendlyFire: 0
+  SearchExtentsModifier: 1
+  DoesDropWeaponsOnBallistic: 1
+  CanPickup_Ranged: 1
+  CanPickup_Melee: 1
+  CanPickup_Other: 1
+  TargetCapacity: 5
+  TargetTrackingTime: 2
+  NoFreshTargetTime: 1.5
+  AssaultPointOverridesSkirmishPointWhenFurtherThan: 200
+  RunSpeed: 3.5
+  WalkSpeed: 1.4
+  SneakSpeed: 0.6
+  CrawlSpeed: 0.3
+  TurnSpeed: 8
+  MaxJointLimit: 6
+  MovementRotMagnitude: 3
+  AppliesDamageResistToIntegrityLoss: 0
+  TotalMustard: 150
+  BleedDamageMult: 0.5
+  BleedRateMultiplier: 0.5
+  BleedVFXIntensity: 70
+  DamMult_Projectile: 0.65
+  DamMult_Explosive: 0.5
+  DamMult_Melee: 0.75
+  DamMult_Piercing: 0.5
+  DamMult_Blunt: 0.5
+  DamMult_Cutting: 0.5
+  DamMult_Thermal: 0.5
+  DamMult_Chilling: 0.5
+  DamMult_EMP: 0.5
+  LinkDamageMultipliers:
+  - 7
+  - 1.5
+  - 1
+  - 0.6
+  LinkStaggerMultipliers:
+  - 4
+  - 1
+  - 1
+  - 1.5
+  StartingLinkIntegrity:
+  - {x: 100, y: 100}
+  - {x: 100, y: 100}
+  - {x: 100, y: 100}
+  - {x: 100, y: 100}
+  StartingChanceBrokenJoint:
+  - 0
+  - 0
+  - 0
+  - 0
+  ShudderThreshold: 2
+  ConfusionThreshold: 1.4
+  ConfusionMultiplier: 2
+  ConfusionTimeMax: 1
+  StunThreshold: 0.4
+  StunMultiplier: 1
+  StunTimeMax: 2
+  CanBeKnockedOut: 0
+  MaxUnconsciousTime: 90
+  CanBeGrabbed: 1
+  CanBeSevered: 1
+  CanBeStabbed: 1
+  CanBeSurpressed: 0
+  SuppressionMult: 1
+  DoesJointBreakKill_Head: 1
+  DoesJointBreakKill_Upper: 0
+  DoesJointBreakKill_Lower: 0
+  DoesSeverKill_Head: 1
+  DoesSeverKill_Upper: 1
+  DoesSeverKill_Lower: 1
+  DoesExplodeKill_Head: 1
+  DoesExplodeKill_Upper: 1
+  DoesExplodeKill_Lower: 1
+  UsesLinkSpawns: 0
+  LinkSpawns: []
+  LinkSpawnChance: []
+  OverrideSpeech: 1
+  OverrideSpeechSet: {fileID: 11400000, guid: f04b1c0efeeff654c908a91f06e839c1, type: 2}

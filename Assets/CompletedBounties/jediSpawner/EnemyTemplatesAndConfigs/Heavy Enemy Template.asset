@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 1743412743, guid: 61df6207064b6df9f1154d3f48a90696, type: 3}
+  m_Name: Heavy Enemy Template
+  m_EditorClassIdentifier: 
+  DisplayName: Jedi Chatter
+  SosigEnemyCategory: 1
+  SosigEnemyID: 110
+  SosigPrefabs:
+  - {fileID: 11400000, guid: a19a38d6f4759d747ad0ab6a19d1ae3d, type: 2}
+  ConfigTemplates:
+  - {fileID: 11400000, guid: 942ae15b154f73c4aa9b3c4c7d04c43a, type: 2}
+  - {fileID: 11400000, guid: 942ae15b154f73c4aa9b3c4c7d04c43a, type: 2}
+  - {fileID: 11400000, guid: 942ae15b154f73c4aa9b3c4c7d04c43a, type: 2}
+  - {fileID: 11400000, guid: 942ae15b154f73c4aa9b3c4c7d04c43a, type: 2}
+  - {fileID: 11400000, guid: df6a9c8c78d72cb40b6ac2f7ea5781ed, type: 2}
+  - {fileID: 11400000, guid: 942ae15b154f73c4aa9b3c4c7d04c43a, type: 2}
+  ConfigTemplates_Easy:
+  - {fileID: 11400000, guid: 942ae15b154f73c4aa9b3c4c7d04c43a, type: 2}
+  OutfitConfig:
+  - {fileID: 11400000, guid: f9cd02f0569be3648a583379c3c42abb, type: 2}
+  WeaponOptions:
+  - {fileID: 11400000, guid: a0a998ba419cb060156a7985c8cd3ad1, type: 2}
+  - {fileID: 11400000, guid: 8784673019f70b14ca22b36886667cdc, type: 2}
+  - {fileID: 11400000, guid: f01873aa8e1babb46b8d73aab10d5808, type: 2}
+  - {fileID: 11400000, guid: e7993fce14efbff4d9921ba94080e53d, type: 2}
+  WeaponOptions_Secondary:
+  - {fileID: 11400000, guid: 75539416d6349df4f94ce24069bbb21d, type: 2}
+  - {fileID: 11400000, guid: 0a11f2e4fdcd16643a7112f92773bc90, type: 2}
+  SecondaryChance: 1
+  WeaponOptions_Tertiary:
+  - {fileID: 11400000, guid: 30bccd24bac2fcc4f8ec4204dae636d6, type: 2}
+  - {fileID: 11400000, guid: 154ccec84badd264da9ce3c3183489fa, type: 2}
+  TertiaryChance: 1
