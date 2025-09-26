@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using FistVR;
 
@@ -200,12 +201,12 @@ namespace H3TVR
             
             foreach (var loadout in loadouts)
             {
-                Debug.Log($"    Loadout: {loadout.loadoutName}");
-                Debug.Log($"      Description: {loadout.description}");
-                Debug.Log($"      IFF: {loadout.defaultIFF}");
-                Debug.Log($"      Hostile: {loadout.isHostileToPlayer}");
-                Debug.Log($"      Primary weapons: {loadout.customPrimaryWeapons.Count}");
-                Debug.Log($"      Secondary weapons: {loadout.customSecondaryWeapons.Count}");
+                Debug.Log($"    Loadout: {loadout.Value.loadoutName}");
+                Debug.Log($"      Description: {loadout.Value.description}");
+                Debug.Log($"      IFF: {loadout.Value.defaultIFF}");
+                Debug.Log($"      Follow Player: {loadout.Value.followPlayer}");
+                Debug.Log($"      Primary weapons: {loadout.Value.primaryWeapons.Count}");
+                Debug.Log($"      Secondary weapons: {loadout.Value.secondaryWeapons.Count}");
             }
             
             if (loadouts.Count > 0)
@@ -261,25 +262,32 @@ namespace H3TVR
                     return;
                 }
                 
-                var testLoadout = loadouts[0];
+                var firstLoadout = loadouts.FirstOrDefault();
+                if (firstLoadout.Key == null)
+                {
+                    Debug.LogWarning("No valid loadouts found for testing");
+                    return;
+                }
+                
+                var testLoadout = firstLoadout.Value;
                 Debug.Log($"Testing with loadout: {testLoadout.loadoutName}");
                 
                 // Test loadout validation
-                bool hasTemplate = testLoadout.primaryTemplates.Count > 0 || 
-                                  testLoadout.alternativeTemplates.Count > 0 ||
-                                  H3VRAssetLoader.GetAllSosigTemplates().Count > 0;
+                bool hasWeapons = testLoadout.primaryWeapons.Count > 0 || 
+                                 testLoadout.secondaryWeapons.Count > 0 ||
+                                 H3VRAssetLoader.GetAllWeapons().Count > 0;
                                   
-                Debug.Log($"Has available templates: {hasTemplate}");
-                Debug.Log($"Has armor config: {testLoadout.armorConfig != null}");
-                Debug.Log($"Has primary weapons: {testLoadout.customPrimaryWeapons.Count}");
+                Debug.Log($"Has available weapons: {hasWeapons}");
+                Debug.Log($"Has primary weapons: {testLoadout.primaryWeapons.Count}");
+                Debug.Log($"Available H3VR templates: {H3VRAssetLoader.GetAllSosigTemplates().Count}");
                 
-                if (hasTemplate)
+                if (hasWeapons)
                 {
                     Debug.Log("PASSED: Sosig creation prerequisites met");
                 }
                 else
                 {
-                    Debug.LogWarning("WARNING: Missing templates for sosig creation");
+                    Debug.LogWarning("WARNING: Missing weapons for sosig creation");
                 }
             }
             catch (Exception ex)

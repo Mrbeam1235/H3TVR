@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using BepInEx.Configuration;
+using BepInEx.Logging;
 using System;
 
 namespace H3TVR
@@ -15,16 +16,18 @@ namespace H3TVR
         private SpawnManager spawnManager;
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
+        private ManualLogSource logger;
 
         public void Initialize(Dictionary<string, ConfigEntry<KeyCode>> bindings, H3TVRImproved pluginInstance)
         {
             keyBindings = bindings;
             plugin = pluginInstance;
+            logger = BepInEx.Logging.Logger.CreateLogSource("H3TVR-InputHandler");
             
             // Get component references
-            spawnManager = GetComponent<SpawnManager>();
-            effectsManager = GetComponent<EffectsManager>();
-            weaponManager = GetComponent<WeaponManager>();
+            spawnManager = plugin.GetSpawnManager();
+            effectsManager = plugin.GetEffectsManager();
+            weaponManager = plugin.GetWeaponManager();
         }
 
         void Update()
@@ -33,45 +36,46 @@ namespace H3TVR
             ProcessEffectInputs();
             ProcessWeaponInputs();
             ProcessUtilityInputs();
+            ProcessChatSosigInputs();
         }
 
         private void ProcessSpawnInputs()
         {
-            if (Input.GetKeyDown(keyBindings["WonderToy"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnWonderfulToy"].Value))
                 spawnManager.SpawnWonderfulToy();
                 
-            if (Input.GetKeyDown(keyBindings["Pillow"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnPillow"].Value))
                 spawnManager.SpawnPillow();
                 
-            if (Input.GetKeyDown(keyBindings["Flash"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnFlash"].Value))
                 spawnManager.SpawnFlash();
                 
-            if (Input.GetKey(keyBindings["Shuri"].Value))
+            if (Input.GetKey(keyBindings["SpawnShuri"].Value))
                 spawnManager.SpawnShuri();
                 
-            if (Input.GetKeyDown(keyBindings["NadeRain"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnNadeRain"].Value))
                 spawnManager.SpawnNadeRain();
                 
-            if (Input.GetKeyDown(keyBindings["Hydration"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnHydration"].Value))
                 spawnManager.SpawnHydration();
                 
-            if (Input.GetKeyDown(keyBindings["JeditToy"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnJeditToy"].Value))
                 spawnManager.SpawnJeditToy();
                 
-            if (Input.GetKeyDown(keyBindings["SkittySubGun"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnSkittySubGun"].Value))
                 spawnManager.SpawnSkittySubGun();
                 
-            if (Input.GetKeyDown(keyBindings["Flash2"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnFlash2"].Value))
                 spawnManager.SpawnFlash2();
                 
-            if (Input.GetKeyDown(keyBindings["SkittyBigGun"].Value))
+            if (Input.GetKeyDown(keyBindings["SpawnSkittyBigGun"].Value))
                 spawnManager.SpawnSkittyBigGun();
         }
 
         private void ProcessEffectInputs()
         {
             // Slomo input handling
-            bool slomoTriggered = Input.GetKeyDown(keyBindings["Slomo"].Value);
+            bool slomoTriggered = Input.GetKeyDown(keyBindings["TriggerSlomo"].Value);
             
             // Check VR controller input for slomo
             bool vrEnabled;
@@ -85,10 +89,10 @@ namespace H3TVR
             if (slomoTriggered)
                 plugin.TriggerSlomo();
                 
-            if (Input.GetKeyDown(keyBindings["ZeroGravity"].Value))
+            if (Input.GetKeyDown(keyBindings["TriggerZeroG"].Value))
                 plugin.TriggerZeroGravity();
                 
-            if (Input.GetKey(keyBindings["DangerClose"].Value))
+            if (Input.GetKey(keyBindings["DangerCloseBarrage"].Value))
                 spawnManager.DangerCloseBarrage();
         }
 
@@ -96,12 +100,6 @@ namespace H3TVR
         {
             if (Input.GetKeyDown(keyBindings["ToggleFireMode"].Value))
                 weaponManager.ToggleHeldGunFireMode();
-                
-            if (Input.GetKeyDown(keyBindings["RandomizeHeldGun"].Value))
-                weaponManager.RandomizeHeldGun();
-                
-            if (Input.GetKeyDown(keyBindings["EmptyChamber"].Value))
-                weaponManager.EmptyHeldGunChamber();
                 
             if (Input.GetKeyDown(keyBindings["BoostMalfunction"].Value))
                 plugin.ActivateMalfunctionBoost();
@@ -115,8 +113,11 @@ namespace H3TVR
             if (Input.GetKeyDown(keyBindings["DestroyQuickbelt"].Value))
                 spawnManager.DestroyQuickbelt();
                 
-            if (Input.GetKeyDown(keyBindings["MeatHands"].Value))
-                effectsManager.EnableMeatHands();
+            if (Input.GetKeyDown(keyBindings["ShowStats"].Value))
+            {
+                // Show general stats
+                logger.LogInfo("H3TVR Stats - Plugin is running");
+            }
         }
 
         private void ProcessChatSosigInputs()
@@ -149,12 +150,10 @@ namespace H3TVR
                 {
                     ShowChatSosigStats();
                 }
-                
-                // ...existing input handling...
             }
             catch (Exception ex)
             {
-                Logger.LogError($"Input handling error: {ex.Message}");
+                logger.LogError($"Input handling error: {ex.Message}");
             }
         }
 
@@ -169,12 +168,12 @@ namespace H3TVR
                                         $"Friendly: {stats.friendlyCount} | " +
                                         $"Enemy: {stats.enemyCount} | " +
                                         $"Queued: {stats.queuedSpawns}";
-                    Logger.LogInfo(statsMessage);
+                    logger.LogInfo(statsMessage);
                 }
             }
             catch (Exception ex)
             {
-                Logger.LogError($"Failed to show chat sosig stats: {ex.Message}");
+                logger.LogError($"Failed to show chat sosig stats: {ex.Message}");
             }
         }
     }

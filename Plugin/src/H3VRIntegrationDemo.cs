@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using UnityEngine;
 using FistVR;
 
@@ -61,7 +62,7 @@ namespace H3TVR
             if (isReady)
             {
                 var stats = H3VRAssetLoader.GetLoadingStats();
-                Debug.Log($"Available Assets - Armor: {stats.armorCount}, Weapons: {stats.weaponCount}, Sosig Templates: {stats.sosigTemplateCount}");
+                Debug.Log($"Available Assets - {stats}");
             }
             else
             {
@@ -86,15 +87,15 @@ namespace H3TVR
         {
             Debug.Log("Testing Armor Assets:");
             
-            var armorPieces = H3VRAssetLoader.GetAvailableArmor();
-            Debug.Log($"Found {armorPieces.Count} armor pieces from H3VR DLL");
+            var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
+            Debug.Log($"Found {armorCategories.Count} armor categories from H3VR DLL");
             
             // Show first few armor pieces as examples
             int count = 0;
-            foreach (var armor in armorPieces)
+            foreach (var category in armorCategories)
             {
                 if (count >= 3) break; // Just show first 3 as examples
-                Debug.Log($"  - {armor.Key}: {armor.Value?.name ?? "null"}");
+                Debug.Log($"  - {category.Key}: {category.Value.Count} items");
                 count++;
             }
         }
@@ -103,7 +104,7 @@ namespace H3TVR
         {
             Debug.Log("Testing Weapon Assets:");
             
-            var weapons = H3VRAssetLoader.GetAvailableWeapons();
+            var weapons = H3VRAssetLoader.GetAllWeapons();
             Debug.Log($"Found {weapons.Count} weapons from H3VR DLL");
             
             // Show first few weapons as examples
@@ -111,7 +112,7 @@ namespace H3TVR
             foreach (var weapon in weapons)
             {
                 if (count >= 3) break; // Just show first 3 as examples
-                Debug.Log($"  - {weapon.Key}: {weapon.Value?.DisplayName ?? "null"}");
+                Debug.Log($"  - {weapon.ItemID}: {weapon.DisplayName ?? "unknown"}");
                 count++;
             }
         }
@@ -124,11 +125,10 @@ namespace H3TVR
             var demoLoadout = new SosigLoadoutConfiguration
             {
                 loadoutName = "H3VR Demo Loadout",
-                useH3VRAssets = true,
-                primaryWeapon = "AK74", // Use H3VR weapon ID
-                secondaryWeapon = "M1911", // Use H3VR weapon ID
-                armorPieces = new System.Collections.Generic.List<string> { "Helmet_PASGT", "Vest_IOTV" },
-                sosigTemplate = "PMC_Grunt" // Use H3VR sosig template
+                description = "Demo loadout using H3VR assets",
+                primaryWeapons = new System.Collections.Generic.List<string> { "AK74" },
+                secondaryWeapons = new System.Collections.Generic.List<string> { "M1911" },
+                tertiaryWeapons = new System.Collections.Generic.List<string>()
             };
             
             // Test dry run (doesn't actually spawn, just validates)
@@ -138,8 +138,7 @@ namespace H3TVR
             if (canCreate)
             {
                 Debug.Log("Demo sosig loadout validated successfully!");
-                Debug.Log($"Using H3VR assets: Primary={demoLoadout.primaryWeapon}, Secondary={demoLoadout.secondaryWeapon}");
-                Debug.Log($"Armor pieces: {string.Join(", ", demoLoadout.armorPieces)}");
+                Debug.Log($"Using H3VR assets: Primary={string.Join(", ", demoLoadout.primaryWeapons.ToArray())}, Secondary={string.Join(", ", demoLoadout.secondaryWeapons.ToArray())}");
             }
             else
             {
@@ -160,8 +159,12 @@ namespace H3TVR
                 return false;
             }
             
-            var stats = H3VRAssetLoader.GetLoadingStats();
-            bool hasAssets = stats.armorCount > 0 || stats.weaponCount > 0 || stats.sosigTemplateCount > 0;
+            var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
+            var weapons = H3VRAssetLoader.GetAllWeapons();
+            var templates = H3VRAssetLoader.GetAllSosigTemplates();
+            
+            int armorCount = armorCategories.Values.Sum(list => list.Count);
+            bool hasAssets = armorCount > 0 || weapons.Count > 0 || templates.Count > 0;
             
             if (!hasAssets)
             {
@@ -169,7 +172,7 @@ namespace H3TVR
                 return false;
             }
             
-            Debug.Log($"H3VR Integration Working! Loaded {stats.armorCount} armor, {stats.weaponCount} weapons, {stats.sosigTemplateCount} sosig templates");
+            Debug.Log($"H3VR Integration Working! Loaded {armorCount} armor, {weapons.Count} weapons, {templates.Count} sosig templates");
             return true;
         }
         

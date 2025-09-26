@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using BepInEx;
+using FistVR;
 
 namespace H3TVR
 {

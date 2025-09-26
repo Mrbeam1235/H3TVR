@@ -10,6 +10,15 @@ using BepInEx.Logging;
 namespace H3TVR
 {
     /// <summary>
+    /// Helper class for magazine compatibility scoring
+    /// </summary>
+    public class MagazineCompatibilityScore
+    {
+        public FVRObject magazine;
+        public int score;
+    }
+
+    /// <summary>
     /// Manages all weapon-related functionality including gun randomization, fire mode toggling, and malfunction boosts
     /// 
     /// MAGAZINE COMPATIBILITY SYSTEM:
@@ -124,7 +133,8 @@ namespace H3TVR
 
         private void SpawnFromConfigLists(bool isBigGun)
         {
-            var (gunListValue, magListValue) = plugin.GetGunLists();
+            string gunListValue, magListValue;
+            plugin.GetGunLists(out gunListValue, out magListValue);
             
             string gunListString = File.Exists(gunListValue) ? File.ReadAllText(gunListValue) : gunListValue;
             string[] gunList = ParseConfigList(gunListString);
@@ -367,7 +377,8 @@ namespace H3TVR
         /// </summary>
         private void SpawnSkittyGunFromLists(bool isBigGun)
         {
-            var (gunListValue, magListValue) = plugin.GetGunLists();
+            string gunListValue, magListValue;
+            plugin.GetGunLists(out gunListValue, out magListValue);
             
             // Parse gun list
             string gunListString = File.Exists(gunListValue) ? File.ReadAllText(gunListValue) : gunListValue;
@@ -773,7 +784,179 @@ namespace H3TVR
         }
         #endregion
 
-        #region Utility Methods
+        #region Helper Methods
+
+        /// <summary>
+        /// Find magazine from config lists using original H3TVR method
+        /// </summary>
+        private FVRObject FindMagazineFromConfigLists(FVRObject gunObj)
+        {
+            try
+            {
+                string gunListValue, magListValue;
+                plugin.GetGunLists(out gunListValue, out magListValue);
+                
+                string magazineListString = File.Exists(magListValue) ? File.ReadAllText(magListValue) : magListValue;
+                string[] magazineList = ParseConfigList(magazineListString);
+
+                if (magazineList.Length == 0) return null;
+
+                // Use 5-character truncation method like original
+                string gunTruncated = new string(gunObj.ItemID.Take(5).ToArray());
+                var matchingMagazines = magazineList.Where(m => m.Contains(gunTruncated)).ToArray();
+
+                if (matchingMagazines.Length > 0)
+                {
+                    string selectedMag = matchingMagazines[UnityEngine.Random.Range(0, matchingMagazines.Length)];
+                    if (IM.OD.ContainsKey(selectedMag))
+                    {
+                        return IM.OD[selectedMag];
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"FindMagazineFromConfigLists failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Spawn a magazine at the specified position
+        /// </summary>
+        private void SpawnMagazine(FVRObject magObj, Vector3 spawnPos, bool isBigGun)
+        {
+            try
+            {
+                GameObject magGO = Instantiate(magObj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
+                var magRB = magGO.GetComponent<Rigidbody>();
+                if (magRB != null)
+                {
+                    magRB.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
+                    magRB.AddForce(GM.CurrentPlayerBody.Head.forward * 100f);
+                }
+
+                if (isBigGun)
+                {
+                    magGO.transform.localScale = new Vector3(5, 5, 5);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnMagazine failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Calculate compatibility score based on ItemID similarity
+        /// </summary>
+        private int CalculateItemIdFamilyScore(string gunId, string magId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(gunId) || string.IsNullOrEmpty(magId))
+                    return 0;
+
+                // Convert to lowercase for comparison
+                gunId = gunId.ToLower();
+                magId = magId.ToLower();
+
+                // Exact match bonus
+                if (gunId == magId) return 120;
+
+                // Substring matching with different lengths
+                for (int len = Math.Min(gunId.Length, magId.Length); len >= 3; len--)
+                {
+                    string gunPrefix = gunId.Substring(0, Math.Min(len, gunId.Length));
+                    if (magId.Contains(gunPrefix))
+                    {
+                        return Math.Max(0, 40 + (len * 10)); // Higher score for longer matches
+                    }
+                }
+
+                return 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Check if firearm size correlates with magazine capacity
+        /// </summary>
+        private bool CorrelateFirearmSizeWithCapacity(FVRObject.OTagFirearmSize gunSize, int magCapacity)
+        {
+            try
+            {
+                switch (gunSize)
+                {
+                    case FVRObject.OTagFirearmSize.Pocket:
+                        return magCapacity <= 10;
+                    case FVRObject.OTagFirearmSize.Pistol:
+                        return magCapacity >= 5 && magCapacity <= 20;
+                    case FVRObject.OTagFirearmSize.Compact:
+                        return magCapacity >= 10 && magCapacity <= 30;
+                    case FVRObject.OTagFirearmSize.Carbine:
+                        return magCapacity >= 15 && magCapacity <= 40;
+                    case FVRObject.OTagFirearmSize.FullSize:
+                        return magCapacity >= 20 && magCapacity <= 50;
+                    case FVRObject.OTagFirearmSize.Bulky:
+                        return magCapacity >= 30;
+                    case FVRObject.OTagFirearmSize.Oversize:
+                        return magCapacity >= 50;
+                    default:
+                        return true; // Unknown size, don't penalize
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Calculate brand/manufacturer compatibility based on name similarity
+        /// </summary>
+        private int CalculateBrandCompatibility(string gunName, string magName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(gunName) || string.IsNullOrEmpty(magName))
+                    return 0;
+
+                gunName = gunName.ToLower();
+                magName = magName.ToLower();
+
+                // Common brand/manufacturer keywords
+                string[] brands = { "ak", "ar", "m4", "hk", "sig", "glock", "beretta", "colt", "fn", "steyr", "kel", "ruger" };
+
+                foreach (var brand in brands)
+                {
+                    if (gunName.Contains(brand) && magName.Contains(brand))
+                    {
+                        return 40;
+                    }
+                }
+
+                // Check for common word matches
+                var gunWords = gunName.Split(' ', '-', '_').Where(w => w.Length > 2).ToArray();
+                var magWords = magName.Split(' ', '-', '_').Where(w => w.Length > 2).ToArray();
+
+                int commonWords = gunWords.Intersect(magWords).Count();
+                return commonWords * 15;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Validate spawn conditions
+        /// </summary>
         private bool ValidateSpawnConditions()
         {
             if (GM.CurrentPlayerBody?.Head == null)

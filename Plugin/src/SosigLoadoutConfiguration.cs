@@ -244,6 +244,30 @@ namespace H3TVR
             // or Unity asset files
         }
 
+        private static void LoadAssetsFromH3VR()
+        {
+            // Load assets from H3VR asset loader
+            // This method connects the sosig loadout system with the H3VR asset system
+            try
+            {
+                if (!H3VRAssetLoader.IsInitialized)
+                {
+                    H3VRAssetLoader.Initialize();
+                }
+
+                // Update loadouts with H3VR assets
+                foreach (var loadout in loadouts)
+                {
+                    // Update weapon references from H3VR asset system
+                    // This would be expanded to load actual weapon and armor references
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Failed to load assets from H3VR: {ex.Message}");
+            }
+        }
+
         public static List<AdvancedSosigLoadout> GetAllLoadouts()
         {
             if (!initialized) Initialize();
@@ -291,6 +315,110 @@ namespace H3TVR
         public static List<AdvancedSosigLoadout> GetNeutralLoadouts()
         {
             return GetLoadoutsByFaction(2);
+        }
+
+        /// <summary>
+        /// Get loadouts with compatibility layer
+        /// </summary>
+        public static Dictionary<string, SosigLoadoutConfiguration> GetLoadouts()
+        {
+            var result = new Dictionary<string, SosigLoadoutConfiguration>();
+            var advancedLoadouts = GetAllLoadouts();
+            
+            foreach (var advanced in advancedLoadouts)
+            {
+                var simple = new SosigLoadoutConfiguration
+                {
+                    loadoutName = advanced.loadoutName,
+                    description = advanced.description,
+                    healthMultiplier = advanced.useCustomHealth ? advanced.customHealthMultiplier : 1.0f,
+                    speedMultiplier = advanced.useCustomSpeed ? advanced.customSpeedMultiplier : 1.0f,
+                    defaultIFF = advanced.defaultIFF,
+                    followPlayer = advanced.followPlayer
+                };
+                
+                // Convert FVRObjects back to strings
+                foreach (var weapon in advanced.customPrimaryWeapons)
+                {
+                    if (weapon != null) simple.primaryWeapons.Add(weapon.ItemID);
+                }
+                
+                foreach (var weapon in advanced.customSecondaryWeapons)
+                {
+                    if (weapon != null) simple.secondaryWeapons.Add(weapon.ItemID);
+                }
+                
+                foreach (var weapon in advanced.customTertiaryWeapons)
+                {
+                    if (weapon != null) simple.tertiaryWeapons.Add(weapon.ItemID);
+                }
+                
+                result[advanced.loadoutName] = simple;
+            }
+            
+            return result;
+        }
+    }
+    
+    /// <summary>
+    /// Simple sosig loadout configuration for basic compatibility
+    /// </summary>
+    [System.Serializable]
+    public class SosigLoadoutConfiguration
+    {
+        public string loadoutName = "Default Loadout";
+        public string description = "A basic sosig loadout";
+        public float healthMultiplier = 1.0f;
+        public float speedMultiplier = 1.0f;
+        public List<string> primaryWeapons = new List<string>();
+        public List<string> secondaryWeapons = new List<string>();
+        public List<string> tertiaryWeapons = new List<string>();
+        public int defaultIFF = 0;
+        public bool followPlayer = true;
+        
+        /// <summary>
+        /// Convert to AdvancedSosigLoadout for internal use
+        /// </summary>
+        public AdvancedSosigLoadout ToAdvancedLoadout()
+        {
+            var advanced = new AdvancedSosigLoadout
+            {
+                loadoutName = this.loadoutName,
+                description = this.description,
+                defaultIFF = this.defaultIFF,
+                followPlayer = this.followPlayer,
+                useCustomHealth = healthMultiplier != 1.0f,
+                customHealthMultiplier = healthMultiplier,
+                useCustomSpeed = speedMultiplier != 1.0f,
+                customSpeedMultiplier = speedMultiplier
+            };
+            
+            // Convert weapon strings to FVRObjects if available
+            foreach (var weaponId in primaryWeapons)
+            {
+                if (IM.OD != null && IM.OD.ContainsKey(weaponId))
+                {
+                    advanced.customPrimaryWeapons.Add(IM.OD[weaponId]);
+                }
+            }
+            
+            foreach (var weaponId in secondaryWeapons)
+            {
+                if (IM.OD != null && IM.OD.ContainsKey(weaponId))
+                {
+                    advanced.customSecondaryWeapons.Add(IM.OD[weaponId]);
+                }
+            }
+            
+            foreach (var weaponId in tertiaryWeapons)
+            {
+                if (IM.OD != null && IM.OD.ContainsKey(weaponId))
+                {
+                    advanced.customTertiaryWeapons.Add(IM.OD[weaponId]);
+                }
+            }
+            
+            return advanced;
         }
     }
 }

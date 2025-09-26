@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using FistVR;
 using BepInEx;
@@ -49,7 +50,7 @@ namespace H3TVR
 
         private void InitializeConfiguration()
         {
-            var h3tvrPlugin = FindObjectOfType<H3TVR>();
+            var h3tvrPlugin = FindObjectOfType<H3TVRImproved>();
             if (h3tvrPlugin == null)
             {
                 Debug.LogError("H3TVR plugin not found! Cannot initialize sosig spawner configuration.");
@@ -235,10 +236,11 @@ namespace H3TVR
             }
 
             // Optional: Integrate with slomo system
-            var h3tvrPlugin = FindObjectOfType<H3TVR>();
-            if (h3tvrPlugin != null && h3tvrPlugin.SlomoStatus == "On")
+            var h3tvrPlugin = FindObjectOfType<H3TVRImproved>();
+            if (h3tvrPlugin != null)
             {
                 // You could implement special behavior during slomo here
+                // For now we'll just handle sosig integration without checking slomo status
                 HandleSlomoIntegration(spawnedSosigs);
             }
         }

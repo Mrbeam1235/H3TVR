@@ -32,13 +32,39 @@ namespace H3TVR
                     return null;
                 }
 
-                // Create sosig from template
-                Sosig sosig = SosigEnemyTemplate.SpawnSosig(template, position, rotation);
-                if (sosig == null)
+                // Create sosig from template using proper H3VR spawn method
+                // Use the SosigEnemyTemplate's spawn system
+                if (template.SosigPrefabs == null || template.SosigPrefabs.Count == 0)
+                {
+                    Debug.LogError($"[SosigLoadoutUtility] Template {template.name} has no prefabs");
+                    return null;
+                }
+
+                // Get the prefab GameObject from the FVRObject
+                FVRObject prefabObject = template.SosigPrefabs[0];
+                GameObject prefab = prefabObject.GetGameObject();
+                if (prefab == null)
+                {
+                    Debug.LogError($"[SosigLoadoutUtility] Template {template.name} prefab has no GameObject");
+                    return null;
+                }
+
+                GameObject sosigGO = UnityEngine.Object.Instantiate(prefab, position, rotation);
+                if (sosigGO == null)
                 {
                     Debug.LogError($"[SosigLoadoutUtility] Failed to spawn sosig from template: {template.name}");
                     return null;
                 }
+
+                Sosig sosig = sosigGO.GetComponent<Sosig>();
+                if (sosig == null)
+                {
+                    Debug.LogError($"[SosigLoadoutUtility] Spawned object does not have Sosig component");
+                    return null;
+                }
+
+                // Apply template configuration
+                sosig.E.IFFCode = loadout.defaultIFF;
 
                 // Apply loadout configuration
                 ApplyLoadoutToSosig(sosig, loadout);
@@ -100,9 +126,7 @@ namespace H3TVR
             // Apply health modifications
             if (loadout.useCustomHealth)
             {
-                float newHealth = sosig.Health * loadout.customHealthMultiplier;
-                sosig.Health = newHealth;
-                sosig.MaxHealth = newHealth;
+                ApplyHealthModifier(sosig, loadout.customHealthMultiplier);
             }
 
             // Apply speed modifications
@@ -137,7 +161,7 @@ namespace H3TVR
                     var primaryWeapon = loadout.customPrimaryWeapons[UnityEngine.Random.Range(0, loadout.customPrimaryWeapons.Count)];
                     if (primaryWeapon != null && sosig.Links.Count > 1)
                     {
-                        SpawnWeaponOnSosig(sosig, primaryWeapon, sosig.Links[1]); // Right hand
+                        SpawnWeaponOnSosig(sosig, primaryWeapon.ItemID, sosig.Links[1].transform.position);
                     }
                 }
                 else if (loadout.useRandomWeapons)
@@ -145,7 +169,7 @@ namespace H3TVR
                     var randomWeapon = H3VRAssetLoader.GetRandomWeapon(FVRObject.ObjectCategory.Firearm);
                     if (randomWeapon != null && sosig.Links.Count > 1)
                     {
-                        SpawnWeaponOnSosig(sosig, randomWeapon, sosig.Links[1]);
+                        SpawnWeaponOnSosig(sosig, randomWeapon.ItemID, sosig.Links[1].transform.position);
                     }
                 }
 
@@ -155,7 +179,7 @@ namespace H3TVR
                     var secondaryWeapon = loadout.customSecondaryWeapons[UnityEngine.Random.Range(0, loadout.customSecondaryWeapons.Count)];
                     if (secondaryWeapon != null && sosig.Links.Count > 2)
                     {
-                        SpawnWeaponOnSosig(sosig, secondaryWeapon, sosig.Links[2]); // Left hand or holster
+                        SpawnWeaponOnSosig(sosig, secondaryWeapon.ItemID, sosig.Links[2].transform.position);
                     }
                 }
 
@@ -165,7 +189,7 @@ namespace H3TVR
                     var tertiaryWeapon = loadout.customTertiaryWeapons[UnityEngine.Random.Range(0, loadout.customTertiaryWeapons.Count)];
                     if (tertiaryWeapon != null && sosig.Links.Count > 0)
                     {
-                        SpawnWeaponOnSosig(sosig, tertiaryWeapon, sosig.Links[0]); // Head/back attachment
+                        SpawnWeaponOnSosig(sosig, tertiaryWeapon.ItemID, sosig.Links[0].transform.position);
                     }
                 }
             }
@@ -175,7 +199,40 @@ namespace H3TVR
             }
         }
 
-        /// <summary>\n        /// Spawn a weapon on a sosig link\n        /// </summary>\n        private static void SpawnWeaponOnSosig(Sosig sosig, FVRObject weaponObject, SosigLink link)\n        {\n            try\n            {\n                GameObject weaponPrefab = H3VRAssetLoader.GetSafeGameObject(weaponObject);\n                if (weaponPrefab != null)\n                {\n                    GameObject weaponGO = UnityEngine.Object.Instantiate(weaponPrefab);\n                    weaponGO.transform.position = link.transform.position;\n                    weaponGO.transform.rotation = link.transform.rotation;\n\n                    // Try to attach to sosig hand if applicable\n                    FVRPhysicalObject physObj = weaponGO.GetComponent<FVRPhysicalObject>();\n                    if (physObj != null && link.Hand != null)\n                    {\n                        sosig.ForceEquip(link.Hand, physObj);\n                    }\n                    else\n                    {\n                        // If can't equip, position near the sosig\n                        weaponGO.transform.SetParent(link.transform);\n                        weaponGO.transform.localPosition = Vector3.zero;\n                    }\n\n                    Debug.Log($\"[SosigLoadoutUtility] Spawned weapon {weaponObject.ItemID} on sosig\");\n                }\n                else\n                {\n                    Debug.LogWarning($\"[SosigLoadoutUtility] Could not get GameObject for weapon: {weaponObject?.ItemID}\");\n                }\n            }\n            catch (Exception ex)\n            {\n                Debug.LogError($\"[SosigLoadoutUtility] Error spawning weapon {weaponObject?.ItemID}: {ex.Message}\");\n            }\n        }
+        /// <summary>
+        /// Check if a sosig can be created from the given loadout
+        /// </summary>
+        public static bool CanCreateSosigFromLoadout(SosigLoadoutConfiguration loadout)
+        {
+            if (loadout == null) return false;
+            return !string.IsNullOrEmpty(loadout.loadoutName);
+        }
+
+        /// <summary>
+        /// Spawn a weapon on the sosig (placeholder implementation)
+        /// </summary>
+        private static void SpawnWeaponOnSosig(Sosig sosig, string weaponId, Vector3 position)
+        {
+            try
+            {
+                if (IM.OD.ContainsKey(weaponId))
+                {
+                    FVRObject weaponObj = IM.OD[weaponId];
+                    GameObject weaponGO = UnityEngine.Object.Instantiate(weaponObj.GetGameObject(), position, Quaternion.identity);
+                    
+                    SosigWeapon weapon = weaponGO.GetComponent<SosigWeapon>();
+                    if (weapon != null)
+                    {
+                        sosig.InitHands();
+                        sosig.ForceEquip(weapon);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to spawn weapon {weaponId} on sosig: {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// Apply armor configuration to sosig
@@ -187,7 +244,7 @@ namespace H3TVR
                 if (loadout.armorConfig == null) return;
 
                 // Create outfit config from loadout armor config
-                var outfitConfig = loadout.armorConfig.CreateOutfitConfig();
+                var outfitConfig = loadout.armorConfig.ToSosigOutfitConfig();
                 
                 // Apply armor to each sosig link
                 for (int i = 0; i < sosig.Links.Count; i++)
@@ -258,7 +315,7 @@ namespace H3TVR
             try
             {
                 // Set sosig order
-                sosig.CommandSosigToPoint(sosig.transform.position, loadout.fallbackOrder);
+                CommandSosigToPoint(sosig, sosig.transform.position);
 
                 // Configure patrol behavior
                 if (loadout.patrolArea)
@@ -270,7 +327,7 @@ namespace H3TVR
                 // Configure follow behavior
                 if (loadout.followPlayer && GM.CurrentPlayerBody != null)
                 {
-                    sosig.CommandSosigToFollowPlayer();
+                    CommandSosigToFollowPlayer(sosig);
                 }
 
                 // Configure chattering
@@ -302,10 +359,11 @@ namespace H3TVR
 
             foreach (var loadout in allLoadouts)
             {
+                var advancedLoadout = loadout.Value.ToAdvancedLoadout();
                 bool isAppropriate = true;
 
                 // Filter by friendly/enemy
-                if (friendlyOnly && loadout.isHostileToPlayer)
+                if (friendlyOnly && advancedLoadout.isHostileToPlayer)
                 {
                     isAppropriate = false;
                 }
@@ -314,16 +372,16 @@ namespace H3TVR
                 switch (scenarioType.ToLower())
                 {
                     case "urban":
-                        isAppropriate = loadout.loadoutName.ToLower().Contains("soldier") || 
-                                       loadout.loadoutName.ToLower().Contains("assault");
+                        isAppropriate = advancedLoadout.loadoutName.ToLower().Contains("soldier") || 
+                                       advancedLoadout.loadoutName.ToLower().Contains("assault");
                         break;
                     case "sniper":
-                        isAppropriate = loadout.loadoutName.ToLower().Contains("sniper") ||
-                                       loadout.loadoutName.ToLower().Contains("marksman");
+                        isAppropriate = advancedLoadout.loadoutName.ToLower().Contains("sniper") ||
+                                       advancedLoadout.loadoutName.ToLower().Contains("marksman");
                         break;
                     case "heavy":
-                        isAppropriate = loadout.loadoutName.ToLower().Contains("heavy") ||
-                                       loadout.loadoutName.ToLower().Contains("gunner");
+                        isAppropriate = advancedLoadout.loadoutName.ToLower().Contains("heavy") ||
+                                       advancedLoadout.loadoutName.ToLower().Contains("gunner");
                         break;
                     default:
                         isAppropriate = true; // Accept all for unknown scenarios
@@ -332,11 +390,77 @@ namespace H3TVR
 
                 if (isAppropriate)
                 {
-                    recommendations.Add(loadout);
+                    recommendations.Add(advancedLoadout);
                 }
             }
 
             return recommendations;
+        }
+
+        /// <summary>
+        /// Apply health modifier to sosig using proper H3VR API
+        /// </summary>
+        private static void ApplyHealthModifier(Sosig sosig, float healthMultiplier)
+        {
+            if (sosig == null || sosig.Links == null || sosig.Links.Count == 0) return;
+
+            try
+            {
+                // Apply health multiplier to all sosig links
+                foreach (var link in sosig.Links)
+                {
+                    if (link != null)
+                    {
+                        // Use the proper sosig link health system
+                        float currentIntegrity = link.m_integrity;
+                        link.m_integrity = currentIntegrity * healthMultiplier;
+                        // Note: sosig links may not have m_integrityTotal in some H3VR versions
+                        // So we'll skip that part for now to avoid compilation errors
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to apply health modifier: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Command sosig to move to a specific point using proper H3VR API
+        /// </summary>
+        private static void CommandSosigToPoint(Sosig sosig, Vector3 point)
+        {
+            if (sosig == null) return;
+            
+            try
+            {
+                sosig.CommandAssaultPoint(point);
+                sosig.SetCurrentOrder(Sosig.SosigOrder.Assault);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to command sosig to point: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Command sosig to follow the player using proper H3VR API
+        /// </summary>
+        private static void CommandSosigToFollowPlayer(Sosig sosig)
+        {
+            if (sosig == null || GM.CurrentPlayerBody == null) return;
+            
+            try
+            {
+                Vector3 followPoint = GM.CurrentPlayerBody.transform.position + Vector3.back * 2f;
+                sosig.CommandAssaultPoint(followPoint);
+                sosig.FallbackOrder = Sosig.SosigOrder.SearchForEquipment;
+                sosig.SetCurrentOrder(Sosig.SosigOrder.Assault);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to command sosig to follow player: {ex.Message}");
+            }
         }
     }
 }

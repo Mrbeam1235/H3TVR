@@ -792,6 +792,14 @@ namespace H3TVR
                 totalSpawned = activeChatSosigs.Count // This would be tracked over time in a full implementation
             };
         }
+
+        /// <summary>
+        /// Gets the plugin instance - used by other components to access plugin configuration
+        /// </summary>
+        public H3TVRImproved GetPlugin()
+        {
+            return plugin;
+        }
     }
 
     // Data structures

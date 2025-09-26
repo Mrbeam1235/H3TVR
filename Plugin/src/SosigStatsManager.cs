@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
-using System;
+using FistVR;
+using System.IO;
 
 namespace H3TVR
 {
@@ -24,174 +26,116 @@ namespace H3TVR
             public Dictionary<string, float> sosigSurvivalTimes = new Dictionary<string, float>();
             public int longestSurvivalStreak = 0;
             public int currentStreak = 0;
-            public DateTime sessionStart;
         }
 
-        private SosigStats currentStats = new SosigStats();
-        private Dictionary<Sosig, float> sosigSpawnTimes = new Dictionary<Sosig, float>();
+        // Public stats accessible from performance monitor
+        private Dictionary<FistVR.Sosig, float> sosigSpawnTimes = new Dictionary<FistVR.Sosig, float>();
         private string statsFilePath = "BepInEx/config/H3TVR_Stats.json";
 
-        void Start()
+        public SosigStats Stats { get; private set; } = new SosigStats();
+
+        private void Start()
         {
             LoadStats();
-            currentStats.sessionStart = DateTime.Now;
         }
 
-        void Update()
+        public void RecordSosigSpawn(FistVR.Sosig sosig, string loadoutName, bool isAlly)
         {
-            currentStats.totalPlayTime += Time.deltaTime;
-            
-            // Clean up destroyed sosigs from tracking
-            var keysToRemove = new List<Sosig>();
-            foreach (var kvp in sosigSpawnTimes)
-            {
-                if (kvp.Key == null)
-                {
-                    keysToRemove.Add(kvp.Key);
-                }
-            }
-            
-            foreach (var key in keysToRemove)
-            {
-                sosigSpawnTimes.Remove(key);
-            }
-        }
+            Stats.totalSpawned++;
+            if (isAlly) Stats.alliesSpawned++;
+            else Stats.enemiesSpawned++;
 
-        public void RecordSosigSpawn(Sosig sosig, string loadoutName, bool isAlly, bool isBoss)
-        {
-            currentStats.totalSpawned++;
-            
-            if (isAlly)
-                currentStats.alliesSpawned++;
-            else
-                currentStats.enemiesSpawned++;
-                
-            if (isBoss)
-                currentStats.bossesSpawned++;
-
-            // Track loadout usage
-            if (!currentStats.loadoutUsage.ContainsKey(loadoutName))
-                currentStats.loadoutUsage[loadoutName] = 0;
-            currentStats.loadoutUsage[loadoutName]++;
-
-            // Track spawn time for survival calculation
             sosigSpawnTimes[sosig] = Time.time;
+
+            if (!Stats.loadoutUsage.ContainsKey(loadoutName))
+                Stats.loadoutUsage[loadoutName] = 0;
+            Stats.loadoutUsage[loadoutName]++;
         }
 
-        public void RecordSosigDeath(Sosig sosig, string causeOfDeath = "unknown")
+        public void RecordSosigDeath(FistVR.Sosig sosig, string causeOfDeath)
         {
             if (sosigSpawnTimes.ContainsKey(sosig))
             {
                 float survivalTime = Time.time - sosigSpawnTimes[sosig];
-                string sosigType = sosig.name.Replace("(Clone)", "").Trim();
-                
-                if (!currentStats.sosigSurvivalTimes.ContainsKey(sosigType))
-                    currentStats.sosigSurvivalTimes[sosigType] = 0f;
-                    
-                currentStats.sosigSurvivalTimes[sosigType] = 
-                    (currentStats.sosigSurvivalTimes[sosigType] + survivalTime) / 2f; // Running average
-
+                Stats.sosigSurvivalTimes[sosig.name] = survivalTime;
                 sosigSpawnTimes.Remove(sosig);
             }
 
-            currentStats.sosigKills++;
-            currentStats.currentStreak++;
+            Stats.sosigKills++;
+            Stats.currentStreak++;
             
-            if (currentStats.currentStreak > currentStats.longestSurvivalStreak)
-                currentStats.longestSurvivalStreak = currentStats.currentStreak;
-
-            // Track weapon kills if available
-            if (!string.IsNullOrEmpty(causeOfDeath))
-            {
-                if (!currentStats.weaponKills.ContainsKey(causeOfDeath))
-                    currentStats.weaponKills[causeOfDeath] = 0;
-                currentStats.weaponKills[causeOfDeath]++;
-            }
+            if (Stats.currentStreak > Stats.longestSurvivalStreak)
+                Stats.longestSurvivalStreak = Stats.currentStreak;
         }
 
         public void RecordPlayerDeath()
         {
-            currentStats.playerDeaths++;
-            currentStats.currentStreak = 0; // Reset kill streak
+            Stats.playerDeaths++;
+            Stats.currentStreak = 0;
+        }
+
+        public void RecordWeaponKill(string weaponName)
+        {
+            if (!Stats.weaponKills.ContainsKey(weaponName))
+                Stats.weaponKills[weaponName] = 0;
+            Stats.weaponKills[weaponName]++;
+        }
+
+        public void UpdatePlayTime()
+        {
+            Stats.totalPlayTime += Time.unscaledDeltaTime;
+        }
+
+        public SosigStats GetStats()
+        {
+            return Stats;
+        }
+
+        public string GetStatsReport()
+        {
+            var report = $@"=== H3TVR SOSIG STATISTICS ===
+Total Spawned: {Stats.totalSpawned}
+Allies: {Stats.alliesSpawned}
+Enemies: {Stats.enemiesSpawned}
+Bosses: {Stats.bossesSpawned}
+Kills: {Stats.sosigKills}
+Deaths: {Stats.playerDeaths}
+Current Streak: {Stats.currentStreak}
+Best Streak: {Stats.longestSurvivalStreak}
+Play Time: {Stats.totalPlayTime:F1}s";
+
+            return report;
+        }
+
+        private void LoadStats()
+        {
+            if (File.Exists(statsFilePath))
+            {
+                try
+                {
+                    string json = File.ReadAllText(statsFilePath);
+                    Stats = JsonUtility.FromJson<SosigStats>(json) ?? new SosigStats();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Failed to load stats: {ex.Message}");
+                    Stats = new SosigStats();
+                }
+            }
         }
 
         public void SaveStats()
         {
             try
             {
-                string json = JsonUtility.ToJson(currentStats, true);
-                System.IO.File.WriteAllText(statsFilePath, json);
-                Debug.Log("Stats saved successfully");
+                string json = JsonUtility.ToJson(Stats, true);
+                Directory.CreateDirectory(Path.GetDirectoryName(statsFilePath));
+                File.WriteAllText(statsFilePath, json);
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Debug.LogError($"Failed to save stats: {e.Message}");
+                Debug.LogError($"Failed to save stats: {ex.Message}");
             }
-        }
-
-        public void LoadStats()
-        {
-            try
-            {
-                if (System.IO.File.Exists(statsFilePath))
-                {
-                    string json = System.IO.File.ReadAllText(statsFilePath);
-                    currentStats = JsonUtility.FromJson<SosigStats>(json);
-                    Debug.Log("Stats loaded successfully");
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"Failed to load stats: {e.Message}");
-                currentStats = new SosigStats(); // Reset to default
-            }
-        }
-
-        public void ResetStats()
-        {
-            currentStats = new SosigStats();
-            currentStats.sessionStart = DateTime.Now;
-            sosigSpawnTimes.Clear();
-            SaveStats();
-            Debug.Log("Statistics reset");
-        }
-
-        public SosigStats GetCurrentStats()
-        {
-            return currentStats;
-        }
-
-        public string GetStatsReport()
-        {
-            var report = $@"=== SOSIG SPAWNER STATISTICS ===
-Session Started: {currentStats.sessionStart:yyyy-MM-dd HH:mm:ss}
-Play Time: {TimeSpan.FromSeconds(currentStats.totalPlayTime):hh\:mm\:ss}
-
-SPAWNING STATS:
-Total Spawned: {currentStats.totalSpawned}
-- Allies: {currentStats.alliesSpawned}
-- Enemies: {currentStats.enemiesSpawned}  
-- Bosses: {currentStats.bossesSpawned}
-
-COMBAT STATS:
-Sosig Kills: {currentStats.sosigKills}
-Player Deaths: {currentStats.playerDeaths}
-Current Streak: {currentStats.currentStreak}
-Best Streak: {currentStats.longestSurvivalStreak}
-K/D Ratio: {(currentStats.playerDeaths > 0 ? (float)currentStats.sosigKills / currentStats.playerDeaths : currentStats.sosigKills):F2}
-
-TOP LOADOUTS:";
-
-            // Add top 5 most used loadouts
-            var sortedLoadouts = new List<KeyValuePair<string, int>>(currentStats.loadoutUsage);
-            sortedLoadouts.Sort((x, y) => y.Value.CompareTo(x.Value));
-            
-            for (int i = 0; i < Math.Min(5, sortedLoadouts.Count); i++)
-            {
-                report += $"\n{i + 1}. {sortedLoadouts[i].Key}: {sortedLoadouts[i].Value} spawns";
-            }
-
-            return report;
         }
 
         void OnApplicationPause(bool pauseStatus)

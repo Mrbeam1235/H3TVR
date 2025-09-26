@@ -4,6 +4,8 @@ using System.Net.Sockets;
 using System.Threading;
 using UnityEngine;
 using BepInEx.Logging;
+using System.Collections;
+using System.Linq;
 
 namespace H3TVR
 {
@@ -71,7 +73,7 @@ namespace H3TVR
             }
         }
 
-        private void SendMessage(string message)
+        public new void SendMessage(string message)
         {
             if (stream == null || !isConnected) return;
             
@@ -110,7 +112,7 @@ namespace H3TVR
             
             foreach (string line in lines)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (IsNullOrWhiteSpace(line)) continue;
                 
                 // Handle PING/PONG
                 if (line.StartsWith("PING"))
@@ -125,6 +127,11 @@ namespace H3TVR
                     ParseChatCommand(line);
                 }
             }
+        }
+
+        private bool IsNullOrWhiteSpace(string value)
+        {
+            return string.IsNullOrEmpty(value) || value.Trim().Length == 0;
         }
 
         private void ParseChatCommand(string line)
@@ -257,10 +264,17 @@ namespace H3TVR
             StartCoroutine(MonitorChatFilesCoroutine());
         }
 
-        private System.Collections.IEnumerator MonitorChatFilesCoroutine()
+        private IEnumerator MonitorChatFilesCoroutine()
         {
-            string friendlyFilePath = chatSosigManager?.plugin?.GetTwitchChatFilePath() ?? "";
-            string enemyFilePath = chatSosigManager?.plugin?.GetTwitchEnemyChatFilePath() ?? "";
+            string friendlyFilePath = "";
+            string enemyFilePath = "";
+            
+            // Get file paths safely
+            if (chatSosigManager?.GetPlugin() != null)
+            {
+                friendlyFilePath = chatSosigManager.GetPlugin().GetTwitchChatFilePath();
+                enemyFilePath = chatSosigManager.GetPlugin().GetTwitchEnemyChatFilePath();
+            }
             
             DateTime lastFriendlyWrite = DateTime.MinValue;
             DateTime lastEnemyWrite = DateTime.MinValue;

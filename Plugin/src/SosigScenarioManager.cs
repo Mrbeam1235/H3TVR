@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using BepInEx.Configuration;
+using FistVR;
 
 namespace H3TVR
 {
@@ -42,7 +43,7 @@ namespace H3TVR
         private Coroutine currentScenario;
         private bool scenarioActive = false;
         private int currentWave = 0;
-        private List<Sosig> scenarioSosigs = new List<Sosig>();
+        private List<FistVR.Sosig> scenarioSosigs = new List<FistVR.Sosig>();
 
         public void InitializeScenarios()
         {
@@ -197,7 +198,7 @@ wave3_count=1";
                     }
                 }
 
-                SpawnWave(wave);
+                ExecuteSpawnWave(wave);
                 currentWave++;
             }
 
@@ -213,7 +214,7 @@ wave3_count=1";
             }
         }
 
-        private void SpawnWave(SpawnWave wave)
+        private void ExecuteSpawnWave(SpawnWave wave)
         {
             Debug.Log($"Spawning wave: {wave.name}");
             

@@ -96,7 +96,7 @@ namespace H3TVR
                 // Headwear detection
                 if (objectId.Contains("helmet") || objectId.Contains("hat") || objectId.Contains("cap") || 
                     objectId.Contains("beret") || objectId.Contains("headgear") || objectId.Contains("crown") ||
-                    (obj.Category == FVRObject.ObjectCategory.Armor && (objectId.Contains("head") || objectId.Contains("skull"))))
+                    (objectId.Contains("head") || objectId.Contains("skull")))
                 {
                     armorCategories["Headwear"].Add(obj);
                 }
@@ -398,7 +398,23 @@ namespace H3TVR
             outfit.Chance_Backpacks = backpackChance;
             outfit.Chance_TorosDecoration = decorationChance;
 
-                        // Assign loaded armor pieces safely\n            outfit.Headwear = armorCategories.ContainsKey(\"Headwear\") && armorCategories[\"Headwear\"].Count > 0 ? \n                armorCategories[\"Headwear\"] : new List<FVRObject>();\n            outfit.Facewear = armorCategories.ContainsKey(\"Facewear\") && armorCategories[\"Facewear\"].Count > 0 ? \n                armorCategories[\"Facewear\"] : new List<FVRObject>();\n            outfit.Eyewear = armorCategories.ContainsKey(\"Eyewear\") && armorCategories[\"Eyewear\"].Count > 0 ? \n                armorCategories[\"Eyewear\"] : new List<FVRObject>();\n            outfit.Torsowear = armorCategories.ContainsKey(\"Torsowear\") && armorCategories[\"Torsowear\"].Count > 0 ? \n                armorCategories[\"Torsowear\"] : new List<FVRObject>();\n            outfit.Pantswear = armorCategories.ContainsKey(\"Pantswear\") && armorCategories[\"Pantswear\"].Count > 0 ? \n                armorCategories[\"Pantswear\"] : new List<FVRObject>();\n            outfit.Pantswear_Lower = armorCategories.ContainsKey(\"PantswearLower\") && armorCategories[\"PantswearLower\"].Count > 0 ? \n                armorCategories[\"PantswearLower\"] : new List<FVRObject>();\n            outfit.Backpacks = armorCategories.ContainsKey(\"Backpacks\") && armorCategories[\"Backpacks\"].Count > 0 ? \n                armorCategories[\"Backpacks\"] : new List<FVRObject>();\n            outfit.TorosDecoration = armorCategories.ContainsKey(\"Decorations\") && armorCategories[\"Decorations\"].Count > 0 ? \n                armorCategories[\"Decorations\"] : new List<FVRObject>();
+            // Assign loaded armor pieces safely
+            outfit.Headwear = armorCategories.ContainsKey("Headwear") && armorCategories["Headwear"].Count > 0 ? 
+                armorCategories["Headwear"] : new List<FVRObject>();
+            outfit.Facewear = armorCategories.ContainsKey("Facewear") && armorCategories["Facewear"].Count > 0 ? 
+                armorCategories["Facewear"] : new List<FVRObject>();
+            outfit.Eyewear = armorCategories.ContainsKey("Eyewear") && armorCategories["Eyewear"].Count > 0 ? 
+                armorCategories["Eyewear"] : new List<FVRObject>();
+            outfit.Torsowear = armorCategories.ContainsKey("Torsowear") && armorCategories["Torsowear"].Count > 0 ? 
+                armorCategories["Torsowear"] : new List<FVRObject>();
+            outfit.Pantswear = armorCategories.ContainsKey("Pantswear") && armorCategories["Pantswear"].Count > 0 ? 
+                armorCategories["Pantswear"] : new List<FVRObject>();
+            outfit.Pantswear_Lower = armorCategories.ContainsKey("PantswearLower") && armorCategories["PantswearLower"].Count > 0 ? 
+                armorCategories["PantswearLower"] : new List<FVRObject>();
+            outfit.Backpacks = armorCategories.ContainsKey("Backpacks") && armorCategories["Backpacks"].Count > 0 ? 
+                armorCategories["Backpacks"] : new List<FVRObject>();
+            outfit.TorosDecoration = armorCategories.ContainsKey("Decorations") && armorCategories["Decorations"].Count > 0 ? 
+                armorCategories["Decorations"] : new List<FVRObject>();
 
             return outfit;
         }
@@ -480,6 +496,47 @@ namespace H3TVR
             
             // Try initialization, but don't fail if H3VR isn't ready yet
             Initialize();
+        }
+
+        /// <summary>
+        /// Check if H3VR systems are ready
+        /// </summary>
+        public static bool IsH3VRSystemReady()
+        {
+            return IsInitialized && IM.OD != null && IM.OD.Count > 0;
+        }
+
+        /// <summary>
+        /// Get loading statistics
+        /// </summary>
+        public static string GetLoadingStats()
+        {
+            if (!isInitialized)
+                return "H3VR Asset Loader not initialized";
+            
+            return $"Assets Loaded - Armor: {armorCategories.Values.Sum(list => list.Count)}, " +
+                   $"Weapons: {allWeapons.Count}, " +
+                   $"Attachments: {allAttachments.Count}, " +
+                   $"Templates: {gameTemplates.Count}, " +
+                   $"Outfits: {gameOutfits.Count}";
+        }
+
+        /// <summary>
+        /// Get available armor sets (simplified for compatibility)
+        /// </summary>
+        public static List<string> GetAvailableArmor()
+        {
+            if (!isInitialized) Initialize();
+            return armorCategories.Keys.ToList();
+        }
+
+        /// <summary>
+        /// Get available weapons (simplified for compatibility)
+        /// </summary>
+        public static List<string> GetAvailableWeapons()
+        {
+            if (!isInitialized) Initialize();
+            return allWeapons.Select(w => w.ItemID).ToList();
         }
     }
 }
