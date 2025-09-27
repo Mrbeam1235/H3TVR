@@ -29,7 +29,7 @@ namespace H3TVR
             try
             {
                 chatSosigManager = gameObject.AddComponent<TwitchChatSosigManager>();
-                chatSosigManager.Initialize(plugin, this, logger);
+                chatSosigManager.Initialize(plugin, logger); // Pass only 2 arguments
                 logger.LogInfo("TwitchChatSosigManager initialized successfully");
             }
             catch (Exception ex)

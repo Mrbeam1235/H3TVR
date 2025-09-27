@@ -16,6 +16,7 @@ namespace H3TVR
         private SpawnManager spawnManager;
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
+        private TwitchChatSosigManager chatSosigManager;
         private ManualLogSource logger;
 
         public void Initialize(Dictionary<string, ConfigEntry<KeyCode>> bindings, H3TVRImproved pluginInstance)
@@ -28,6 +29,9 @@ namespace H3TVR
             spawnManager = plugin.GetSpawnManager();
             effectsManager = plugin.GetEffectsManager();
             weaponManager = plugin.GetWeaponManager();
+            
+            // Get chat sosig manager reference
+            chatSosigManager = FindObjectOfType<TwitchChatSosigManager>();
         }
 
         void Update()
@@ -37,6 +41,7 @@ namespace H3TVR
             ProcessWeaponInputs();
             ProcessUtilityInputs();
             ProcessChatSosigInputs();
+            ProcessArmorGUIInputs();
         }
 
         private void ProcessSpawnInputs()
@@ -157,6 +162,24 @@ namespace H3TVR
             }
         }
 
+        private void ProcessArmorGUIInputs()
+        {
+            try
+            {
+                // Armor GUI Control - this is handled directly by TwitchChatSosigManager
+                // but we can add additional processing here if needed
+                if (Input.GetKeyDown(keyBindings["ArmorGUI"].Value) && chatSosigManager != null)
+                {
+                    // Optional: Add logging or additional processing
+                    logger.LogInfo("Armor GUI toggle requested");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Armor GUI input handling error: {ex.Message}");
+            }
+        }
+
         private void ShowChatSosigStats()
         {
             try
@@ -174,6 +197,14 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"Failed to show chat sosig stats: {ex.Message}");
+            }
+        }
+
+        public void UpdateChatSosigManagerReference()
+        {
+            if (chatSosigManager == null)
+            {
+                chatSosigManager = FindObjectOfType<TwitchChatSosigManager>();
             }
         }
     }

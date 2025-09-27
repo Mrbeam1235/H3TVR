@@ -72,46 +72,14 @@ namespace H3TVR
         private ConfigEntry<int> dangerCloseMinCount;
         private ConfigEntry<int> dangerCloseMaxCount;
         
-        // Chat Sosig Configuration
+        // Key Bindings - Organized
+        private readonly Dictionary<string, ConfigEntry<KeyCode>> keyBindings = new Dictionary<string, ConfigEntry<KeyCode>>();
+        
+        // Chat Sosig Configuration - Simplified
         private ConfigEntry<bool> enableTwitchChatSosigs;
         private ConfigEntry<string> twitchChatFilePath;
         private ConfigEntry<string> twitchEnemyChatFilePath;
-        private ConfigEntry<bool> enableChatSosigArmor;
-        private ConfigEntry<float> chatSosigArmorChance;
         private ConfigEntry<int> maxChatSosigs;
-        private ConfigEntry<float> chatSosigFollowDistance;
-        private ConfigEntry<bool> autoCleanupChatSosigs;
-        
-        // Key Bindings - Organized
-        private readonly Dictionary<string, ConfigEntry<KeyCode>> keyBindings = new Dictionary<string, ConfigEntry<KeyCode>>();
-        private readonly Dictionary<string, KeyValuePair<KeyCode, string>> defaultKeyBindings = new Dictionary<string, KeyValuePair<KeyCode, string>>
-        {
-            { "SpawnWonderfulToy", new KeyValuePair<KeyCode, string>(KeyCode.Keypad1, "Spawn Wonderful Toy") },
-            { "SpawnJeditToy", new KeyValuePair<KeyCode, string>(KeyCode.Keypad2, "Spawn Jedit Toy") },
-            { "SpawnHydration", new KeyValuePair<KeyCode, string>(KeyCode.Keypad3, "Spawn Hydration") },
-            { "SpawnPillow", new KeyValuePair<KeyCode, string>(KeyCode.Keypad4, "Spawn Pillow") },
-            { "SpawnShuri", new KeyValuePair<KeyCode, string>(KeyCode.Keypad5, "Spawn Shuriken") },
-            { "SpawnFlash", new KeyValuePair<KeyCode, string>(KeyCode.Keypad6, "Spawn Flash") },
-            { "SpawnFlash2", new KeyValuePair<KeyCode, string>(KeyCode.Keypad7, "Spawn Flash2") },
-            { "SpawnSkittySubGun", new KeyValuePair<KeyCode, string>(KeyCode.Keypad8, "Spawn Random Gun (Small)") },
-            { "SpawnSkittyBigGun", new KeyValuePair<KeyCode, string>(KeyCode.Keypad9, "Spawn Random Gun (Large)") },
-            { "SpawnNadeRain", new KeyValuePair<KeyCode, string>(KeyCode.KeypadDivide, "Spawn Grenade Rain") },
-            { "DangerCloseBarrage", new KeyValuePair<KeyCode, string>(KeyCode.KeypadMultiply, "Danger Close Barrage") },
-            { "DestroyHeld", new KeyValuePair<KeyCode, string>(KeyCode.KeypadMinus, "Destroy Held Item") },
-            { "DestroyQuickbelt", new KeyValuePair<KeyCode, string>(KeyCode.KeypadPlus, "Drop Quickbelt Items") },
-            { "TriggerSlomo", new KeyValuePair<KeyCode, string>(KeyCode.F, "Trigger Slow Motion") },
-            { "TriggerZeroG", new KeyValuePair<KeyCode, string>(KeyCode.G, "Trigger Zero Gravity") },
-            { "ToggleFireMode", new KeyValuePair<KeyCode, string>(KeyCode.T, "Toggle Fire Mode") },
-            { "BoostMalfunction", new KeyValuePair<KeyCode, string>(KeyCode.Y, "Boost Malfunction") },
-            { "ShowStats", new KeyValuePair<KeyCode, string>(KeyCode.Tab, "Show Stats") },
-            
-            // Chat Sosig Key Bindings
-            { "SpawnChatSosigFriendly", new KeyValuePair<KeyCode, string>(KeyCode.P, "Spawn Friendly Chat Sosig") },
-            { "SpawnChatSosigEnemy", new KeyValuePair<KeyCode, string>(KeyCode.O, "Spawn Enemy Chat Sosig") },
-            { "CycleChatSosigArmor", new KeyValuePair<KeyCode, string>(KeyCode.L, "Cycle Chat Sosig Armor") },
-            { "ClearChatSosigs", new KeyValuePair<KeyCode, string>(KeyCode.Delete, "Clear All Chat Sosigs") },
-            { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") }
-        };
         #endregion
 
         #region Components
@@ -184,20 +152,46 @@ namespace H3TVR
             dangerCloseMinCount = Config.Bind("DangerClose", "MinCount", 1, "Minimum danger close rounds");
             dangerCloseMaxCount = Config.Bind("DangerClose", "MaxCount", 5, "Maximum danger close rounds");
 
-            // Chat Sosig Configuration
+            // Chat Sosig Configuration - Simplified
             enableTwitchChatSosigs = Config.Bind("Chat Sosigs", "EnableTwitchChatSosigs", true, "Enable Twitch chat sosig spawning");
-            twitchChatFilePath = Config.Bind("Chat Sosigs", "TwitchChatFilePath", "chat_spawner.txt", "File path for friendly chat sosig names");
-            twitchEnemyChatFilePath = Config.Bind("Chat Sosigs", "TwitchEnemyChatFilePath", "enemy_chat_spawner.txt", "File path for enemy chat sosig names");
-            enableChatSosigArmor = Config.Bind("Chat Sosigs", "EnableArmor", true, "Enable armor customization for chat sosigs");
-            chatSosigArmorChance = Config.Bind("Chat Sosigs", "ArmorChance", 0.7f, "Chance for chat sosigs to spawn with armor (0-1)");
+            twitchChatFilePath = Config.Bind("Chat Sosigs", "TwitchChatFilePath", "ally_names.txt", "File path for ally sosig names");
+            twitchEnemyChatFilePath = Config.Bind("Chat Sosigs", "TwitchEnemyChatFilePath", "enemy_names.txt", "File path for enemy sosig names");
             maxChatSosigs = Config.Bind("Chat Sosigs", "MaxChatSosigs", 10, "Maximum number of active chat sosigs");
-            chatSosigFollowDistance = Config.Bind("Chat Sosigs", "FollowDistance", 6f, "Distance at which friendly sosigs follow the player");
-            autoCleanupChatSosigs = Config.Bind("Chat Sosigs", "AutoCleanup", true, "Automatically clean up dead chat sosigs");
         }
 
         private void InitializeKeyBindings()
         {
-            foreach (var kvp in defaultKeyBindings)
+            var keyBindingConfigs = new Dictionary<string, KeyValuePair<KeyCode, string>>
+            {
+                { "SpawnWonderfulToy", new KeyValuePair<KeyCode, string>(KeyCode.Keypad1, "Spawn Wonderful Toy") },
+                { "SpawnJeditToy", new KeyValuePair<KeyCode, string>(KeyCode.Keypad2, "Spawn Jedit Toy") },
+                { "SpawnHydration", new KeyValuePair<KeyCode, string>(KeyCode.Keypad3, "Spawn Hydration") },
+                { "SpawnPillow", new KeyValuePair<KeyCode, string>(KeyCode.Keypad4, "Spawn Pillow") },
+                { "SpawnShuri", new KeyValuePair<KeyCode, string>(KeyCode.Keypad5, "Spawn Shuriken") },
+                { "SpawnFlash", new KeyValuePair<KeyCode, string>(KeyCode.Keypad6, "Spawn Flash") },
+                { "SpawnFlash2", new KeyValuePair<KeyCode, string>(KeyCode.Keypad7, "Spawn Flash2") },
+                { "SpawnSkittySubGun", new KeyValuePair<KeyCode, string>(KeyCode.Keypad8, "Spawn Random Gun (Small)") },
+                { "SpawnSkittyBigGun", new KeyValuePair<KeyCode, string>(KeyCode.Keypad9, "Spawn Random Gun (Large)") },
+                { "SpawnNadeRain", new KeyValuePair<KeyCode, string>(KeyCode.KeypadDivide, "Spawn Grenade Rain") },
+                { "DangerCloseBarrage", new KeyValuePair<KeyCode, string>(KeyCode.KeypadMultiply, "Danger Close Barrage") },
+                { "DestroyHeld", new KeyValuePair<KeyCode, string>(KeyCode.KeypadMinus, "Destroy Held Item") },
+                { "DestroyQuickbelt", new KeyValuePair<KeyCode, string>(KeyCode.KeypadPlus, "Drop Quickbelt Items") },
+                { "TriggerSlomo", new KeyValuePair<KeyCode, string>(KeyCode.F, "Trigger Slow Motion") },
+                { "TriggerZeroG", new KeyValuePair<KeyCode, string>(KeyCode.G, "Trigger Zero Gravity") },
+                { "ToggleFireMode", new KeyValuePair<KeyCode, string>(KeyCode.T, "Toggle Fire Mode") },
+                { "BoostMalfunction", new KeyValuePair<KeyCode, string>(KeyCode.Y, "Boost Malfunction") },
+                { "ShowStats", new KeyValuePair<KeyCode, string>(KeyCode.Tab, "Show Stats") },
+                
+                // Chat Sosig Key Bindings
+                { "SpawnChatSosigFriendly", new KeyValuePair<KeyCode, string>(KeyCode.P, "Spawn Friendly Chat Sosig") },
+                { "SpawnChatSosigEnemy", new KeyValuePair<KeyCode, string>(KeyCode.O, "Spawn Enemy Chat Sosig") },
+                { "CycleChatSosigArmor", new KeyValuePair<KeyCode, string>(KeyCode.L, "Cycle Chat Sosig Armor") },
+                { "ClearChatSosigs", new KeyValuePair<KeyCode, string>(KeyCode.Delete, "Clear All Chat Sosigs") },
+                { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") },
+                { "ArmorGUI", new KeyValuePair<KeyCode, string>(KeyCode.F6, "Open Armor Configuration GUI") }
+            };
+
+            foreach (var kvp in keyBindingConfigs)
             {
                 keyBindings[kvp.Key] = Config.Bind("KeyBindings", $"KeyBindFor{kvp.Key}", 
                     kvp.Value.Key, kvp.Value.Value);
@@ -236,16 +230,14 @@ namespace H3TVR
 
         private void InitializeSosigSpawner()
         {
-            // Temporarily commented out for core build
-            // TODO: Re-enable when Sosig integration files are fixed
-            /*
-            GameObject sosigSpawnerObject = new GameObject("SosigSpawnerIntegration");
+            // Initialize the simplified Twitch Chat Sosig Manager
+            GameObject sosigSpawnerObject = new GameObject("TwitchChatSosigManager");
             sosigSpawnerObject.transform.SetParent(transform);
-            sosigSpawnerObject.AddComponent<SosigSpawnerIntegration>();
             
-            Logger.LogInfo("Sosig Spawner Integration initialized!");
-            */
-            Logger.LogInfo("Sosig Spawner Integration temporarily disabled for core build");
+            var twitchChatManager = sosigSpawnerObject.AddComponent<TwitchChatSosigManager>();
+            twitchChatManager.Initialize(this, Logger);
+            
+            Logger.LogInfo("Simplified Twitch Chat Sosig Manager initialized!");
         }
         #endregion
 
@@ -331,14 +323,12 @@ namespace H3TVR
         public void TriggerZeroGravity() => effectsManager.ZeroGravityBumpDown();
         public void ActivateMalfunctionBoost() => weaponManager.ActivateMalfunctionBoost(ref malfunctionBoostActive, ref malfunctionBoostEndTime);
         
-        // Configuration access methods
-        public T GetConfig<T>(string category, string key) where T : struct
-        {
-            // Simplified config access - could be expanded
-            return default(T);
-        }
-
-        // Spawn configuration access - using class instead of tuples
+        // Component access methods
+        public SpawnManager GetSpawnManager() => spawnManager;
+        public WeaponManager GetWeaponManager() => weaponManager;
+        public EffectsManager GetEffectsManager() => effectsManager;
+        
+        // Spawn configuration access methods
         public void GetShurikenConfig(out int min, out int max)
         {
             min = shurikenMinCount.Value;
@@ -408,22 +398,7 @@ namespace H3TVR
         // State setters
         public void SetSlomoStatus(string status) => slomoStatus = status;
 
-        public SpawnManager GetSpawnManager()
-        {
-            return spawnManager;
-        }
-
-        public WeaponManager GetWeaponManager()
-        {
-            return weaponManager;
-        }
-
-        public EffectsManager GetEffectsManager()
-        {
-            return effectsManager;
-        }
-
-        // Chat Sosig Configuration Access
+        // Chat Sosig Configuration Access - Simplified
         public bool IsTwitchChatSosigsEnabled()
         {
             return enableTwitchChatSosigs?.Value ?? false;
@@ -439,29 +414,9 @@ namespace H3TVR
             return twitchEnemyChatFilePath?.Value ?? "";
         }
 
-        public bool IsChatSosigArmorEnabled()
-        {
-            return enableChatSosigArmor?.Value ?? false;
-        }
-
-        public float GetChatSosigArmorChance()
-        {
-            return chatSosigArmorChance?.Value ?? 0.7f;
-        }
-
         public int GetMaxChatSosigs()
         {
             return maxChatSosigs?.Value ?? 10;
-        }
-
-        public float GetChatSosigFollowDistance()
-        {
-            return chatSosigFollowDistance?.Value ?? 6f;
-        }
-
-        public bool IsAutoCleanupChatSosigsEnabled()
-        {
-            return autoCleanupChatSosigs?.Value ?? true;
         }
         #endregion
 

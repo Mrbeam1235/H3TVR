@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.UI;
 using FistVR;
 using BepInEx;
 using BepInEx.Configuration;
@@ -12,841 +13,1312 @@ using BepInEx.Logging;
 namespace H3TVR
 {
     /// <summary>
-    /// Manages Twitch chat-integrated sosig spawning with configurable armor and weapons
-    /// Integrates with the H3TVR SpawnManager system for enhanced functionality
+    /// Simple Twitch chat-integrated sosig spawner using only two file paths for names
     /// </summary>
     public class TwitchChatSosigManager : MonoBehaviour
     {
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private SpawnManager spawnManager;
+        
+        // Cache for better performance
+        private List<string> cachedAllyNames;
+        private List<string> cachedEnemyNames;
+        private SosigEnemyTemplate[] cachedSosigTemplates;
 
-        [Header("Chat Integration")]
-        public string currentChatUserName = "";
-        public Queue<ChatSpawnRequest> chatSpawnQueue = new Queue<ChatSpawnRequest>();
-        public List<ChatSosig> activeChatSosigs = new List<ChatSosig>();
+        [Header("File Paths")]
+        public string allyNamesFilePath = "";
+        public string enemyNamesFilePath = "";
 
-        [Header("Spawn Configuration")]
-        public List<SosigEnemyTemplate> friendlyTemplates = new List<SosigEnemyTemplate>();
-        public List<SosigEnemyTemplate> enemyTemplates = new List<SosigEnemyTemplate>();
-        public List<ArmorSet> availableArmorSets = new List<ArmorSet>();
-        public GameObject nameplatePrefab;
-        public GameObject enemyNameplatePrefab;
+        [Header("Active Sosigs")]
+        public List<Sosig> activeSosigs = new List<Sosig>();
 
-        // Configuration entries
-        private ConfigEntry<string> chatFilePath;
-        private ConfigEntry<string> enemyChatFilePath;
-        private ConfigEntry<KeyCode> spawnFriendlyKey;
+        // Configuration entries - simplified to just file paths
+        private ConfigEntry<string> allyFilePath;
+        private ConfigEntry<string> enemyFilePath;
+        private ConfigEntry<KeyCode> spawnAllyKey;
         private ConfigEntry<KeyCode> spawnEnemyKey;
-        private ConfigEntry<KeyCode> toggleArmorKey;
-        private ConfigEntry<KeyCode> clearAllSosigsKey;
-        private ConfigEntry<bool> enableChatIntegration;
-        private ConfigEntry<bool> enableArmorCustomization;
-        private ConfigEntry<bool> enableWeaponRandomization;
+        private ConfigEntry<KeyCode> clearSosigsKey;
+        private ConfigEntry<KeyCode> armorGUIKey;
         private ConfigEntry<int> maxActiveSosigs;
-        private ConfigEntry<float> sosigFollowDistance;
-        private ConfigEntry<float> sosigUpdateInterval;
         private ConfigEntry<bool> enableNameplates;
-        private ConfigEntry<bool> autoCleanupDeadSosigs;
-        private ConfigEntry<float> deadSosigCleanupTime;
 
-        // Armor configuration
-        private ConfigEntry<bool> enableRandomArmor;
-        private ConfigEntry<float> armorSpawnChance;
-        private ConfigEntry<bool> enableArmorUpgrades;
-        private ConfigEntry<string> defaultArmorSet;
+        // GUI System
+        private bool showArmorGUI = false;
+        private Rect armorWindowRect = new Rect(50, 50, 450, 600);
+        private Vector2 scrollPosition = Vector2.zero;
+        private GUIStyle windowStyle;
+        private GUIStyle buttonStyle;
+        private GUIStyle labelStyle;
+        private GUIStyle toggleStyle;
+        private GUIStyle sliderStyle;
+
+        // Armor Configuration
+        private ArmorConfiguration currentArmorConfig;
+        private int selectedSosigIndex = -1;
+        private string[] armorSlots = { "Headwear", "Facewear", "Eyewear", "Torsowear", "Pantswear", "PantswearLower", "Backpacks", "Decorations" };
+        private Dictionary<string, List<FVRObject>> availableArmor;
+        private Dictionary<string, int> selectedArmorIndices;
+
+        [System.Serializable]
+        public class ArmorConfiguration
+        {
+            [Header("Armor Slots Enabled")]
+            public bool enableHeadwear = true;
+            public bool enableFacewear = true;
+            public bool enableEyewear = true;
+            public bool enableTorsowear = true;
+            public bool enablePantswear = true;
+            public bool enablePantswearLower = true;
+            public bool enableBackpacks = true;
+            public bool enableDecorations = true;
+
+            [Header("Armor Spawn Chances")]
+            [Range(0f, 1f)] public float headwearChance = 0.7f;
+            [Range(0f, 1f)] public float facewearChance = 0.3f;
+            [Range(0f, 1f)] public float eyewearChance = 0.4f;
+            [Range(0f, 1f)] public float torsowearChance = 0.8f;
+            [Range(0f, 1f)] public float pantswearChance = 0.6f;
+            [Range(0f, 1f)] public float pantswearLowerChance = 0.4f;
+            [Range(0f, 1f)] public float backpackChance = 0.2f;
+            [Range(0f, 1f)] public float decorationChance = 0.1f;
+
+            [Header("Armor Preferences")]
+            public bool preferMilitaryArmor = true;
+            public bool allowCivilianArmor = true;
+            public bool allowFuturisticArmor = false;
+            public bool randomizeColors = true;
+        }
 
         void Start()
         {
+            // Add safety check
+            if (plugin == null)
+            {
+                Debug.LogError("TwitchChatSosigManager: Plugin not initialized before Start()");
+                return;
+            }
+            
+            InitializeArmorSystem();
             InitializeConfiguration();
-            InitializeArmorSets();
             StartCoroutine(UpdateSosigsCoroutine());
         }
 
-        public void Initialize(H3TVRImproved pluginInstance, SpawnManager spawnerInstance, ManualLogSource logSource)
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
         {
             plugin = pluginInstance;
-            spawnManager = spawnerInstance;
             logger = logSource;
             
-            logger.LogInfo("TwitchChatSosigManager initialized successfully!");
+            logger.LogInfo("TwitchChatSosigManager initialized with armor GUI system!");
+        }
+
+        private void InitializeArmorSystem()
+        {
+            // Initialize armor configuration
+            currentArmorConfig = new ArmorConfiguration();
+            
+            // Initialize armor selection indices
+            selectedArmorIndices = new Dictionary<string, int>();
+            foreach (string slot in armorSlots)
+            {
+                selectedArmorIndices[slot] = 0;
+            }
+
+            // Load available armor from H3VR asset loader
+            StartCoroutine(LoadArmorAssetsCoroutine());
+        }
+
+        private IEnumerator LoadArmorAssetsCoroutine()
+        {
+            // Wait for H3VR asset loader to initialize
+            yield return new WaitForSeconds(2f);
+            
+            // Initialize H3VR asset loader if not already done
+            if (!H3VRAssetLoader.IsInitialized)
+            {
+                H3VRAssetLoader.Initialize();
+                yield return new WaitForSeconds(1f);
+            }
+
+            // Load armor categories - using separate method to avoid yield in try-catch
+            bool loadingSuccessful = LoadArmorCategoriesSafely();
+            
+            if (loadingSuccessful && logger != null)
+            {
+                int totalArmor = availableArmor.Values.Sum(list => list.Count);
+                logger.LogInfo($"Loaded {totalArmor} armor pieces across {availableArmor.Count} categories for GUI");
+            }
+        }
+
+        private bool LoadArmorCategoriesSafely()
+        {
+            try
+            {
+                // Load armor categories
+                availableArmor = H3VRAssetLoader.GetAllArmorCategories();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Failed to load armor assets: {ex.Message}");
+                
+                // Fallback to empty armor lists
+                availableArmor = new Dictionary<string, List<FVRObject>>();
+                foreach (string slot in armorSlots)
+                {
+                    availableArmor[slot] = new List<FVRObject>();
+                }
+                return false;
+            }
         }
 
         private void InitializeConfiguration()
         {
+            // Add null check
+            if (plugin == null)
+            {
+                Debug.LogError("Plugin is null in InitializeConfiguration");
+                return;
+            }
+            
             var config = plugin.Config;
 
-            // File paths
-            chatFilePath = config.Bind("Twitch Chat Sosigs", "FriendlyChatFilePath", 
-                Path.Combine(BepInEx.Paths.GameRootPath, "chat_spawner.txt"),
-                "Path to the file containing chat user names for friendly sosigs");
+            // File paths for sosig names
+            allyFilePath = config.Bind("Chat Sosigs", "AllyNamesFilePath", 
+                Path.Combine(BepInEx.Paths.GameRootPath, "ally_names.txt"),
+                "Path to file containing ally sosig names (one per line)");
                 
-            enemyChatFilePath = config.Bind("Twitch Chat Sosigs", "EnemyChatFilePath", 
-                Path.Combine(BepInEx.Paths.GameRootPath, "enemy_chat_spawner.txt"),
-                "Path to the file containing chat user names for enemy sosigs");
+            enemyFilePath = config.Bind("Chat Sosigs", "EnemyNamesFilePath", 
+                Path.Combine(BepInEx.Paths.GameRootPath, "enemy_names.txt"),
+                "Path to file containing enemy sosig names (one per line)");
 
-            // Key bindings
-            spawnFriendlyKey = config.Bind("Twitch Chat Sosigs", "SpawnFriendlyKey", KeyCode.P,
-                "Key to spawn a friendly chat sosig");
-            spawnEnemyKey = config.Bind("Twitch Chat Sosigs", "SpawnEnemyKey", KeyCode.Keypad7,
-                "Key to spawn an enemy chat sosig");
-            toggleArmorKey = config.Bind("Twitch Chat Sosigs", "ToggleArmorKey", KeyCode.L,
-                "Key to cycle through armor sets for the next spawned sosig");
-            clearAllSosigsKey = config.Bind("Twitch Chat Sosigs", "ClearAllSosigsKey", KeyCode.Delete,
-                "Key to clear all spawned chat sosigs");
+            // Basic controls
+            spawnAllyKey = config.Bind("Chat Sosigs", "SpawnAllyKey", KeyCode.P,
+                "Key to spawn an ally sosig");
+            spawnEnemyKey = config.Bind("Chat Sosigs", "SpawnEnemyKey", KeyCode.O,
+                "Key to spawn an enemy sosig");
+            clearSosigsKey = config.Bind("Chat Sosigs", "ClearSosigsKey", KeyCode.Delete,
+                "Key to clear all spawned sosigs");
+            armorGUIKey = config.Bind("Chat Sosigs", "ArmorGUIKey", KeyCode.F6,
+                "Key to open the armor configuration GUI");
 
-            // General settings
-            enableChatIntegration = config.Bind("Twitch Chat Sosigs", "EnableChatIntegration", true,
-                "Enable Twitch chat integration for sosig spawning");
-            enableArmorCustomization = config.Bind("Twitch Chat Sosigs", "EnableArmorCustomization", true,
-                "Enable armor customization for spawned sosigs");
-            enableWeaponRandomization = config.Bind("Twitch Chat Sosigs", "EnableWeaponRandomization", true,
-                "Enable weapon randomization for spawned sosigs");
-            maxActiveSosigs = config.Bind("Twitch Chat Sosigs", "MaxActiveSosigs", 10,
-                "Maximum number of active chat sosigs at once");
-            sosigFollowDistance = config.Bind("Twitch Chat Sosigs", "SosigFollowDistance", 6f,
-                "Distance at which sosigs will follow the player");
-            sosigUpdateInterval = config.Bind("Twitch Chat Sosigs", "SosigUpdateInterval", 0.5f,
-                "Update interval for sosig AI and positioning (seconds)");
-            enableNameplates = config.Bind("Twitch Chat Sosigs", "EnableNameplates", true,
-                "Show nameplates above spawned chat sosigs");
-            autoCleanupDeadSosigs = config.Bind("Twitch Chat Sosigs", "AutoCleanupDeadSosigs", true,
-                "Automatically clean up dead sosigs after a delay");
-            deadSosigCleanupTime = config.Bind("Twitch Chat Sosigs", "DeadSosigCleanupTime", 30f,
-                "Time in seconds before dead sosigs are cleaned up");
+            // Basic settings
+            maxActiveSosigs = config.Bind("Chat Sosigs", "MaxActiveSosigs", 10,
+                "Maximum number of active sosigs");
+            enableNameplates = config.Bind("Chat Sosigs", "ShowNames", true,
+                "Show names above sosigs");
 
-            // Armor settings
-            enableRandomArmor = config.Bind("Twitch Chat Sosigs - Armor", "EnableRandomArmor", true,
-                "Randomly apply armor to spawned sosigs");
-            armorSpawnChance = config.Bind("Twitch Chat Sosigs - Armor", "ArmorSpawnChance", 0.7f,
-                "Chance (0-1) that a spawned sosig will have armor");
-            enableArmorUpgrades = config.Bind("Twitch Chat Sosigs - Armor", "EnableArmorUpgrades", false,
-                "Allow armor upgrades over time (experimental)");
-            defaultArmorSet = config.Bind("Twitch Chat Sosigs - Armor", "DefaultArmorSet", "Standard",
-                "Default armor set to use when no specific set is selected");
-        }
+            // Set the file paths
+            allyNamesFilePath = allyFilePath.Value;
+            enemyNamesFilePath = enemyFilePath.Value;
 
-        private void InitializeArmorSets()
-        {
-            // Define various armor configurations
-            availableArmorSets.Clear();
-
-            availableArmorSets.Add(new ArmorSet
-            {
-                name = "Standard",
-                description = "Basic military gear",
-                headwearChance = 0.8f,
-                facewearChance = 0.3f,
-                eyewearChance = 0.5f,
-                torsowearChance = 0.9f,
-                pantswearChance = 0.9f,
-                backpackChance = 0.4f,
-                armorLevel = ArmorLevel.Light
-            });
-
-            availableArmorSets.Add(new ArmorSet
-            {
-                name = "Heavy Assault",
-                description = "Heavy combat armor",
-                headwearChance = 1.0f,
-                facewearChance = 0.8f,
-                eyewearChance = 0.7f,
-                torsowearChance = 1.0f,
-                pantswearChance = 1.0f,
-                backpackChance = 0.8f,
-                armorLevel = ArmorLevel.Heavy
-            });
-
-            availableArmorSets.Add(new ArmorSet
-            {
-                name = "Stealth Ops",
-                description = "Lightweight stealth gear",
-                headwearChance = 0.6f,
-                facewearChance = 0.9f,
-                eyewearChance = 0.9f,
-                torsowearChance = 0.8f,
-                pantswearChance = 0.8f,
-                backpackChance = 0.2f,
-                armorLevel = ArmorLevel.Light
-            });
-
-            availableArmorSets.Add(new ArmorSet
-            {
-                name = "Riot Control",
-                description = "Riot control equipment",
-                headwearChance = 1.0f,
-                facewearChance = 1.0f,
-                eyewearChance = 0.3f,
-                torsowearChance = 1.0f,
-                pantswearChance = 1.0f,
-                backpackChance = 0.1f,
-                armorLevel = ArmorLevel.Heavy
-            });
-
-            availableArmorSets.Add(new ArmorSet
-            {
-                name = "Civilian",
-                description = "Civilian clothing",
-                headwearChance = 0.3f,
-                facewearChance = 0.1f,
-                eyewearChance = 0.4f,
-                torsowearChance = 0.7f,
-                pantswearChance = 0.8f,
-                backpackChance = 0.2f,
-                armorLevel = ArmorLevel.None
-            });
-
-            availableArmorSets.Add(new ArmorSet
-            {
-                name = "Tactical Elite",
-                description = "Elite tactical equipment",
-                headwearChance = 1.0f,
-                facewearChance = 0.9f,
-                eyewearChance = 0.8f,
-                torsowearChance = 1.0f,
-                pantswearChance = 1.0f,
-                backpackChance = 0.9f,
-                armorLevel = ArmorLevel.Elite
-            });
+            // Create example files if they don't exist
+            CreateExampleFilesIfNeeded();
         }
 
         void Update()
         {
             HandleInput();
-            ProcessChatSpawnQueue();
+            HandleGUIInput();
         }
 
         private void HandleInput()
         {
-            if (Input.GetKeyDown(spawnFriendlyKey.Value))
+            if (Input.GetKeyDown(spawnAllyKey.Value))
             {
-                SpawnFriendlyChatSosig();
+                SpawnAllySosig();
             }
 
             if (Input.GetKeyDown(spawnEnemyKey.Value))
             {
-                SpawnEnemyChatSosig();
+                SpawnEnemySosig();
             }
 
-            if (Input.GetKeyDown(toggleArmorKey.Value))
+            if (Input.GetKeyDown(clearSosigsKey.Value))
             {
-                CycleArmorSet();
-            }
-
-            if (Input.GetKeyDown(clearAllSosigsKey.Value))
-            {
-                ClearAllChatSosigs();
+                ClearAllSosigs();
             }
         }
 
-        private string selectedArmorSet = "Standard";
-        private int currentArmorSetIndex = 0;
-
-        private void CycleArmorSet()
+        private void HandleGUIInput()
         {
-            currentArmorSetIndex = (currentArmorSetIndex + 1) % availableArmorSets.Count;
-            selectedArmorSet = availableArmorSets[currentArmorSetIndex].name;
-            logger.LogInfo($"Selected armor set: {selectedArmorSet}");
-        }
-
-        public void SpawnFriendlyChatSosig()
-        {
-            try
+            if (Input.GetKeyDown(armorGUIKey.Value))
             {
-                if (activeChatSosigs.Count >= maxActiveSosigs.Value)
+                showArmorGUI = !showArmorGUI;
+                if (showArmorGUI)
                 {
-                    logger.LogWarning("Maximum active sosigs reached. Cannot spawn more.");
-                    return;
+                    Cursor.lockState = CursorLockMode.None;
+                    Cursor.visible = true;
                 }
-
-                string chatUserName = ReadChatUserName(chatFilePath.Value);
-                if (string.IsNullOrEmpty(chatUserName))
+                else
                 {
-                    logger.LogWarning("No chat user name found for friendly sosig");
-                    return;
+                    Cursor.lockState = CursorLockMode.Locked;
+                    Cursor.visible = false;
                 }
-
-                Vector3 spawnPosition = CalculateSpawnPosition();
-                ArmorSet armorSet = GetArmorSetByName(selectedArmorSet);
-
-                var chatSosig = new ChatSosig
-                {
-                    userName = chatUserName,
-                    isFriendly = true,
-                    spawnTime = Time.time,
-                    armorSet = armorSet
-                };
-
-                SpawnChatSosigInternal(chatSosig, spawnPosition, friendlyTemplates, 0);
-                logger.LogInfo($"Spawned friendly chat sosig for user: {chatUserName} with {selectedArmorSet} armor");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to spawn friendly chat sosig: {ex.Message}");
             }
         }
 
-        public void SpawnEnemyChatSosig()
+        void OnGUI()
         {
-            try
+            if (showArmorGUI)
             {
-                if (activeChatSosigs.Count >= maxActiveSosigs.Value)
-                {
-                    logger.LogWarning("Maximum active sosigs reached. Cannot spawn more.");
-                    return;
-                }
-
-                string chatUserName = ReadChatUserName(enemyChatFilePath.Value);
-                if (string.IsNullOrEmpty(chatUserName))
-                {
-                    logger.LogWarning("No chat user name found for enemy sosig");
-                    return;
-                }
-
-                Vector3 spawnPosition = CalculateEnemySpawnPosition();
-                ArmorSet armorSet = GetArmorSetByName(selectedArmorSet);
-
-                var chatSosig = new ChatSosig
-                {
-                    userName = chatUserName,
-                    isFriendly = false,
-                    spawnTime = Time.time,
-                    armorSet = armorSet
-                };
-
-                SpawnChatSosigInternal(chatSosig, spawnPosition, enemyTemplates, GetEnemyIFF());
-                logger.LogInfo($"Spawned enemy chat sosig for user: {chatUserName} with {selectedArmorSet} armor");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to spawn enemy chat sosig: {ex.Message}");
+                InitializeGUIStyles();
+                armorWindowRect = GUI.Window(12345, armorWindowRect, DrawArmorGUI, "Sosig Armor Configuration", windowStyle);
             }
         }
 
-        private void SpawnChatSosigInternal(ChatSosig chatSosig, Vector3 position, List<SosigEnemyTemplate> templates, int iff)
+        private void InitializeGUIStyles()
         {
-            if (templates.Count == 0)
+            if (windowStyle == null)
             {
-                logger.LogError("No sosig templates available for spawning");
+                windowStyle = new GUIStyle(GUI.skin.window);
+                windowStyle.fontSize = 12;
+                windowStyle.padding = new RectOffset(10, 10, 25, 10);
+            }
+
+            if (buttonStyle == null)
+            {
+                buttonStyle = new GUIStyle(GUI.skin.button);
+                buttonStyle.fontSize = 11;
+                buttonStyle.margin = new RectOffset(2, 2, 2, 2);
+            }
+
+            if (labelStyle == null)
+            {
+                labelStyle = new GUIStyle(GUI.skin.label);
+                labelStyle.fontSize = 10;
+                labelStyle.wordWrap = true;
+            }
+
+            if (toggleStyle == null)
+            {
+                toggleStyle = new GUIStyle(GUI.skin.toggle);
+                toggleStyle.fontSize = 10;
+            }
+
+            if (sliderStyle == null)
+            {
+                sliderStyle = new GUIStyle(GUI.skin.horizontalSlider);
+            }
+        }
+
+        private void DrawArmorGUI(int windowID)
+        {
+            GUILayout.BeginVertical();
+
+            // Header
+            GUILayout.Label("=== Sosig Armor Configuration ===", labelStyle);
+            GUILayout.Space(5);
+
+            // Sosig Selection
+            DrawSosigSelection();
+            GUILayout.Space(10);
+
+            // Scroll area for armor options
+            scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(400));
+
+            // Armor Slot Configuration
+            DrawArmorSlotConfiguration();
+            GUILayout.Space(10);
+
+            // Individual Armor Selection
+            DrawIndividualArmorSelection();
+            GUILayout.Space(10);
+
+            // Armor Preferences
+            DrawArmorPreferences();
+
+            GUILayout.EndScrollView();
+
+            // Action buttons
+            GUILayout.Space(10);
+            DrawActionButtons();
+
+            GUILayout.EndVertical();
+            GUI.DragWindow();
+        }
+
+        private void DrawSosigSelection()
+        {
+            GUILayout.Label("Active Sosigs:", labelStyle);
+            
+            if (activeSosigs.Count == 0)
+            {
+                GUILayout.Label("No active sosigs. Spawn some sosigs first!", labelStyle);
                 return;
             }
 
-            SosigEnemyTemplate template = templates[UnityEngine.Random.Range(0, templates.Count)];
+            // Create sosig selection buttons
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Select All", buttonStyle))
+            {
+                selectedSosigIndex = -1; // -1 means all sosigs
+            }
+            if (GUILayout.Button("Deselect", buttonStyle))
+            {
+                selectedSosigIndex = -2; // -2 means no selection
+            }
+            GUILayout.EndHorizontal();
+
+            // Individual sosig buttons
+            for (int i = 0; i < activeSosigs.Count; i++)
+            {
+                if (activeSosigs[i] == null) continue;
+
+                GUILayout.BeginHorizontal();
+                
+                // Selection toggle
+                bool isSelected = (selectedSosigIndex == i) || (selectedSosigIndex == -1);
+                bool newSelection = GUILayout.Toggle(isSelected, "", toggleStyle, GUILayout.Width(20));
+                
+                if (newSelection && !isSelected)
+                {
+                    selectedSosigIndex = i;
+                }
+                else if (!newSelection && isSelected && selectedSosigIndex == i)
+                {
+                    selectedSosigIndex = -2;
+                }
+
+                // Sosig info
+                string sosigInfo = $"Sosig {i + 1} ({(activeSosigs[i].E.IFFCode == 0 ? "Ally" : "Enemy")})";
+                GUILayout.Label(sosigInfo, labelStyle);
+
+                // Quick armor buttons
+                if (GUILayout.Button("Strip Armor", buttonStyle, GUILayout.Width(80)))
+                {
+                    StripArmorFromSosig(activeSosigs[i]);
+                }
+                if (GUILayout.Button("Random Armor", buttonStyle, GUILayout.Width(100)))
+                {
+                    ApplyRandomArmorToSosig(activeSosigs[i]);
+                }
+
+                GUILayout.EndHorizontal();
+            }
+        }
+
+        private void DrawArmorSlotConfiguration()
+        {
+            GUILayout.Label("=== Armor Slot Configuration ===", labelStyle);
+
+            foreach (string slot in armorSlots)
+            {
+                GUILayout.BeginVertical(GUI.skin.box);
+                
+                // Slot enable/disable
+                GUILayout.BeginHorizontal();
+                bool enabled = GetArmorSlotEnabled(slot);
+                bool newEnabled = GUILayout.Toggle(enabled, slot, toggleStyle, GUILayout.Width(120));
+                SetArmorSlotEnabled(slot, newEnabled);
+
+                if (enabled)
+                {
+                    // Chance slider
+                    float chance = GetArmorSlotChance(slot);
+                    GUILayout.Label($"Chance: {(chance * 100):F0}%", labelStyle, GUILayout.Width(80));
+                    float newChance = GUILayout.HorizontalSlider(chance, 0f, 1f, sliderStyle, GUI.skin.horizontalSliderThumb, GUILayout.Width(100));
+                    SetArmorSlotChance(slot, newChance);
+                }
+
+                GUILayout.EndHorizontal();
+
+                if (enabled && availableArmor != null && availableArmor.ContainsKey(slot))
+                {
+                    int armorCount = availableArmor[slot].Count;
+                    GUILayout.Label($"Available: {armorCount} items", labelStyle);
+                }
+
+                GUILayout.EndVertical();
+                GUILayout.Space(2);
+            }
+        }
+
+        private void DrawIndividualArmorSelection()
+        {
+            GUILayout.Label("=== Individual Armor Selection ===", labelStyle);
+
+            if (availableArmor == null)
+            {
+                GUILayout.Label("Loading armor assets...", labelStyle);
+                return;
+            }
+
+            foreach (string slot in armorSlots)
+            {
+                if (!GetArmorSlotEnabled(slot)) continue;
+                if (!availableArmor.ContainsKey(slot) || availableArmor[slot].Count == 0) continue;
+
+                GUILayout.BeginVertical(GUI.skin.box);
+                GUILayout.Label($"{slot}:", labelStyle);
+
+                // Armor selection dropdown simulation
+                GUILayout.BeginHorizontal();
+                
+                int currentIndex = selectedArmorIndices.ContainsKey(slot) ? selectedArmorIndices[slot] : 0;
+                currentIndex = Mathf.Clamp(currentIndex, 0, availableArmor[slot].Count - 1);
+
+                if (GUILayout.Button("?", buttonStyle, GUILayout.Width(25)))
+                {
+                    currentIndex = (currentIndex - 1 + availableArmor[slot].Count) % availableArmor[slot].Count;
+                    selectedArmorIndices[slot] = currentIndex;
+                }
+
+                string armorName = "None";
+                if (availableArmor[slot].Count > 0 && currentIndex < availableArmor[slot].Count)
+                {
+                    var armorObj = availableArmor[slot][currentIndex];
+                    armorName = armorObj != null ? (armorObj.DisplayName ?? armorObj.ItemID) : "Unknown";
+                }
+                GUILayout.Label(armorName, labelStyle, GUILayout.MinWidth(150));
+
+                if (GUILayout.Button("?", buttonStyle, GUILayout.Width(25)))
+                {
+                    currentIndex = (currentIndex + 1) % availableArmor[slot].Count;
+                    selectedArmorIndices[slot] = currentIndex;
+                }
+
+                if (GUILayout.Button("Apply", buttonStyle, GUILayout.Width(50)))
+                {
+                    ApplySpecificArmorToSelectedSosigs(slot, currentIndex);
+                }
+
+                GUILayout.EndHorizontal();
+                GUILayout.EndVertical();
+                GUILayout.Space(2);
+            }
+        }
+
+        private void DrawArmorPreferences()
+        {
+            GUILayout.Label("=== Armor Preferences ===", labelStyle);
+            GUILayout.BeginVertical(GUI.skin.box);
+
+            currentArmorConfig.preferMilitaryArmor = GUILayout.Toggle(currentArmorConfig.preferMilitaryArmor, "Prefer Military Armor", toggleStyle);
+            currentArmorConfig.allowCivilianArmor = GUILayout.Toggle(currentArmorConfig.allowCivilianArmor, "Allow Civilian Armor", toggleStyle);
+            currentArmorConfig.allowFuturisticArmor = GUILayout.Toggle(currentArmorConfig.allowFuturisticArmor, "Allow Futuristic Armor", toggleStyle);
+            currentArmorConfig.randomizeColors = GUILayout.Toggle(currentArmorConfig.randomizeColors, "Randomize Colors", toggleStyle);
+
+            GUILayout.EndVertical();
+        }
+
+        private void DrawActionButtons()
+        {
+            GUILayout.BeginHorizontal();
+
+            if (GUILayout.Button("Apply Current Config", buttonStyle))
+            {
+                ApplyCurrentArmorConfigToSelectedSosigs();
+            }
+
+            if (GUILayout.Button("Strip Armor", buttonStyle))
+            {
+                StripArmorFromSelectedSosigs();
+            }
+
+            if (GUILayout.Button("Random Armor", buttonStyle))
+            {
+                ApplyRandomArmorToSelectedSosigs();
+            }
+
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+
+            if (GUILayout.Button("Save Config", buttonStyle))
+            {
+                SaveArmorConfiguration();
+            }
+
+            if (GUILayout.Button("Load Config", buttonStyle))
+            {
+                LoadArmorConfiguration();
+            }
+
+            if (GUILayout.Button("Close", buttonStyle))
+            {
+                showArmorGUI = false;
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
+        // Armor slot helper methods
+        private bool GetArmorSlotEnabled(string slot)
+        {
+            switch (slot)
+            {
+                case "Headwear": return currentArmorConfig.enableHeadwear;
+                case "Facewear": return currentArmorConfig.enableFacewear;
+                case "Eyewear": return currentArmorConfig.enableEyewear;
+                case "Torsowear": return currentArmorConfig.enableTorsowear;
+                case "Pantswear": return currentArmorConfig.enablePantswear;
+                case "PantswearLower": return currentArmorConfig.enablePantswearLower;
+                case "Backpacks": return currentArmorConfig.enableBackpacks;
+                case "Decorations": return currentArmorConfig.enableDecorations;
+                default: return false;
+            }
+        }
+
+        private void SetArmorSlotEnabled(string slot, bool enabled)
+        {
+            switch (slot)
+            {
+                case "Headwear": currentArmorConfig.enableHeadwear = enabled; break;
+                case "Facewear": currentArmorConfig.enableFacewear = enabled; break;
+                case "Eyewear": currentArmorConfig.enableEyewear = enabled; break;
+                case "Torsowear": currentArmorConfig.enableTorsowear = enabled; break;
+                case "Pantswear": currentArmorConfig.enablePantswear = enabled; break;
+                case "PantswearLower": currentArmorConfig.enablePantswearLower = enabled; break;
+                case "Backpacks": currentArmorConfig.enableBackpacks = enabled; break;
+                case "Decorations": currentArmorConfig.enableDecorations = enabled; break;
+            }
+        }
+
+        private float GetArmorSlotChance(string slot)
+        {
+            switch (slot)
+            {
+                case "Headwear": return currentArmorConfig.headwearChance;
+                case "Facewear": return currentArmorConfig.facewearChance;
+                case "Eyewear": return currentArmorConfig.eyewearChance;
+                case "Torsowear": return currentArmorConfig.torsowearChance;
+                case "Pantswear": return currentArmorConfig.pantswearChance;
+                case "PantswearLower": return currentArmorConfig.pantswearLowerChance;
+                case "Backpacks": return currentArmorConfig.backpackChance;
+                case "Decorations": return currentArmorConfig.decorationChance;
+                default: return 0f;
+            }
+        }
+
+        private void SetArmorSlotChance(string slot, float chance)
+        {
+            switch (slot)
+            {
+                case "Headwear": currentArmorConfig.headwearChance = chance; break;
+                case "Facewear": currentArmorConfig.facewearChance = chance; break;
+                case "Eyewear": currentArmorConfig.eyewearChance = chance; break;
+                case "Torsowear": currentArmorConfig.torsowearChance = chance; break;
+                case "Pantswear": currentArmorConfig.pantswearChance = chance; break;
+                case "PantswearLower": currentArmorConfig.pantswearLowerChance = chance; break;
+                case "Backpacks": currentArmorConfig.backpackChance = chance; break;
+                case "Decorations": currentArmorConfig.decorationChance = chance; break;
+            }
+        }
+
+        // Armor application methods
+        private void ApplyCurrentArmorConfigToSelectedSosigs()
+        {
+            var selectedSosigs = GetSelectedSosigs();
+            foreach (var sosig in selectedSosigs)
+            {
+                ApplyArmorConfigurationToSosig(sosig, currentArmorConfig);
+            }
+            
+            if (logger != null)
+                logger.LogInfo($"Applied armor configuration to {selectedSosigs.Count} sosigs");
+        }
+
+        private void StripArmorFromSelectedSosigs()
+        {
+            var selectedSosigs = GetSelectedSosigs();
+            foreach (var sosig in selectedSosigs)
+            {
+                StripArmorFromSosig(sosig);
+            }
+            
+            if (logger != null)
+                logger.LogInfo($"Stripped armor from {selectedSosigs.Count} sosigs");
+        }
+
+        private void ApplyRandomArmorToSelectedSosigs()
+        {
+            var selectedSosigs = GetSelectedSosigs();
+            foreach (var sosig in selectedSosigs)
+            {
+                ApplyRandomArmorToSosig(sosig);
+            }
+            
+            if (logger != null)
+                logger.LogInfo($"Applied random armor to {selectedSosigs.Count} sosigs");
+        }
+
+        private void ApplySpecificArmorToSelectedSosigs(string slot, int armorIndex)
+        {
+            if (!availableArmor.ContainsKey(slot) || armorIndex >= availableArmor[slot].Count)
+                return;
+
+            var armorObj = availableArmor[slot][armorIndex];
+            var selectedSosigs = GetSelectedSosigs();
+            
+            foreach (var sosig in selectedSosigs)
+            {
+                ApplySpecificArmorToSosig(sosig, slot, armorObj);
+            }
+            
+            if (logger != null)
+                logger.LogInfo($"Applied {slot} armor to {selectedSosigs.Count} sosigs");
+        }
+
+        private List<Sosig> GetSelectedSosigs()
+        {
+            var result = new List<Sosig>();
+            
+            if (selectedSosigIndex == -1) // All sosigs
+            {
+                result.AddRange(activeSosigs.Where(s => s != null));
+            }
+            else if (selectedSosigIndex >= 0 && selectedSosigIndex < activeSosigs.Count)
+            {
+                if (activeSosigs[selectedSosigIndex] != null)
+                    result.Add(activeSosigs[selectedSosigIndex]);
+            }
+            
+            return result;
+        }
+
+        private void StripArmorFromSosig(Sosig sosig)
+        {
+            if (sosig?.Links == null) return;
+
+            foreach (var link in sosig.Links)
+            {
+                if (link?.transform == null) continue;
+                
+                // Find and remove armor components
+                var wearables = link.GetComponentsInChildren<SosigWearable>();
+                foreach (var wearable in wearables)
+                {
+                    if (wearable != null)
+                        Destroy(wearable.gameObject);
+                }
+            }
+        }
+
+        private void ApplyRandomArmorToSosig(Sosig sosig)
+        {
+            if (availableArmor == null) return;
+            
+            // Create a random armor configuration
+            var randomConfig = new ArmorConfiguration
+            {
+                enableHeadwear = UnityEngine.Random.value > 0.3f,
+                enableFacewear = UnityEngine.Random.value > 0.7f,
+                enableEyewear = UnityEngine.Random.value > 0.6f,
+                enableTorsowear = UnityEngine.Random.value > 0.2f,
+                enablePantswear = UnityEngine.Random.value > 0.4f,
+                enablePantswearLower = UnityEngine.Random.value > 0.8f,
+                enableBackpacks = UnityEngine.Random.value > 0.7f,
+                enableDecorations = UnityEngine.Random.value > 0.9f,
+                
+                headwearChance = UnityEngine.Random.Range(0.5f, 1f),
+                facewearChance = UnityEngine.Random.Range(0.2f, 0.8f),
+                eyewearChance = UnityEngine.Random.Range(0.3f, 0.7f),
+                torsowearChance = UnityEngine.Random.Range(0.6f, 1f),
+                pantswearChance = UnityEngine.Random.Range(0.5f, 0.9f),
+                pantswearLowerChance = UnityEngine.Random.Range(0.2f, 0.6f),
+                backpackChance = UnityEngine.Random.Range(0.1f, 0.5f),
+                decorationChance = UnityEngine.Random.Range(0.05f, 0.3f)
+            };
+            
+            ApplyArmorConfigurationToSosig(sosig, randomConfig);
+        }
+
+        private void ApplySpecificArmorToSosig(Sosig sosig, string slot, FVRObject armorObj)
+        {
+            if (sosig?.Links == null || armorObj == null) return;
+            
+            // Find the appropriate link for this armor slot
+            SosigLink targetLink = GetLinkForArmorSlot(sosig, slot);
+            if (targetLink == null) return;
+            
+            // Remove existing armor in this slot first
+            RemoveArmorFromLink(targetLink, slot);
+            
+            // Apply new armor
+            try
+            {
+                GameObject armorInstance = Instantiate(armorObj.GetGameObject(), targetLink.transform);
+                if (armorInstance != null)
+                {
+                    var wearable = armorInstance.GetComponent<SosigWearable>();
+                    if (wearable != null)
+                    {
+                        wearable.RegisterWearable(targetLink);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Failed to apply {slot} armor: {ex.Message}");
+            }
+        }
+
+        private void ApplyArmorConfigurationToSosig(Sosig sosig, ArmorConfiguration config)
+        {
+            if (sosig?.Links == null || availableArmor == null) return;
+            
+            // Strip existing armor first
+            StripArmorFromSosig(sosig);
+            
+            // Apply armor based on configuration
+            foreach (string slot in armorSlots)
+            {
+                bool slotEnabled = GetArmorSlotEnabledFromConfig(slot, config);
+                if (!slotEnabled) continue;
+                
+                float slotChance = GetArmorSlotChanceFromConfig(slot, config);
+                if (UnityEngine.Random.value > slotChance) continue;
+                
+                if (!availableArmor.ContainsKey(slot) || availableArmor[slot].Count == 0) continue;
+                
+                // Select random armor from this slot
+                var armorObj = availableArmor[slot][UnityEngine.Random.Range(0, availableArmor[slot].Count)];
+                ApplySpecificArmorToSosig(sosig, slot, armorObj);
+            }
+        }
+
+        private bool GetArmorSlotEnabledFromConfig(string slot, ArmorConfiguration config)
+        {
+            switch (slot)
+            {
+                case "Headwear": return config.enableHeadwear;
+                case "Facewear": return config.enableFacewear;
+                case "Eyewear": return config.enableEyewear;
+                case "Torsowear": return config.enableTorsowear;
+                case "Pantswear": return config.enablePantswear;
+                case "PantswearLower": return config.enablePantswearLower;
+                case "Backpacks": return config.enableBackpacks;
+                case "Decorations": return config.enableDecorations;
+                default: return false;
+            }
+        }
+
+        private float GetArmorSlotChanceFromConfig(string slot, ArmorConfiguration config)
+        {
+            switch (slot)
+            {
+                case "Headwear": return config.headwearChance;
+                case "Facewear": return config.facewearChance;
+                case "Eyewear": return config.eyewearChance;
+                case "Torsowear": return config.torsowearChance;
+                case "Pantswear": return config.pantswearChance;
+                case "PantswearLower": return config.pantswearLowerChance;
+                case "Backpacks": return config.backpackChance;
+                case "Decorations": return config.decorationChance;
+                default: return 0f;
+            }
+        }
+
+        private SosigLink GetLinkForArmorSlot(Sosig sosig, string slot)
+        {
+            if (sosig?.Links == null || sosig.Links.Count == 0) return null;
+            
+            switch (slot)
+            {
+                case "Headwear":
+                case "Facewear":
+                case "Eyewear":
+                    return sosig.Links.Count > 0 ? sosig.Links[0] : null; // Head link
+                    
+                case "Torsowear":
+                case "Backpacks":
+                case "Decorations":
+                    return sosig.Links.Count > 1 ? sosig.Links[1] : null; // Torso link
+                    
+                case "Pantswear":
+                case "PantswearLower":
+                    return sosig.Links.Count > 2 ? sosig.Links[2] : null; // Leg link
+                    
+                default:
+                    return sosig.Links.Count > 1 ? sosig.Links[1] : null; // Default to torso
+            }
+        }
+
+        private void RemoveArmorFromLink(SosigLink link, string slotType)
+        {
+            if (link?.transform == null) return;
+            
+            var wearables = link.GetComponentsInChildren<SosigWearable>();
+            foreach (var wearable in wearables)
+            {
+                // You could add more sophisticated filtering here based on armor type
+                if (wearable != null)
+                    Destroy(wearable.gameObject);
+            }
+        }
+
+        // Configuration save/load
+        private void SaveArmorConfiguration()
+        {
+            try
+            {
+                string configPath = Path.Combine(BepInEx.Paths.ConfigPath, "H3TVR_ArmorConfig.json");
+                string jsonData = JsonUtility.ToJson(currentArmorConfig, true);
+                File.WriteAllText(configPath, jsonData);
+                
+                if (logger != null)
+                    logger.LogInfo($"Saved armor configuration to {configPath}");
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Failed to save armor configuration: {ex.Message}");
+            }
+        }
+
+        private void LoadArmorConfiguration()
+        {
+            try
+            {
+                string configPath = Path.Combine(BepInEx.Paths.ConfigPath, "H3TVR_ArmorConfig.json");
+                if (File.Exists(configPath))
+                {
+                    string jsonData = File.ReadAllText(configPath);
+                    currentArmorConfig = JsonUtility.FromJson<ArmorConfiguration>(jsonData);
+                    
+                    if (logger != null)
+                        logger.LogInfo($"Loaded armor configuration from {configPath}");
+                }
+                else
+                {
+                    if (logger != null)
+                        logger.LogWarning("No saved armor configuration found");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Failed to load armor configuration: {ex.Message}");
+            }
+        }
+
+        public void SpawnAllySosig()
+        {
+            if (activeSosigs.Count >= maxActiveSosigs.Value)
+            {
+                if (logger != null)
+                    logger.LogWarning("Maximum sosigs reached. Cannot spawn more.");
+                return;
+            }
+
+            string sosigName = GetRandomNameFromFile(allyNamesFilePath, true);
+            if (string.IsNullOrEmpty(sosigName))
+            {
+                sosigName = "AllyBot";
+                if (logger != null)
+                    logger.LogWarning("No ally names found, using default name");
+            }
+
+            SpawnSosig(sosigName, true);
+        }
+
+        public void SpawnEnemySosig()
+        {
+            if (activeSosigs.Count >= maxActiveSosigs.Value)
+            {
+                if (logger != null)
+                    logger.LogWarning("Maximum sosigs reached. Cannot spawn more.");
+                return;
+            }
+
+            string sosigName = GetRandomNameFromFile(enemyNamesFilePath, false);
+            if (string.IsNullOrEmpty(sosigName))
+            {
+                sosigName = "EnemyBot";
+                if (logger != null)
+                    logger.LogWarning("No enemy names found, using default name");
+            }
+
+            SpawnSosig(sosigName, false);
+        }
+
+        private string GetRandomNameFromFile(string filePath, bool isAlly)
+        {
+            // Use cached names for better performance
+            List<string> cachedNames = isAlly ? cachedAllyNames : cachedEnemyNames;
+            
+            if (cachedNames == null || cachedNames.Count == 0)
+            {
+                // Load and cache names
+                cachedNames = LoadNamesFromFile(filePath);
+                if (isAlly)
+                    cachedAllyNames = cachedNames;
+                else
+                    cachedEnemyNames = cachedNames;
+            }
+            
+            return cachedNames.Count > 0 
+                ? cachedNames[UnityEngine.Random.Range(0, cachedNames.Count)]
+                : "";
+        }
+
+        private List<string> LoadNamesFromFile(string filePath)
+        {
+            try
+            {
+                if (!File.Exists(filePath))
+                    return new List<string>();
+
+                var lines = File.ReadAllLines(filePath);
+                var result = new List<string>();
+                
+                foreach (string line in lines)
+                {
+                    if (!string.IsNullOrEmpty(line) && !line.Trim().StartsWith("#"))
+                    {
+                        string trimmedLine = line.Trim();
+                        if (!string.IsNullOrEmpty(trimmedLine))
+                        {
+                            result.Add(trimmedLine);
+                        }
+                    }
+                }
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Failed to read names from {filePath}: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        private void SpawnSosig(string sosigName, bool isAlly)
+        {
+            try
+            {
+                Vector3 spawnPosition = CalculateSpawnPosition();
+                
+                // Use existing H3VR sosig spawning if available, otherwise basic spawn
+                Sosig spawnedSosig = CreateBasicSosig(spawnPosition, sosigName, isAlly);
+                
+                if (spawnedSosig != null)
+                {
+                    // Apply current armor configuration to newly spawned sosig
+                    ApplyArmorConfigurationToSosig(spawnedSosig, currentArmorConfig);
+                    
+                    activeSosigs.Add(spawnedSosig);
+                    if (logger != null)
+                        logger.LogInfo($"Spawned {(isAlly ? "ally" : "enemy")} sosig: {sosigName}");
+                }
+                else
+                {
+                    if (logger != null)
+                        logger.LogError("Failed to spawn sosig");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Error spawning sosig {sosigName}: {ex.Message}");
+            }
+        }
+
+        private Sosig CreateBasicSosig(Vector3 position, string name, bool isAlly)
+        {
+            // Cache sosig templates for better performance
+            if (cachedSosigTemplates == null)
+            {
+                cachedSosigTemplates = Resources.FindObjectsOfTypeAll<SosigEnemyTemplate>();
+            }
+
+            if (cachedSosigTemplates.Length == 0)
+            {
+                if (logger != null)
+                    logger.LogError("No sosig templates found in game");
+                return null;
+            }
+
+            // Use a random template
+            var template = cachedSosigTemplates[UnityEngine.Random.Range(0, cachedSosigTemplates.Length)];
             
             // Spawn the sosig
-            GameObject sosigPrefab = template.SosigPrefabs[UnityEngine.Random.Range(0, template.SosigPrefabs.Count)].GetGameObject();
-            GameObject sosigGO = Instantiate(sosigPrefab, position, Quaternion.identity);
-            Sosig sosig = sosigGO.GetComponentInChildren<Sosig>();
+            if (template.SosigPrefabs.Count == 0)
+            {
+                if (logger != null)
+                    logger.LogError("Template has no sosig prefabs");
+                return null;
+            }
 
+            var prefab = template.SosigPrefabs[UnityEngine.Random.Range(0, template.SosigPrefabs.Count)];
+            GameObject sosigObject = Instantiate(prefab.GetGameObject(), position, Quaternion.identity);
+            
+            Sosig sosig = sosigObject.GetComponentInChildren<Sosig>();
             if (sosig == null)
             {
-                logger.LogError("Failed to get Sosig component from spawned object");
-                Destroy(sosigGO);
-                return;
+                if (logger != null)
+                    logger.LogError("Spawned object has no Sosig component");
+                Destroy(sosigObject);
+                return null;
             }
 
-            // Configure sosig
-            SosigConfigTemplate config = template.ConfigTemplates[UnityEngine.Random.Range(0, template.ConfigTemplates.Count)];
-            sosig.Configure(config);
-            sosig.E.IFFCode = iff;
-
-            // Apply armor and outfit
-            SosigOutfitConfig outfitConfig = template.OutfitConfig[UnityEngine.Random.Range(0, template.OutfitConfig.Count)];
-            ApplyArmorToSosig(sosig, chatSosig.armorSet, outfitConfig);
-
-            // Equip weapons
-            EquipSosigWeapons(sosig, template, position);
-
-            // Set up AI behavior
-            ConfigureSosigBehavior(sosig, chatSosig.isFriendly);
-
-            // Create nameplate
-            if (enableNameplates.Value)
+            // Configure the sosig
+            if (template.ConfigTemplates.Count > 0)
             {
-                CreateNameplate(sosig, chatSosig);
+                var config = template.ConfigTemplates[UnityEngine.Random.Range(0, template.ConfigTemplates.Count)];
+                sosig.Configure(config);
             }
 
-            // Store reference
-            chatSosig.sosigInstance = sosig;
-            activeChatSosigs.Add(chatSosig);
-        }
+            // Set faction
+            sosig.E.IFFCode = isAlly ? 0 : 1;
 
-        private void ApplyArmorToSosig(Sosig sosig, ArmorSet armorSet, SosigOutfitConfig outfitConfig)
-        {
-            if (!enableArmorCustomization.Value) return;
-
-            bool shouldApplyArmor = enableRandomArmor.Value && UnityEngine.Random.value < armorSpawnChance.Value;
-            if (!shouldApplyArmor) return;
-
-            // Apply headwear
-            if (UnityEngine.Random.value < armorSet.headwearChance && outfitConfig.Headwear.Count > 0)
+            // Set behavior
+            if (isAlly)
             {
-                SpawnArmorPiece(outfitConfig.Headwear, sosig.Links[0]);
-            }
-
-            // Apply facewear
-            if (UnityEngine.Random.value < armorSet.facewearChance && outfitConfig.Facewear.Count > 0)
-            {
-                SpawnArmorPiece(outfitConfig.Facewear, sosig.Links[0]);
-            }
-
-            // Apply eyewear
-            if (UnityEngine.Random.value < armorSet.eyewearChance && outfitConfig.Eyewear.Count > 0)
-            {
-                SpawnArmorPiece(outfitConfig.Eyewear, sosig.Links[0]);
-            }
-
-            // Apply torsowear
-            if (UnityEngine.Random.value < armorSet.torsowearChance && outfitConfig.Torsowear.Count > 0)
-            {
-                SpawnArmorPiece(outfitConfig.Torsowear, sosig.Links[1]);
-            }
-
-            // Apply pantswear
-            if (UnityEngine.Random.value < armorSet.pantswearChance && outfitConfig.Pantswear.Count > 0)
-            {
-                SpawnArmorPiece(outfitConfig.Pantswear, sosig.Links[2]);
-            }
-
-            // Apply backpack
-            if (UnityEngine.Random.value < armorSet.backpackChance && outfitConfig.Backpacks.Count > 0)
-            {
-                SpawnArmorPiece(outfitConfig.Backpacks, sosig.Links[1]);
-            }
-
-            // Apply torso decoration
-            if (outfitConfig.TorosDecoration.Count > 0)
-            {
-                SpawnArmorPiece(outfitConfig.TorosDecoration, sosig.Links[1]);
-            }
-
-            // Apply lower pants wear
-            if (outfitConfig.Pantswear_Lower.Count > 0)
-            {
-                SpawnArmorPiece(outfitConfig.Pantswear_Lower, sosig.Links[3]);
-            }
-        }
-
-        private void SpawnArmorPiece(List<FVRObject> armorPieces, SosigLink link)
-        {
-            if (armorPieces.Count == 0) return;
-
-            FVRObject armorPiece = armorPieces[UnityEngine.Random.Range(0, armorPieces.Count)];
-            GameObject armorGO = Instantiate(armorPiece.GetGameObject(), link.transform.position, link.transform.rotation);
-            armorGO.transform.SetParent(link.transform);
-            
-            var wearable = armorGO.GetComponent<SosigWearable>();
-            if (wearable != null)
-            {
-                wearable.RegisterWearable(link);
-            }
-        }
-
-        private void EquipSosigWeapons(Sosig sosig, SosigEnemyTemplate template, Vector3 position)
-        {
-            // Primary weapon
-            if (template.WeaponOptions.Count > 0)
-            {
-                GameObject weaponPrefab = template.WeaponOptions[UnityEngine.Random.Range(0, template.WeaponOptions.Count)].GetGameObject();
-                EquipWeapon(sosig, weaponPrefab, position);
-            }
-
-            // Secondary weapon
-            if (template.WeaponOptions_Secondary.Count > 0 && UnityEngine.Random.value < template.SecondaryChance)
-            {
-                GameObject weaponPrefab = template.WeaponOptions_Secondary[UnityEngine.Random.Range(0, template.WeaponOptions_Secondary.Count)].GetGameObject();
-                EquipWeapon(sosig, weaponPrefab, position);
-            }
-
-            // Tertiary weapon
-            if (template.WeaponOptions_Tertiary.Count > 0 && UnityEngine.Random.value < template.TertiaryChance)
-            {
-                GameObject weaponPrefab = template.WeaponOptions_Tertiary[UnityEngine.Random.Range(0, template.WeaponOptions_Tertiary.Count)].GetGameObject();
-                EquipWeapon(sosig, weaponPrefab, position);
-            }
-        }
-
-        private void EquipWeapon(Sosig sosig, GameObject weaponPrefab, Vector3 position)
-        {
-            GameObject weaponGO = Instantiate(weaponPrefab, position + Vector3.up * 0.1f, Quaternion.identity);
-            SosigWeapon weapon = weaponGO.GetComponent<SosigWeapon>();
-            
-            if (weapon != null)
-            {
-                weapon.SetAutoDestroy(true);
-                weapon.O.SpawnLockable = false;
-                weapon.IsShakeReloadable = false;
-                weapon.SetAmmoClamping(true);
-
-                if (weapon.Type == SosigWeapon.SosigWeaponType.Gun)
-                {
-                    sosig.Inventory.FillAmmoWithType(weapon.AmmoType);
-                }
-
-                sosig.InitHands();
-                sosig.ForceEquip(weapon);
-            }
-        }
-
-        private void ConfigureSosigBehavior(Sosig sosig, bool isFriendly)
-        {
-            sosig.Inventory.Init();
-            sosig.Inventory.FillAllAmmo();
-
-            if (isFriendly)
-            {
-                // Friendly sosig follows player
-                Vector3 followPoint = CalculateFollowPoint();
+                // Ally follows player
+                Vector3 followPoint = GM.CurrentPlayerBody.Head.position + UnityEngine.Random.insideUnitSphere * 2f;
+                followPoint.y = GM.CurrentPlayerBody.Head.position.y;
                 sosig.CommandAssaultPoint(followPoint);
                 sosig.FallbackOrder = Sosig.SosigOrder.SearchForEquipment;
             }
             else
             {
-                // Enemy sosig attacks player
-                sosig.CommandAssaultPoint(GM.CurrentPlayerBody.transform.position);
+                // Enemy attacks player
+                sosig.CommandAssaultPoint(GM.CurrentPlayerBody.Head.position);
                 sosig.SetCurrentOrder(Sosig.SosigOrder.Assault);
+            }
+
+            // Add nameplate if enabled
+            if (enableNameplates.Value)
+            {
+                CreateSimpleNameplate(sosig, name, isAlly);
+            }
+
+            return sosig;
+        }
+
+        private void CreateSimpleNameplate(Sosig sosig, string name, bool isAlly)
+        {
+            if (sosig.Links.Count < 2) return;
+
+            // Create a simple nameplate
+            GameObject nameplate = new GameObject("Nameplate");
+            nameplate.transform.SetParent(sosig.Links[1].transform);
+            nameplate.transform.localPosition = Vector3.up * 0.3f;
+            nameplate.transform.localRotation = Quaternion.identity;
+
+            // Add canvas for UI text
+            Canvas canvas = nameplate.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            
+            // Fix potential null reference
+            var mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                canvas.worldCamera = mainCamera;
+            }
+            
+            CanvasScaler scaler = nameplate.AddComponent<CanvasScaler>();
+            scaler.scaleFactor = 0.01f;
+
+            // Add text
+            GameObject textObject = new GameObject("NameText");
+            textObject.transform.SetParent(nameplate.transform);
+            
+            var text = textObject.AddComponent<UnityEngine.UI.Text>();
+            text.text = name;
+            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            text.fontSize = 20;
+            text.color = isAlly ? Color.green : Color.red;
+            text.alignment = TextAnchor.MiddleCenter;
+
+            var rectTransform = textObject.GetComponent<RectTransform>();
+            rectTransform.sizeDelta = new Vector2(150, 30);
+            rectTransform.localPosition = Vector3.zero;
+        }
+
+        private void CreateExampleFilesIfNeeded()
+        {
+            if (!File.Exists(allyNamesFilePath))
+            {
+                string[] exampleAllyNames = {
+                    "ChatViewer1",
+                    "FriendlyHelper",
+                    "SupportGuy",
+                    "BackupBuddy",
+                    "AllyMcAllyFace"
+                };
+                File.WriteAllLines(allyNamesFilePath, exampleAllyNames);
+                if (logger != null)
+                    logger.LogInfo($"Created example ally names file at: {allyNamesFilePath}");
+            }
+
+            if (!File.Exists(enemyNamesFilePath))
+            {
+                string[] exampleEnemyNames = {
+                    "TrollUser",
+                    "EnemyBot",
+                    "HostileViewer",
+                    "BadGuy123",
+                    "OpponentPlayer"
+                };
+                File.WriteAllLines(enemyNamesFilePath, exampleEnemyNames);
+                if (logger != null)
+                    logger.LogInfo($"Created example enemy names file at: {enemyNamesFilePath}");
             }
         }
 
-        private void CreateNameplate(Sosig sosig, ChatSosig chatSosig)
+        private Vector3 CalculateSpawnPosition()
         {
-            GameObject nameplatePrefab = chatSosig.isFriendly ? this.nameplatePrefab : this.enemyNameplatePrefab;
-            if (nameplatePrefab == null) return;
-
-            GameObject nameplate = Instantiate(nameplatePrefab, sosig.Links[1].transform, false);
-            nameplate.transform.localPosition = Vector3.zero;
-            nameplate.transform.localRotation = Quaternion.identity;
-
-            var textComponents = nameplate.GetComponentsInChildren<UnityEngine.UI.Text>();
-            foreach (var text in textComponents)
-            {
-                text.text = chatSosig.userName;
-            }
-
-            chatSosig.nameplate = nameplate;
+            Vector3 playerPos = GM.CurrentPlayerBody.Head.position;
+            Vector3 forward = GM.CurrentPlayerBody.Head.forward;
+            Vector3 spawnPos = playerPos + forward * 3f + UnityEngine.Random.insideUnitSphere * 1f;
+            spawnPos.y = playerPos.y;
+            return spawnPos;
         }
 
         private IEnumerator UpdateSosigsCoroutine()
         {
             while (true)
             {
-                yield return new WaitForSeconds(sosigUpdateInterval.Value);
-                UpdateActiveSosigs();
+                yield return new WaitForSeconds(1f);
+                CleanupDeadSosigs();
             }
         }
 
-        private void UpdateActiveSosigs()
+        private void CleanupDeadSosigs()
         {
-            // Clean up null references
-            activeChatSosigs.RemoveAll(cs => cs.sosigInstance == null);
-
-            foreach (var chatSosig in activeChatSosigs.ToList())
-            {
-                if (chatSosig.sosigInstance == null) continue;
-
-                UpdateSosigAI(chatSosig);
-                
-                // Handle dead sosigs
-                if (chatSosig.sosigInstance.BodyState == Sosig.SosigBodyState.Dead)
-                {
-                    HandleDeadSosig(chatSosig);
-                }
-            }
+            activeSosigs.RemoveAll(sosig => sosig == null || sosig.BodyState == Sosig.SosigBodyState.Dead);
         }
 
-        private void UpdateSosigAI(ChatSosig chatSosig)
+        public void ClearAllSosigs()
         {
-            Sosig sosig = chatSosig.sosigInstance;
-            
-            if (sosig.m_isStunned) return;
-
-            if (chatSosig.isFriendly)
+            foreach (var sosig in activeSosigs)
             {
-                // Update friendly sosig follow behavior
-                float distanceToAssaultPoint = Vector3.Distance(GM.CurrentPlayerBody.Head.position, sosig.m_assaultPoint);
-                if (distanceToAssaultPoint > sosigFollowDistance.Value)
+                if (sosig != null)
                 {
-                    Vector3 followPoint = CalculateFollowPoint();
-                    if (!Physics.Linecast(GM.CurrentPlayerBody.Head.position, followPoint, LayerMask.GetMask("Environment")))
-                    {
-                        sosig.CommandAssaultPoint(followPoint);
-                    }
-                }
-
-                // Handle combat behavior for friendly sosigs
-                if (sosig.Priority.HasFreshTarget() && sosig.CurrentOrder == Sosig.SosigOrder.Investigate && sosig.m_entityRecognition >= 0.65f)
-                {
-                    sosig.SetCurrentOrder(Sosig.SosigOrder.Skirmish);
+                    Destroy(sosig.gameObject);
                 }
             }
-            else
-            {
-                // Update enemy sosig behavior
-                float distanceToPlayer = Vector3.Distance(GM.CurrentPlayerBody.Head.position, sosig.Links[1].transform.position);
-                if (distanceToPlayer > 20f)
-                {
-                    sosig.CommandAssaultPoint(GM.CurrentPlayerBody.transform.position);
-                }
-
-                // Ensure enemy sosigs stay aggressive
-                if (sosig.CurrentOrder == Sosig.SosigOrder.Disabled || 
-                    sosig.CurrentOrder == Sosig.SosigOrder.Idle || 
-                    sosig.CurrentOrder == Sosig.SosigOrder.GuardPoint)
-                {
-                    sosig.CommandAssaultPoint(GM.CurrentPlayerBody.transform.position);
-                }
-
-                // Handle combat behavior for enemy sosigs
-                if (sosig.Priority.HasFreshTarget() && sosig.CurrentOrder == Sosig.SosigOrder.Investigate && sosig.m_entityRecognition >= 0.55f)
-                {
-                    sosig.SetCurrentOrder(Sosig.SosigOrder.Skirmish);
-                }
-            }
+            activeSosigs.Clear();
+            if (logger != null)
+                logger.LogInfo("Cleared all spawned sosigs");
         }
 
-        private void HandleDeadSosig(ChatSosig chatSosig)
+        // Public API methods for external use
+        public void SpawnSosigByName(string name, bool isAlly)
         {
-            if (autoCleanupDeadSosigs.Value)
+            if (activeSosigs.Count >= maxActiveSosigs.Value)
             {
-                if (!chatSosig.deathProcessed)
-                {
-                    chatSosig.deathTime = Time.time;
-                    chatSosig.deathProcessed = true;
-                    chatSosig.sosigInstance.TickDownToClear(deadSosigCleanupTime.Value);
-                }
+                if (logger != null)
+                    logger.LogWarning("Maximum sosigs reached. Cannot spawn more.");
+                return;
+            }
 
-                if (Time.time - chatSosig.deathTime > deadSosigCleanupTime.Value)
-                {
-                    RemoveChatSosig(chatSosig);
-                }
-            }
-            else
-            {
-                chatSosig.sosigInstance.TickDownToClear(3f);
-            }
+            SpawnSosig(name, isAlly);
         }
 
-        private void RemoveChatSosig(ChatSosig chatSosig)
+        // Methods expected by other components
+        public void SpawnFriendlyChatSosig()
         {
-            if (chatSosig.nameplate != null)
-            {
-                Destroy(chatSosig.nameplate);
-            }
+            SpawnAllySosig();
+        }
 
-            if (chatSosig.sosigInstance != null)
-            {
-                Destroy(chatSosig.sosigInstance.gameObject);
-            }
+        public void SpawnEnemyChatSosig()
+        {
+            SpawnEnemySosig();
+        }
 
-            activeChatSosigs.Remove(chatSosig);
+        public void QueueChatSpawn(string userName, bool isFriendly = true, string armorSetName = null)
+        {
+            // For the simplified version, just spawn directly
+            SpawnSosig(userName, isFriendly);
         }
 
         public void ClearAllChatSosigs()
         {
-            foreach (var chatSosig in activeChatSosigs.ToList())
-            {
-                RemoveChatSosig(chatSosig);
-            }
-            
-            logger.LogInfo("Cleared all chat sosigs");
-        }
-
-        // Utility methods
-        private string ReadChatUserName(string filePath)
-        {
-            try
-            {
-                if (!File.Exists(filePath)) return "";
-
-                string content = File.ReadAllText(filePath);
-                int startIndex = content.IndexOf('"');
-                if (startIndex == -1) return "";
-
-                int endIndex = content.LastIndexOf('"');
-                if (endIndex <= startIndex) return "";
-
-                return content.Substring(startIndex + 1, endIndex - startIndex - 1);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to read chat user name from {filePath}: {ex.Message}");
-                return "";
-            }
-        }
-
-        private Vector3 CalculateSpawnPosition()
-        {
-            Vector3 playerHead = GM.CurrentPlayerBody.Head.position;
-            return new Vector3(playerHead.x, GM.CurrentPlayerBody.transform.position.y, playerHead.z + 1f);
-        }
-
-        private Vector3 CalculateEnemySpawnPosition()
-        {
-            // Try to use TNH spawn points if available
-            if (GM.TNH_Manager != null)
-            {
-                var tnhManager = GM.TNH_Manager;
-                if (tnhManager.Phase == TNH_Phase.Hold && tnhManager.m_curHoldPoint?.AttackVectors?.Count > 0)
-                {
-                    var attackVector = tnhManager.m_curHoldPoint.AttackVectors[UnityEngine.Random.Range(0, tnhManager.m_curHoldPoint.AttackVectors.Count)];
-                    if (attackVector.SpawnPoints_Sosigs_Attack?.Count > 0)
-                    {
-                        return attackVector.SpawnPoints_Sosigs_Attack[UnityEngine.Random.Range(0, attackVector.SpawnPoints_Sosigs_Attack.Count)].position;
-                    }
-                }
-                else if (tnhManager.Phase == TNH_Phase.Take && tnhManager.m_curHoldPoint?.SpawnPoints_Turrets?.Count > 0)
-                {
-                    return tnhManager.m_curHoldPoint.SpawnPoints_Turrets[0].transform.position;
-                }
-            }
-
-            // Fallback to player-relative position
-            return CalculateSpawnPosition();
-        }
-
-        private Vector3 CalculateFollowPoint()
-        {
-            float randomX = ((UnityEngine.Random.Range(0, 2) * 2 - 1) * UnityEngine.Random.Range(0.75f, 2.5f));
-            float randomZ = ((UnityEngine.Random.Range(0, 2) * 2 - 1) * UnityEngine.Random.Range(0.75f, 2.5f));
-            
-            Vector3 playerHead = GM.CurrentPlayerBody.Head.position;
-            return new Vector3(playerHead.x + randomX, playerHead.y, playerHead.z + randomZ);
-        }
-
-        private int GetEnemyIFF()
-        {
-            if (GM.TNH_Manager != null)
-            {
-                var tnhManager = GM.TNH_Manager;
-                if (tnhManager.Phase == TNH_Phase.Hold && tnhManager.m_curHoldPoint?.m_curPhase != null)
-                {
-                    return tnhManager.m_curHoldPoint.m_curPhase.IFFUsed;
-                }
-                else if (tnhManager.Phase == TNH_Phase.Take && tnhManager.m_curLevel?.PatrolChallenge?.Patrols?.Count > 0)
-                {
-                    return tnhManager.m_curLevel.PatrolChallenge.Patrols[0].IFFUsed;
-                }
-            }
-            
-            return 1; // Default enemy IFF
-        }
-
-        private ArmorSet GetArmorSetByName(string name)
-        {
-            return availableArmorSets.FirstOrDefault(a => a.name == name) ?? availableArmorSets.First();
-        }
-
-        private void ProcessChatSpawnQueue()
-        {
-            // Process queued chat spawn requests
-            while (chatSpawnQueue.Count > 0 && activeChatSosigs.Count < maxActiveSosigs.Value)
-            {
-                var request = chatSpawnQueue.Dequeue();
-                ProcessChatSpawnRequest(request);
-            }
-        }
-
-        private void ProcessChatSpawnRequest(ChatSpawnRequest request)
-        {
-            currentChatUserName = request.userName;
-            
-            if (request.isFriendly)
-            {
-                SpawnFriendlyChatSosig();
-            }
-            else
-            {
-                SpawnEnemyChatSosig();
-            }
-        }
-
-        // Public API methods
-        public void QueueChatSpawn(string userName, bool isFriendly = true, string armorSetName = null)
-        {
-            if (!string.IsNullOrEmpty(armorSetName) && availableArmorSets.Any(a => a.name == armorSetName))
-            {
-                selectedArmorSet = armorSetName;
-            }
-
-            chatSpawnQueue.Enqueue(new ChatSpawnRequest
-            {
-                userName = userName,
-                isFriendly = isFriendly,
-                requestTime = Time.time
-            });
-        }
-
-        public List<string> GetAvailableArmorSets()
-        {
-            return availableArmorSets.Select(a => a.name).ToList();
+            ClearAllSosigs();
         }
 
         public ChatSosigStats GetStats()
         {
+            CleanupDeadSosigs();
             return new ChatSosigStats
             {
-                activeSosigCount = activeChatSosigs.Count,
-                friendlyCount = activeChatSosigs.Count(cs => cs.isFriendly),
-                enemyCount = activeChatSosigs.Count(cs => !cs.isFriendly),
-                queuedSpawns = chatSpawnQueue.Count,
-                totalSpawned = activeChatSosigs.Count // This would be tracked over time in a full implementation
+                activeSosigCount = activeSosigs.Count,
+                friendlyCount = activeSosigs.Count(s => s != null && s.E.IFFCode == 0),
+                enemyCount = activeSosigs.Count(s => s != null && s.E.IFFCode == 1),
+                queuedSpawns = 0, // No queue in simplified version
+                totalSpawned = activeSosigs.Count
             };
         }
 
-        /// <summary>
-        /// Gets the plugin instance - used by other components to access plugin configuration
-        /// </summary>
+        public List<string> GetAvailableArmorSets()
+        {
+            if (availableArmor != null)
+            {
+                return availableArmor.Keys.ToList();
+            }
+            return new List<string> { "Standard", "Light", "Heavy" };
+        }
+
         public H3TVRImproved GetPlugin()
         {
             return plugin;
         }
+
+        public int GetActiveSosigCount()
+        {
+            CleanupDeadSosigs();
+            return activeSosigs.Count;
+        }
+
+        public List<string> GetAllyNames()
+        {
+            return GetNamesFromFile(allyNamesFilePath);
+        }
+
+        public List<string> GetEnemyNames()
+        {
+            return GetNamesFromFile(enemyNamesFilePath);
+        }
+
+        private List<string> GetNamesFromFile(string filePath)
+        {
+            try
+            {
+                if (!File.Exists(filePath))
+                    return new List<string>();
+
+                var lines = File.ReadAllLines(filePath);
+                var result = new List<string>();
+                
+                foreach (string line in lines)
+                {
+                    if (!string.IsNullOrEmpty(line) && !line.Trim().StartsWith("#"))
+                    {
+                        string trimmedLine = line.Trim();
+                        if (!string.IsNullOrEmpty(trimmedLine))
+                        {
+                            result.Add(trimmedLine);
+                        }
+                    }
+                }
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Failed to read names from {filePath}: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        void OnDestroy()
+        {
+            // Clean up resources
+            StopAllCoroutines();
+            ClearAllSosigs();
+        }
     }
 
-    // Data structures
-    [System.Serializable]
-    public class ChatSosig
-    {
-        public string userName;
-        public bool isFriendly;
-        public float spawnTime;
-        public float deathTime;
-        public bool deathProcessed;
-        public Sosig sosigInstance;
-        public GameObject nameplate;
-        public ArmorSet armorSet;
-    }
-
-    [System.Serializable]
-    public class ArmorSet
-    {
-        public string name;
-        public string description;
-        public float headwearChance;
-        public float facewearChance;
-        public float eyewearChance;
-        public float torsowearChance;
-        public float pantswearChance;
-        public float backpackChance;
-        public ArmorLevel armorLevel;
-    }
-
-    public enum ArmorLevel
-    {
-        None,
-        Light,
-        Medium,
-        Heavy,
-        Elite
-    }
-
-    [System.Serializable]
-    public class ChatSpawnRequest
-    {
-        public string userName;
-        public bool isFriendly;
-        public float requestTime;
-    }
-
+    // Simple stats class for the simplified chat sosig system
     [System.Serializable]
     public class ChatSosigStats
     {
