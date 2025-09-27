@@ -172,14 +172,79 @@ namespace H3TVR
                     {
                         rb.AddForce(GM.CurrentPlayerBody.Head.forward * 4000f);
                     }
+
+                    // 10% chance to spawn a grenade with the body pillow
+                    if (UnityEngine.Random.Range(1, 11) == 1)
+                    {
+                        logger.LogInfo("Body pillow triggered 10% grenade spawn!");
+                        SpawnBodyPillowGrenade(spawnPosition);
+                    }
                 }
 
-                // Handle pillow effects
+                // Handle existing pillow effects
                 HandlePillowEffects();
             }
             catch (Exception ex)
             {
                 logger.LogError($"SpawnPillow failed: {ex.Message}");
+            }
+        }
+
+        private void SpawnBodyPillowGrenade(Vector3 pillowPosition)
+        {
+            try
+            {
+                if (!IM.OD.ContainsKey("PinnedGrenadeM67"))
+                {
+                    logger.LogError("PinnedGrenadeM67 not found for body pillow grenade");
+                    return;
+                }
+
+                FVRObject grenadeObj = IM.OD["PinnedGrenadeM67"];
+                
+                // Spawn grenade slightly offset from the pillow position
+                Vector3 grenadeSpawnPos = pillowPosition + new Vector3(
+                    UnityEngine.Random.Range(-0.1f, 0.1f), 
+                    UnityEngine.Random.Range(0f, 0.2f), 
+                    UnityEngine.Random.Range(-0.1f, 0.1f)
+                );
+                
+                GameObject grenadeGO = Instantiate(grenadeObj.GetGameObject(), grenadeSpawnPos, GM.CurrentPlayerBody.Head.rotation);
+
+                // 50% chance for the grenade to be armed
+                bool shouldArmGrenade = UnityEngine.Random.value < 0.5f;
+                
+                if (shouldArmGrenade)
+                {
+                    PinnedGrenade grenade = grenadeGO.GetComponentInChildren<PinnedGrenade>();
+                    if (grenade != null)
+                    {
+                        grenade.ReleaseLever();
+                        logger.LogInfo("Body pillow grenade armed and released!");
+                    }
+                }
+                else
+                {
+                    logger.LogInfo("Body pillow grenade spawned but not armed (safe)");
+                }
+
+                var grenadeRB = grenadeGO.GetComponent<Rigidbody>();
+                if (grenadeRB != null)
+                {
+                    // Launch grenade in a slightly different direction than the pillow
+                    Vector3 grenadeDirection = GM.CurrentPlayerBody.Head.forward + new Vector3(
+                        UnityEngine.Random.Range(-0.3f, 0.3f),
+                        UnityEngine.Random.Range(-0.1f, 0.2f),
+                        UnityEngine.Random.Range(-0.3f, 0.3f)
+                    );
+                    
+                    grenadeRB.AddForce(grenadeDirection * UnityEngine.Random.Range(3000f, 5000f));
+                    grenadeRB.AddTorque(UnityEngine.Random.insideUnitSphere * 5f);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnBodyPillowGrenade failed: {ex.Message}");
             }
         }
 
@@ -560,29 +625,65 @@ namespace H3TVR
                     return;
                 }
 
-                int droppedCount = 0;
+                int destroyedCount = 0;
                 foreach (var slot in allSlots)
                 {
                     var obj = slot?.CurObject;
                     if (obj == null) continue;
 
+                    // Get the position before removing from slot
+                    Vector3 itemPosition = obj.transform.position;
+                    
+                    // Remove from quickbelt slot
                     obj.SetQuickBeltSlot(null);
 
-                    var rb = obj.GetComponent<Rigidbody>();
-                    if (rb != null)
-                    {
-                        rb.isKinematic = false;
-                        rb.velocity = GM.CurrentPlayerBody.Head.forward * 1.5f + UnityEngine.Random.insideUnitSphere * 0.25f;
-                        rb.angularVelocity = UnityEngine.Random.insideUnitSphere * 2f;
-                    }
-                    droppedCount++;
+                    // Spawn explosive shell at item position
+                    SpawnDestructiveShell(itemPosition);
+
+                    // Destroy the quickbelt item
+                    Destroy(obj.gameObject);
+                    destroyedCount++;
                 }
 
-                logger.LogInfo($"Dropped {droppedCount} quickbelt object(s).");
+                logger.LogInfo($"Destroyed {destroyedCount} quickbelt object(s) with explosive shells!");
             }
             catch (Exception ex)
             {
                 logger.LogError($"DestroyQuickbelt failed: {ex.Message}");
+            }
+        }
+
+        private void SpawnDestructiveShell(Vector3 itemPosition)
+        {
+            try
+            {
+                if (!IM.OD.ContainsKey("12GaugeShellFreedomfetti")) 
+                {
+                    logger.LogWarning("12GaugeShellFreedomfetti not found for quickbelt destruction");
+                    return;
+                }
+
+                FVRObject obj = IM.OD["12GaugeShellFreedomfetti"];
+                
+                // Spawn shell at the item's position with slight random offset
+                Vector3 shellPosition = itemPosition + new Vector3(
+                    UnityEngine.Random.Range(-0.05f, 0.05f),
+                    UnityEngine.Random.Range(-0.05f, 0.05f), 
+                    UnityEngine.Random.Range(-0.05f, 0.05f)
+                );
+
+                GameObject go = Instantiate(obj.GetGameObject(), shellPosition, UnityEngine.Random.rotation);
+
+                // Immediately explode the shell to destroy the item
+                FVRFireArmRound cartridge = go.GetComponent<FVRFireArmRound>();
+                if (cartridge != null)
+                {
+                    cartridge.Splode(0.01f, false, true);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnDestructiveShell failed: {ex.Message}");
             }
         }
         #endregion
