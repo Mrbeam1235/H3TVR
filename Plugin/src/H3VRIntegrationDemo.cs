@@ -1,219 +1,276 @@
-using System.Collections;
-using System.Linq;
 using UnityEngine;
+using System.Collections.Generic;
+using System.Linq;
 using FistVR;
 
 namespace H3TVR
 {
     /// <summary>
-    /// Demonstration of H3VR DLL integration for loading armor and loadouts
-    /// This class shows how to use the H3VR asset loading system
+    /// Demonstrates integration with H3VR systems for loading assets and configuring sosigs
+    /// This class shows how to use the H3VRAssetLoader and related systems
     /// </summary>
     public class H3VRIntegrationDemo : MonoBehaviour
     {
         [Header("Demo Configuration")]
         public bool runDemoOnStart = false;
-        public float demoDelay = 2f;
+        public bool enableDebugOutput = true;
         
-        [Header("Status Display")]
-        public bool showDebugInfo = true;
+        [Header("Asset Loading")]
+        public bool loadArmor = true;
+        public bool loadWeapons = true;
+        public bool loadTemplates = true;
         
-        private void Start()
+        void Start()
         {
             if (runDemoOnStart)
             {
-                StartCoroutine(RunDemoAfterDelay());
+                StartCoroutine(RunIntegrationDemo());
             }
         }
         
-        private IEnumerator RunDemoAfterDelay()
+        private System.Collections.IEnumerator RunIntegrationDemo()
         {
-            yield return new WaitForSeconds(demoDelay);
-            RunH3VRIntegrationDemo();
-        }
-        
-        /// <summary>
-        /// Demonstrates the complete H3VR integration workflow
-        /// </summary>
-        public void RunH3VRIntegrationDemo()
-        {
-            Debug.Log("=== H3VR Integration Demo Starting ===");
+            LogDemo("Starting H3VR Integration Demo...");
             
-            // Step 1: Check system status
-            LogSystemStatus();
-            
-            // Step 2: Test asset loading
-            TestAssetLoading();
-            
-            // Step 3: Create a demo sosig with H3VR assets
-            CreateDemoSosig();
-            
-            Debug.Log("=== H3VR Integration Demo Complete ===");
-        }
-        
-        private void LogSystemStatus()
-        {
-            Debug.Log("--- System Status Check ---");
-            
-            // Check if H3VR systems are ready
-            bool isReady = H3VRAssetLoader.IsH3VRSystemReady();
-            Debug.Log($"H3VR System Ready: {isReady}");
-            
-            if (isReady)
+            // Wait for H3VR systems to be ready
+            while (IM.OD == null || IM.OD.Count == 0)
             {
-                var stats = H3VRAssetLoader.GetLoadingStats();
-                Debug.Log($"Available Assets - {stats}");
+                LogDemo("Waiting for H3VR ItemManager to be ready...");
+                yield return new UnityEngine.WaitForSeconds(1f);
             }
-            else
+            
+            // Initialize H3VR Asset Loader
+            LogDemo("Initializing H3VR Asset Loader...");
+            H3VRAssetLoader.Initialize();
+            
+            if (!H3VRAssetLoader.IsInitialized)
             {
-                Debug.Log("H3VR systems not ready - using delayed initialization");
-                // The system will automatically retry via H3VRDelayedInitializer
+                LogDemo("Failed to initialize H3VR Asset Loader!");
+                yield break;
             }
+            
+            // Demo asset loading capabilities
+            if (loadArmor) yield return DemoArmorLoading();
+            if (loadWeapons) yield return DemoWeaponLoading();
+            if (loadTemplates) yield return DemoTemplateLoading();
+            
+            // Demo custom outfit creation
+            yield return DemoCustomOutfitCreation();
+            
+            LogDemo("H3VR Integration Demo completed successfully!");
         }
         
-        private void TestAssetLoading()
+        private System.Collections.IEnumerator DemoArmorLoading()
         {
-            Debug.Log("--- Asset Loading Test ---");
-            
-            // Run the comprehensive asset loading test
-            H3VRAssetLoadingTest.RunAssetLoadingTest();
-            
-            // Test specific asset categories
-            TestArmorAssets();
-            TestWeaponAssets();
-        }
-        
-        private void TestArmorAssets()
-        {
-            Debug.Log("Testing Armor Assets:");
+            LogDemo("=== ARMOR LOADING DEMO ===");
             
             var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
-            Debug.Log($"Found {armorCategories.Count} armor categories from H3VR DLL");
+            LogDemo($"Found {armorCategories.Count} armor categories:");
             
-            // Show first few armor pieces as examples
-            int count = 0;
             foreach (var category in armorCategories)
             {
-                if (count >= 3) break; // Just show first 3 as examples
-                Debug.Log($"  - {category.Key}: {category.Value.Count} items");
-                count++;
+                LogDemo($"  {category.Key}: {category.Value.Count} items");
+                
+                // Show first few items in each category
+                for (int i = 0; i < Mathf.Min(3, category.Value.Count); i++)
+                {
+                    var armorPiece = category.Value[i];
+                    LogDemo($"    - {armorPiece.ItemID} ({armorPiece.DisplayName})");
+                }
+                
+                if (category.Value.Count > 3)
+                {
+                    LogDemo($"    ... and {category.Value.Count - 3} more items");
+                }
+            }
+            
+            // Demo getting random armor pieces
+            LogDemo("\nTesting random armor selection:");
+            var randomHelmet = H3VRAssetLoader.GetRandomArmor("Headwear");
+            var randomVest = H3VRAssetLoader.GetRandomArmor("Torsowear");
+            
+            LogDemo($"Random helmet: {randomHelmet?.ItemID ?? "None available"}");
+            LogDemo($"Random vest: {randomVest?.ItemID ?? "None available"}");
+            
+            yield return new UnityEngine.WaitForSeconds(0.5f);
+        }
+        
+        private System.Collections.IEnumerator DemoWeaponLoading()
+        {
+            LogDemo("=== WEAPON LOADING DEMO ===");
+            
+            var allWeapons = H3VRAssetLoader.GetAllWeapons();
+            var firearms = H3VRAssetLoader.GetWeaponsByCategory(FVRObject.ObjectCategory.Firearm);
+            var melee = H3VRAssetLoader.GetWeaponsByCategory(FVRObject.ObjectCategory.MeleeWeapon);
+            var thrown = H3VRAssetLoader.GetWeaponsByCategory(FVRObject.ObjectCategory.Thrown);
+            
+            LogDemo($"Total weapons loaded: {allWeapons.Count}");
+            LogDemo($"  Firearms: {firearms.Count}");
+            LogDemo($"  Melee weapons: {melee.Count}");
+            LogDemo($"  Thrown weapons: {thrown.Count}");
+            
+            // Demo weapon pattern searching
+            var rifles = H3VRAssetLoader.GetWeaponsByPattern("rifle");
+            var pistols = H3VRAssetLoader.GetWeaponsByPattern("pistol");
+            
+            LogDemo($"\nWeapon pattern matching:");
+            LogDemo($"  Rifles (contains 'rifle'): {rifles.Count}");
+            LogDemo($"  Pistols (contains 'pistol'): {pistols.Count}");
+            
+            // Show random weapon selection
+            var randomFirearm = H3VRAssetLoader.GetRandomWeapon(FVRObject.ObjectCategory.Firearm);
+            LogDemo($"Random firearm: {randomFirearm?.ItemID ?? "None available"}");
+            
+            yield return new UnityEngine.WaitForSeconds(0.5f);
+        }
+        
+        private System.Collections.IEnumerator DemoTemplateLoading()
+        {
+            LogDemo("=== TEMPLATE LOADING DEMO ===");
+            
+            var templates = H3VRAssetLoader.GetAllSosigTemplates();
+            var outfits = H3VRAssetLoader.GetAllOutfitConfigs();
+            
+            LogDemo($"Sosig templates loaded: {templates.Count}");
+            LogDemo($"Outfit configurations loaded: {outfits.Count}");
+            
+            // Show first few templates
+            LogDemo("\nAvailable sosig templates:");
+            for (int i = 0; i < Mathf.Min(5, templates.Count); i++)
+            {
+                var template = templates[i];
+                LogDemo($"  {i + 1}. {template.name ?? "Unknown Template"}");
+            }
+            
+            if (templates.Count > 5)
+            {
+                LogDemo($"  ... and {templates.Count - 5} more templates");
+            }
+            
+            yield return new UnityEngine.WaitForSeconds(0.5f);
+        }
+        
+        private System.Collections.IEnumerator DemoCustomOutfitCreation()
+        {
+            LogDemo("=== CUSTOM OUTFIT CREATION DEMO ===");
+            
+            // Create a heavily armored outfit configuration
+            var heavyOutfit = H3VRAssetLoader.CreateCustomOutfitFromAssets(
+                headwearChance: 1.0f,      // Always wear helmet
+                facewearChance: 0.8f,      // Usually wear face protection
+                eyewearChance: 0.6f,       // Often wear eye protection
+                torsowearChance: 1.0f,     // Always wear body armor
+                pantswearChance: 0.9f,     // Usually wear leg protection
+                pantswearLowerChance: 0.7f, // Often wear lower leg armor
+                backpackChance: 0.8f,      // Usually wear backpack
+                decorationChance: 0.3f     // Sometimes wear decorations
+            );
+            
+            LogDemo("Created heavy combat outfit with high armor chances:");
+            LogDemo($"  Headwear pieces: {heavyOutfit.Headwear?.Count ?? 0}");
+            LogDemo($"  Facewear pieces: {heavyOutfit.Facewear?.Count ?? 0}");
+            LogDemo($"  Torsowear pieces: {heavyOutfit.Torsowear?.Count ?? 0}");
+            LogDemo($"  Backpack pieces: {heavyOutfit.Backpacks?.Count ?? 0}");
+            
+            // Create a light civilian outfit
+            var civilianOutfit = H3VRAssetLoader.CreateCustomOutfitFromAssets(
+                headwearChance: 0.2f,      // Rarely wear head gear
+                facewearChance: 0.1f,      // Rarely wear face protection
+                eyewearChance: 0.3f,       // Sometimes wear glasses
+                torsowearChance: 0.8f,     // Usually wear clothing
+                pantswearChance: 0.9f,     // Usually wear pants
+                pantswearLowerChance: 0.1f, // Rarely wear lower leg gear
+                backpackChance: 0.2f,      // Rarely wear backpack
+                decorationChance: 0.1f     // Rarely wear decorations
+            );
+            
+            LogDemo("\nCreated civilian outfit with low armor chances:");
+            LogDemo($"  Outfit suitable for non-combat sosigs");
+            LogDemo($"  Lower protection, higher civilian appearance");
+            
+            yield return new UnityEngine.WaitForSeconds(0.5f);
+        }
+        
+        private void LogDemo(string message)
+        {
+            if (enableDebugOutput)
+            {
+                Debug.Log($"[H3VR Integration Demo] {message}");
             }
         }
         
-        private void TestWeaponAssets()
+        /// <summary>
+        /// Public method to manually trigger the demo
+        /// </summary>
+        [ContextMenu("Run Integration Demo")]
+        public void RunDemo()
         {
-            Debug.Log("Testing Weapon Assets:");
-            
-            var weapons = H3VRAssetLoader.GetAllWeapons();
-            Debug.Log($"Found {weapons.Count} weapons from H3VR DLL");
-            
-            // Show first few weapons as examples
-            int count = 0;
-            foreach (var weapon in weapons)
+            if (Application.isPlaying)
             {
-                if (count >= 3) break; // Just show first 3 as examples
-                Debug.Log($"  - {weapon.ItemID}: {weapon.DisplayName ?? "unknown"}");
-                count++;
-            }
-        }
-        
-        private void CreateDemoSosig()
-        {
-            Debug.Log("--- Demo Sosig Creation ---");
-            
-            // Create a simple loadout configuration using H3VR assets
-            var demoLoadout = new SosigLoadoutConfiguration
-            {
-                loadoutName = "H3VR Demo Loadout",
-                description = "Demo loadout using H3VR assets",
-                primaryWeapons = new System.Collections.Generic.List<string> { "AK74" },
-                secondaryWeapons = new System.Collections.Generic.List<string> { "M1911" },
-                tertiaryWeapons = new System.Collections.Generic.List<string>()
-            };
-            
-            // Test dry run (doesn't actually spawn, just validates)
-            bool canCreate = SosigLoadoutUtility.CanCreateSosigFromLoadout(demoLoadout);
-            Debug.Log($"Can create demo sosig: {canCreate}");
-            
-            if (canCreate)
-            {
-                Debug.Log("Demo sosig loadout validated successfully!");
-                Debug.Log($"Using H3VR assets: Primary={string.Join(", ", demoLoadout.primaryWeapons.ToArray())}, Secondary={string.Join(", ", demoLoadout.secondaryWeapons.ToArray())}");
+                StartCoroutine(RunIntegrationDemo());
             }
             else
             {
-                Debug.LogWarning("Demo sosig could not be created - check H3VR asset availability");
+                Debug.LogWarning("Demo can only be run during play mode");
             }
         }
         
         /// <summary>
-        /// Public method to check if the H3VR integration is working
+        /// Get loading statistics for debugging
         /// </summary>
-        /// <returns>True if integration is functional</returns>
-        public bool IsH3VRIntegrationWorking()
+        [ContextMenu("Show Loading Stats")]
+        public void ShowLoadingStats()
         {
-            // Basic functionality check
-            if (!H3VRAssetLoader.IsH3VRSystemReady())
+            if (H3VRAssetLoader.IsInitialized)
             {
-                Debug.Log("H3VR systems not ready yet - may work after delayed initialization");
-                return false;
+                LogDemo("=== H3VR ASSET LOADER STATISTICS ===");
+                LogDemo(H3VRAssetLoader.GetLoadingStats());
+                LogDemo("=====================================");
             }
-            
-            var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
-            var weapons = H3VRAssetLoader.GetAllWeapons();
-            var templates = H3VRAssetLoader.GetAllSosigTemplates();
-            
-            int armorCount = armorCategories.Values.Sum(list => list.Count);
-            bool hasAssets = armorCount > 0 || weapons.Count > 0 || templates.Count > 0;
-            
-            if (!hasAssets)
+            else
             {
-                Debug.LogWarning("H3VR system ready but no assets loaded");
-                return false;
+                LogDemo("H3VR Asset Loader not initialized yet");
             }
-            
-            Debug.Log($"H3VR Integration Working! Loaded {armorCount} armor, {weapons.Count} weapons, {templates.Count} sosig templates");
-            return true;
         }
         
         /// <summary>
-        /// Force a complete system refresh and test
+        /// Test specific object loading
         /// </summary>
-        public void RefreshAndTest()
+        [ContextMenu("Test Object Loading")]
+        public void TestObjectLoading()
         {
-            Debug.Log("Forcing H3VR asset refresh and retest...");
-            
-            // Force reload all assets
-            H3VRAssetLoader.ForceReload();
-            
-            // Wait a moment then test
-            StartCoroutine(DelayedRetest());
-        }
-        
-        private IEnumerator DelayedRetest()
-        {
-            yield return new WaitForSeconds(1f);
-            RunH3VRIntegrationDemo();
-        }
-        
-        // Unity Inspector buttons (if using custom inspector)
-        [ContextMenu("Run H3VR Demo")]
-        private void RunDemoFromMenu()
-        {
-            RunH3VRIntegrationDemo();
-        }
-        
-        [ContextMenu("Check Integration Status")]
-        private void CheckStatusFromMenu()
-        {
-            bool working = IsH3VRIntegrationWorking();
-            Debug.Log($"H3VR Integration Status: {(working ? "WORKING" : "NOT READY")}");
-        }
-        
-        [ContextMenu("Refresh and Test")]
-        private void RefreshFromMenu()
-        {
-            RefreshAndTest();
+            // Test loading a known H3VR object
+            var testObject = H3VRAssetLoader.GetObjectByID("AssaultRifle_M4");
+            if (testObject != null)
+            {
+                LogDemo($"Successfully loaded test object: {testObject.ItemID} - {testObject.DisplayName}");
+                
+                var safeGameObject = H3VRAssetLoader.GetSafeGameObject(testObject);
+                if (safeGameObject != null)
+                {
+                    LogDemo("GameObject retrieval successful");
+                }
+                else
+                {
+                    LogDemo("GameObject retrieval failed");
+                }
+            }
+            else
+            {
+                LogDemo("Failed to load test object M4 - trying alternative...");
+                
+                // Try to find any firearm
+                var allWeapons = H3VRAssetLoader.GetAllWeapons();
+                if (allWeapons.Count > 0)
+                {
+                    var firstWeapon = allWeapons[0];
+                    LogDemo($"Found alternative weapon: {firstWeapon.ItemID}");
+                }
+                else
+                {
+                    LogDemo("No weapons available for testing");
+                }
+            }
         }
     }
 }

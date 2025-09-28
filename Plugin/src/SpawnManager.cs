@@ -1,99 +1,45 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using FistVR;
-using System.Collections;
-using System;
 using BepInEx.Logging;
+using System;
 
 namespace H3TVR
 {
     /// <summary>
-    /// Manages all spawning functionality with improved error handling and safety
+    /// Simple chat sosig statistics class
     /// </summary>
+    public class ChatSosigStats
+    {
+        public int activeSosigCount { get; set; }
+        public int friendlyCount { get; set; }
+        public int enemyCount { get; set; }
+        public int queuedSpawns { get; set; }
+        public int totalSpawned { get; set; }
+    }
+
     public class SpawnManager : MonoBehaviour
     {
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private TwitchChatSosigManager chatSosigManager;
+        private EnhancedChatSpawner enhancedChatSpawner;
 
         public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
         {
             plugin = pluginInstance;
             logger = logSource;
             
-            // Initialize chat sosig manager
-            InitializeChatSosigManager();
+            logger.LogInfo("SpawnManager initialized successfully!");
         }
 
-        private void InitializeChatSosigManager()
+        public void SetEnhancedChatSpawner(EnhancedChatSpawner chatSpawner)
         {
-            try
-            {
-                chatSosigManager = gameObject.AddComponent<TwitchChatSosigManager>();
-                chatSosigManager.Initialize(plugin, logger); // Pass only 2 arguments
-                logger.LogInfo("TwitchChatSosigManager initialized successfully");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to initialize TwitchChatSosigManager: {ex.Message}");
-            }
+            enhancedChatSpawner = chatSpawner;
+            logger?.LogInfo("Enhanced Chat Spawner reference set in SpawnManager");
         }
 
-        #region Chat Sosig Integration
-        /// <summary>
-        /// Spawn a friendly chat sosig with the current selected armor
-        /// </summary>
-        public void SpawnChatSosigFriendly()
-        {
-            chatSosigManager?.SpawnFriendlyChatSosig();
-        }
-
-        /// <summary>
-        /// Spawn an enemy chat sosig with the current selected armor
-        /// </summary>
-        public void SpawnChatSosigEnemy()
-        {
-            chatSosigManager?.SpawnEnemyChatSosig();
-        }
-
-        /// <summary>
-        /// Queue a chat sosig spawn from Twitch integration
-        /// </summary>
-        /// <param name="userName">The Twitch username</param>
-        /// <param name="isFriendly">Whether the sosig should be friendly</param>
-        /// <param name="armorSet">Optional armor set name</param>
-        public void QueueChatSosigSpawn(string userName, bool isFriendly = true, string armorSet = null)
-        {
-            chatSosigManager?.QueueChatSpawn(userName, isFriendly, armorSet);
-        }
-
-        /// <summary>
-        /// Clear all active chat sosigs
-        /// </summary>
-        public void ClearAllChatSosigs()
-        {
-            chatSosigManager?.ClearAllChatSosigs();
-        }
-
-        /// <summary>
-        /// Get statistics about active chat sosigs
-        /// </summary>
-        /// <returns>Chat sosig statistics</returns>
-        public ChatSosigStats GetChatSosigStats()
-        {
-            return chatSosigManager?.GetStats() ?? new ChatSosigStats();
-        }
-
-        /// <summary>
-        /// Get list of available armor sets
-        /// </summary>
-        /// <returns>List of armor set names</returns>
-        public System.Collections.Generic.List<string> GetAvailableArmorSets()
-        {
-            return chatSosigManager?.GetAvailableArmorSets() ?? new System.Collections.Generic.List<string>();
-        }
-        #endregion
-
-        #region Toy and Item Spawns
+        // H3TVR legacy spawn methods required by InputHandler
         public void SpawnWonderfulToy()
         {
             SpawnObject("TippyToyAnton", "WonderToy");
@@ -109,41 +55,6 @@ namespace H3TVR
             SpawnObject("SuppressorBottle", "Hydration");
         }
 
-        private void SpawnObject(string itemID, string objectName)
-        {
-            try
-            {
-                if (!ValidateSpawnConditions()) return;
-
-                if (!IM.OD.ContainsKey(itemID))
-                {
-                    logger.LogError($"Item '{itemID}' not found in ObjectDictionary for {objectName}");
-                    return;
-                }
-
-                FVRObject obj = IM.OD[itemID];
-                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-                Quaternion spawnRot = GM.CurrentPlayerBody.Head.rotation;
-                
-                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, spawnRot);
-                
-                var rb = go.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    rb.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
-                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25f);
-                }
-
-                logger.LogInfo($"Successfully spawned {objectName}");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to spawn {objectName}: {ex.Message}");
-            }
-        }
-        #endregion
-
-        #region Advanced Spawns
         public void SpawnPillow()
         {
             try
@@ -172,16 +83,9 @@ namespace H3TVR
                     {
                         rb.AddForce(GM.CurrentPlayerBody.Head.forward * 4000f);
                     }
-
-                    // 10% chance to spawn a grenade with the body pillow
-                    if (UnityEngine.Random.Range(1, 11) == 1)
-                    {
-                        logger.LogInfo("Body pillow triggered 10% grenade spawn!");
-                        SpawnBodyPillowGrenade(spawnPosition);
-                    }
                 }
 
-                // Handle existing pillow effects
+                // Handle pillow effects
                 HandlePillowEffects();
             }
             catch (Exception ex)
@@ -190,187 +94,6 @@ namespace H3TVR
             }
         }
 
-        private void SpawnBodyPillowGrenade(Vector3 pillowPosition)
-        {
-            try
-            {
-                if (!IM.OD.ContainsKey("PinnedGrenadeM67"))
-                {
-                    logger.LogError("PinnedGrenadeM67 not found for body pillow grenade");
-                    return;
-                }
-
-                FVRObject grenadeObj = IM.OD["PinnedGrenadeM67"];
-                
-                // Spawn grenade slightly offset from the pillow position
-                Vector3 grenadeSpawnPos = pillowPosition + new Vector3(
-                    UnityEngine.Random.Range(-0.1f, 0.1f), 
-                    UnityEngine.Random.Range(0f, 0.2f), 
-                    UnityEngine.Random.Range(-0.1f, 0.1f)
-                );
-                
-                GameObject grenadeGO = Instantiate(grenadeObj.GetGameObject(), grenadeSpawnPos, GM.CurrentPlayerBody.Head.rotation);
-
-                // 50% chance for the grenade to be armed
-                bool shouldArmGrenade = UnityEngine.Random.value < 0.5f;
-                
-                if (shouldArmGrenade)
-                {
-                    PinnedGrenade grenade = grenadeGO.GetComponentInChildren<PinnedGrenade>();
-                    if (grenade != null)
-                    {
-                        grenade.ReleaseLever();
-                        logger.LogInfo("Body pillow grenade armed and released!");
-                    }
-                }
-                else
-                {
-                    logger.LogInfo("Body pillow grenade spawned but not armed (safe)");
-                }
-
-                var grenadeRB = grenadeGO.GetComponent<Rigidbody>();
-                if (grenadeRB != null)
-                {
-                    // Launch grenade in a slightly different direction than the pillow
-                    Vector3 grenadeDirection = GM.CurrentPlayerBody.Head.forward + new Vector3(
-                        UnityEngine.Random.Range(-0.3f, 0.3f),
-                        UnityEngine.Random.Range(-0.1f, 0.2f),
-                        UnityEngine.Random.Range(-0.3f, 0.3f)
-                    );
-                    
-                    grenadeRB.AddForce(grenadeDirection * UnityEngine.Random.Range(3000f, 5000f));
-                    grenadeRB.AddTorque(UnityEngine.Random.insideUnitSphere * 5f);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"SpawnBodyPillowGrenade failed: {ex.Message}");
-            }
-        }
-
-        private void HandlePillowEffects()
-        {
-            bool grenadeEnabled;
-            float grenadeChance, grenadeArmedChance;
-            plugin.GetPillowGrenadeConfig(out grenadeEnabled, out grenadeChance, out grenadeArmedChance);
-
-            bool zeroGEnabled;
-            float zeroGChance, zeroGDuration;
-            plugin.GetPillowZeroGravityConfig(out zeroGEnabled, out zeroGChance, out zeroGDuration);
-
-            bool slomoEnabled;
-            float slomoChance, slomoDuration;
-            plugin.GetPillowSlomoConfig(out slomoEnabled, out slomoChance, out slomoDuration);
-
-            if (grenadeEnabled && UnityEngine.Random.value < grenadeChance)
-            {
-                logger.LogInfo("Pillow grenade spawn triggered!");
-                SpawnPillowGrenade(grenadeArmedChance);
-            }
-
-            if (zeroGEnabled && UnityEngine.Random.value < zeroGChance)
-            {
-                logger.LogInfo($"Pillow zero gravity triggered! Duration: {zeroGDuration}s");
-                var effectsManager = GetComponent<EffectsManager>();
-                effectsManager?.StartCoroutine(effectsManager.ActivatePillowZeroGravity(zeroGDuration));
-            }
-
-            if (slomoEnabled && UnityEngine.Random.value < slomoChance)
-            {
-                logger.LogInfo($"Pillow slow motion triggered! Duration: {slomoDuration}s");
-                var effectsManager = GetComponent<EffectsManager>();
-                effectsManager?.StartCoroutine(effectsManager.ActivatePillowSlomo(slomoDuration));
-            }
-        }
-
-        private void SpawnPillowGrenade(float armedChance)
-        {
-            try
-            {
-                if (!IM.OD.ContainsKey("PinnedGrenadeM67"))
-                {
-                    logger.LogError("PinnedGrenadeM67 not found for pillow grenade");
-                    return;
-                }
-
-                FVRObject grenadeObj = IM.OD["PinnedGrenadeM67"];
-                Vector3 grenadeSpawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-                GameObject grenadeGO = Instantiate(grenadeObj.GetGameObject(), grenadeSpawnPos, GM.CurrentPlayerBody.Head.rotation);
-
-                bool shouldArmGrenade = UnityEngine.Random.value < armedChance;
-                
-                if (shouldArmGrenade)
-                {
-                    PinnedGrenade grenade = grenadeGO.GetComponentInChildren<PinnedGrenade>();
-                    if (grenade != null)
-                    {
-                        grenade.ReleaseLever();
-                        logger.LogInfo($"Pillow grenade armed and released! ({armedChance * 100}% chance triggered)");
-                    }
-                }
-                else
-                {
-                    logger.LogInfo("Pillow grenade spawned but not armed (safe)");
-                }
-
-                var grenadeRB = grenadeGO.GetComponent<Rigidbody>();
-                if (grenadeRB != null)
-                {
-                    grenadeRB.AddForce(GM.CurrentPlayerBody.Head.forward * 4000f);
-                    grenadeRB.AddTorque(UnityEngine.Random.insideUnitSphere * 5f);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"SpawnPillowGrenade failed: {ex.Message}");
-            }
-        }
-
-        public void SpawnShuri()
-        {
-            try
-            {
-                if (!ValidateSpawnConditions()) return;
-
-                int minCount, maxCount;
-                plugin.GetShurikenConfig(out minCount, out maxCount);
-                float scale = plugin.GetShurikenScale();
-                
-                int shurikenCount = UnityEngine.Random.Range(minCount, maxCount + 1);
-                logger.LogInfo($"Spawning {shurikenCount} shuriken(s)");
-
-                if (!IM.OD.ContainsKey("Shuriken"))
-                {
-                    logger.LogError("Shuriken not found in ObjectDictionary");
-                    return;
-                }
-
-                FVRObject obj = IM.OD["Shuriken"];
-                Vector3 shuriPosition = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 0.02f);
-                Quaternion shuriRotation = Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward);
-
-                for (int i = 0; i < shurikenCount; i++)
-                {
-                    GameObject go = Instantiate(obj.GetGameObject(), shuriPosition, shuriRotation);
-                    go.transform.localScale = new Vector3(scale, scale, scale);
-                    
-                    var rb = go.GetComponent<Rigidbody>();
-                    if (rb != null)
-                    {
-                        rb.velocity = GM.CurrentPlayerBody.Head.forward * 30.0f;
-                    }
-
-                    Destroy(go, 60f);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"SpawnShuri failed: {ex.Message}");
-            }
-        }
-        #endregion
-
-        #region Weapon and Combat Spawns
         public void SpawnFlash()
         {
             SpawnGrenade("PinnedGrenadeXM84", "Flash", 500f, true);
@@ -426,41 +149,49 @@ namespace H3TVR
             }
         }
 
-        private void SpawnGrenade(string grenadeID, string grenadeName, float force, bool shouldArm)
+        public void SpawnShuri()
         {
             try
             {
-                if (!ValidateSpawnConditions() || !IM.OD.ContainsKey(grenadeID)) return;
+                if (!ValidateSpawnConditions()) return;
 
-                FVRObject obj = IM.OD[grenadeID];
-                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
+                int minCount, maxCount;
+                plugin.GetShurikenConfig(out minCount, out maxCount);
+                float scale = plugin.GetShurikenScale();
+                
+                int shurikenCount = UnityEngine.Random.Range(minCount, maxCount + 1);
+                logger.LogInfo($"Spawning {shurikenCount} shuriken(s)");
 
-                if (shouldArm)
+                if (!IM.OD.ContainsKey("Shuriken"))
                 {
-                    PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-                    if (grenade != null)
+                    logger.LogError("Shuriken not found in ObjectDictionary");
+                    return;
+                }
+
+                FVRObject obj = IM.OD["Shuriken"];
+                Vector3 shuriPosition = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 0.02f);
+                Quaternion shuriRotation = Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward);
+
+                for (int i = 0; i < shurikenCount; i++)
+                {
+                    GameObject go = Instantiate(obj.GetGameObject(), shuriPosition, shuriRotation);
+                    go.transform.localScale = new Vector3(scale, scale, scale);
+                    
+                    var rb = go.GetComponent<Rigidbody>();
+                    if (rb != null)
                     {
-                        grenade.ReleaseLever();
+                        rb.velocity = GM.CurrentPlayerBody.Head.forward * 30.0f;
                     }
-                }
 
-                var rb = go.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * force);
+                    Destroy(go, 60f);
                 }
-
-                logger.LogInfo($"Spawned {grenadeName}");
             }
             catch (Exception ex)
             {
-                logger.LogError($"Spawn{grenadeName} failed: {ex.Message}");
+                logger.LogError($"SpawnShuri failed: {ex.Message}");
             }
         }
-        #endregion
 
-        #region Complex Spawns
         public void SpawnNadeRain()
         {
             try
@@ -503,6 +234,18 @@ namespace H3TVR
             }
         }
 
+        public void SpawnSkittySubGun()
+        {
+            var weaponManager = plugin.GetWeaponManager();
+            weaponManager?.SpawnRandomGun(false);
+        }
+
+        public void SpawnSkittyBigGun()
+        {
+            var weaponManager = plugin.GetWeaponManager();
+            weaponManager?.SpawnRandomGun(true);
+        }
+
         public void DangerCloseBarrage()
         {
             try
@@ -536,7 +279,7 @@ namespace H3TVR
                     FVRFireArmRound cartridge = go.GetComponent<FVRFireArmRound>();
                     if (cartridge != null)
                     {
-                        cartridge.Splode(0.5f, false, true);
+                        TryExplodeCartridge(cartridge, 0.5f);
                     }
                 }
             }
@@ -545,23 +288,7 @@ namespace H3TVR
                 logger.LogError($"DangerCloseBarrage failed: {ex.Message}");
             }
         }
-        #endregion
 
-        #region Gun Spawns (Delegated to WeaponManager)
-        public void SpawnSkittySubGun()
-        {
-            var weaponManager = GetComponent<WeaponManager>();
-            weaponManager?.SpawnRandomGun(false);
-        }
-
-        public void SpawnSkittyBigGun()
-        {
-            var weaponManager = GetComponent<WeaponManager>();
-            weaponManager?.SpawnRandomGun(true);
-        }
-        #endregion
-
-        #region Utility Actions
         public void DestroyHeld()
         {
             try
@@ -581,6 +308,254 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"DestroyHeld failed: {ex.Message}");
+            }
+        }
+
+        public void DestroyQuickbelt()
+        {
+            try
+            {
+                FVRQuickBeltSlot[] allSlots = UnityEngine.Object.FindObjectsOfType<FVRQuickBeltSlot>();
+                if (allSlots == null || allSlots.Length == 0)
+                {
+                    logger.LogInfo("No quickbelt slots found in scene.");
+                    return;
+                }
+
+                int droppedCount = 0;
+                foreach (var slot in allSlots)
+                {
+                    var obj = slot?.CurObject;
+                    if (obj == null) continue;
+
+                    // Detach from slot
+                    obj.SetQuickBeltSlot(null);
+
+                    // Enable / adjust physics so it actually drops
+                    var rb = obj.GetComponent<Rigidbody>();
+                    if (rb != null)
+                    {
+                        rb.isKinematic = false; // ensure physics
+                        rb.velocity = GM.CurrentPlayerBody.Head.forward * 1.5f + UnityEngine.Random.insideUnitSphere * 0.25f;
+                        rb.angularVelocity = UnityEngine.Random.insideUnitSphere * 2f;
+                    }
+                    droppedCount++;
+                }
+
+                logger.LogInfo($"Dropped {droppedCount} quickbelt object(s).");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"DestroyQuickbelt failed: {ex.Message}");
+            }
+        }
+
+        // Chat Sosig methods - using EnhancedChatSpawner
+        public void SpawnChatSosigFriendly()
+        {
+            if (enhancedChatSpawner != null)
+            {
+                enhancedChatSpawner.SpawningSequence("FriendlyUser");
+            }
+            else
+            {
+                logger?.LogWarning("Enhanced chat spawner not initialized");
+            }
+        }
+
+        public void SpawnChatSosigEnemy()
+        {
+            if (enhancedChatSpawner != null)
+            {
+                enhancedChatSpawner.SpawningSequenceEnemy(1, "EnemyUser");
+            }
+            else
+            {
+                logger?.LogWarning("Enhanced chat spawner not initialized");
+            }
+        }
+
+        public void ClearAllChatSosigs()
+        {
+            if (enhancedChatSpawner != null)
+            {
+                enhancedChatSpawner.ClearSosigs(true, true);
+            }
+            else
+            {
+                logger?.LogWarning("Enhanced chat spawner not initialized");
+            }
+        }
+
+        public ChatSosigStats GetChatSosigStats()
+        {
+            if (enhancedChatSpawner != null)
+            {
+                var stats = enhancedChatSpawner.GetStats();
+                return new ChatSosigStats
+                {
+                    activeSosigCount = stats.ActiveAllies + stats.ActiveEnemies,
+                    friendlyCount = stats.ActiveAllies,
+                    enemyCount = stats.ActiveEnemies,
+                    queuedSpawns = stats.QueueLength,
+                    totalSpawned = stats.TotalSpawned
+                };
+            }
+            else
+            {
+                return new ChatSosigStats
+                {
+                    activeSosigCount = 0,
+                    friendlyCount = 0,
+                    enemyCount = 0,
+                    queuedSpawns = 0,
+                    totalSpawned = 0
+                };
+            }
+        }
+
+        // Helper methods
+        private void SpawnObject(string itemID, string objectName)
+        {
+            try
+            {
+                if (!ValidateSpawnConditions()) return;
+
+                if (!IM.OD.ContainsKey(itemID))
+                {
+                    logger.LogError($"Item '{itemID}' not found in ObjectDictionary for {objectName}");
+                    return;
+                }
+
+                FVRObject obj = IM.OD[itemID];
+                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
+                Quaternion spawnRot = GM.CurrentPlayerBody.Head.rotation;
+                
+                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, spawnRot);
+                
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
+                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25f);
+                }
+
+                logger.LogInfo($"Successfully spawned {objectName}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Failed to spawn {objectName}: {ex.Message}");
+            }
+        }
+
+        private void HandlePillowEffects()
+        {
+            bool grenadeEnabled;
+            float grenadeChance, grenadeArmedChance;
+            plugin.GetPillowGrenadeConfig(out grenadeEnabled, out grenadeChance, out grenadeArmedChance);
+
+            bool zeroGEnabled;
+            float zeroGChance, zeroGDuration;
+            plugin.GetPillowZeroGravityConfig(out zeroGEnabled, out zeroGChance, out zeroGDuration);
+
+            bool slomoEnabled;
+            float slomoChance, slomoDuration;
+            plugin.GetPillowSlomoConfig(out slomoEnabled, out slomoChance, out slomoDuration);
+
+            if (grenadeEnabled && UnityEngine.Random.value < grenadeChance)
+            {
+                logger.LogInfo("Pillow grenade spawn triggered!");
+                SpawnPillowGrenade(grenadeArmedChance);
+            }
+
+            if (zeroGEnabled && UnityEngine.Random.value < zeroGChance)
+            {
+                logger.LogInfo($"Pillow zero gravity triggered! Duration: {zeroGDuration}s");
+                var effectsManager = plugin.GetEffectsManager();
+                effectsManager?.StartCoroutine(effectsManager.ActivatePillowZeroGravity(zeroGDuration));
+            }
+
+            if (slomoEnabled && UnityEngine.Random.value < slomoChance)
+            {
+                logger.LogInfo($"Pillow slow motion triggered! Duration: {slomoDuration}s");
+                var effectsManager = plugin.GetEffectsManager();
+                effectsManager?.StartCoroutine(effectsManager.ActivatePillowSlomo(slomoDuration));
+            }
+        }
+
+        private void SpawnPillowGrenade(float armedChance)
+        {
+            try
+            {
+                if (!IM.OD.ContainsKey("PinnedGrenadeM67"))
+                {
+                    logger.LogError("PinnedGrenadeM67 not found for pillow grenade");
+                    return;
+                }
+
+                FVRObject grenadeObj = IM.OD["PinnedGrenadeM67"];
+                Vector3 grenadeSpawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
+                GameObject grenadeGO = Instantiate(grenadeObj.GetGameObject(), grenadeSpawnPos, GM.CurrentPlayerBody.Head.rotation);
+
+                bool shouldArmGrenade = UnityEngine.Random.value < armedChance;
+                
+                if (shouldArmGrenade)
+                {
+                    PinnedGrenade grenade = grenadeGO.GetComponentInChildren<PinnedGrenade>();
+                    if (grenade != null)
+                    {
+                        grenade.ReleaseLever();
+                        logger.LogInfo($"Pillow grenade armed and released! ({armedChance * 100}% chance triggered)");
+                    }
+                }
+                else
+                {
+                    logger.LogInfo("Pillow grenade spawned but not armed (safe)");
+                }
+
+                var grenadeRB = grenadeGO.GetComponent<Rigidbody>();
+                if (grenadeRB != null)
+                {
+                    grenadeRB.AddForce(GM.CurrentPlayerBody.Head.forward * 4000f);
+                    grenadeRB.AddTorque(UnityEngine.Random.insideUnitSphere * 5f);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnPillowGrenade failed: {ex.Message}");
+            }
+        }
+
+        private void SpawnGrenade(string grenadeID, string grenadeName, float force, bool shouldArm)
+        {
+            try
+            {
+                if (!ValidateSpawnConditions() || !IM.OD.ContainsKey(grenadeID)) return;
+
+                FVRObject obj = IM.OD[grenadeID];
+                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
+                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
+
+                if (shouldArm)
+                {
+                    PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
+                    if (grenade != null)
+                    {
+                        grenade.ReleaseLever();
+                    }
+                }
+
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * force);
+                }
+
+                logger.LogInfo($"Spawned {grenadeName}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Spawn{grenadeName} failed: {ex.Message}");
             }
         }
 
@@ -605,7 +580,7 @@ namespace H3TVR
                 FVRFireArmRound cartridge = go.GetComponent<FVRFireArmRound>();
                 if (cartridge != null)
                 {
-                    cartridge.Splode(0.01f, false, true);
+                    TryExplodeCartridge(cartridge, 0.01f);
                 }
             }
             catch (Exception ex)
@@ -614,81 +589,49 @@ namespace H3TVR
             }
         }
 
-        public void DestroyQuickbelt()
+        private void TryExplodeCartridge(FVRFireArmRound cartridge, float delay)
         {
             try
             {
-                FVRQuickBeltSlot[] allSlots = UnityEngine.Object.FindObjectsOfType<FVRQuickBeltSlot>();
-                if (allSlots == null || allSlots.Length == 0)
-                {
-                    logger.LogInfo("No quickbelt slots found in scene.");
-                    return;
-                }
-
-                int destroyedCount = 0;
-                foreach (var slot in allSlots)
-                {
-                    var obj = slot?.CurObject;
-                    if (obj == null) continue;
-
-                    // Get the position before removing from slot
-                    Vector3 itemPosition = obj.transform.position;
-                    
-                    // Remove from quickbelt slot
-                    obj.SetQuickBeltSlot(null);
-
-                    // Spawn explosive shell at item position
-                    SpawnDestructiveShell(itemPosition);
-
-                    // Destroy the quickbelt item
-                    Destroy(obj.gameObject);
-                    destroyedCount++;
-                }
-
-                logger.LogInfo($"Destroyed {destroyedCount} quickbelt object(s) with explosive shells!");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"DestroyQuickbelt failed: {ex.Message}");
-            }
-        }
-
-        private void SpawnDestructiveShell(Vector3 itemPosition)
-        {
-            try
-            {
-                if (!IM.OD.ContainsKey("12GaugeShellFreedomfetti")) 
-                {
-                    logger.LogWarning("12GaugeShellFreedomfetti not found for quickbelt destruction");
-                    return;
-                }
-
-                FVRObject obj = IM.OD["12GaugeShellFreedomfetti"];
+                // Try different method names for exploding/sploding cartridges
+                var cartridgeType = cartridge.GetType();
                 
-                // Spawn shell at the item's position with slight random offset
-                Vector3 shellPosition = itemPosition + new Vector3(
-                    UnityEngine.Random.Range(-0.05f, 0.05f),
-                    UnityEngine.Random.Range(-0.05f, 0.05f), 
-                    UnityEngine.Random.Range(-0.05f, 0.05f)
-                );
-
-                GameObject go = Instantiate(obj.GetGameObject(), shellPosition, UnityEngine.Random.rotation);
-
-                // Immediately explode the shell to destroy the item
-                FVRFireArmRound cartridge = go.GetComponent<FVRFireArmRound>();
-                if (cartridge != null)
+                // Try common method names
+                string[] methodNames = { "Splode", "Explode", "Detonate", "Fire", "Ignite" };
+                
+                foreach (var methodName in methodNames)
                 {
-                    cartridge.Splode(0.01f, false, true);
+                    var method = cartridgeType.GetMethod(methodName, new[] { typeof(float), typeof(bool), typeof(bool) });
+                    if (method != null)
+                    {
+                        method.Invoke(cartridge, new object[] { delay, false, true });
+                        return;
+                    }
+                    
+                    // Try with different parameter signatures
+                    method = cartridgeType.GetMethod(methodName, new[] { typeof(float) });
+                    if (method != null)
+                    {
+                        method.Invoke(cartridge, new object[] { delay });
+                        return;
+                    }
+                    
+                    method = cartridgeType.GetMethod(methodName, new Type[0]);
+                    if (method != null)
+                    {
+                        method.Invoke(cartridge, null);
+                        return;
+                    }
                 }
+                
+                logger.LogWarning($"Could not find explosion method for FVRFireArmRound");
             }
             catch (Exception ex)
             {
-                logger.LogError($"SpawnDestructiveShell failed: {ex.Message}");
+                logger.LogWarning($"TryExplodeCartridge failed: {ex.Message}");
             }
         }
-        #endregion
 
-        #region Utility Methods
         private bool ValidateSpawnConditions()
         {
             if (GM.CurrentPlayerBody?.Head == null)
@@ -705,6 +648,91 @@ namespace H3TVR
 
             return true;
         }
-        #endregion
+    }
+
+    // Pillow effect components
+    public class PillowGrenade : MonoBehaviour
+    {
+        private bool isArmed;
+        private float fuseTime = 3f;
+
+        public void Initialize(bool armed)
+        {
+            isArmed = armed;
+            if (isArmed)
+            {
+                StartCoroutine(FuseCoroutine());
+            }
+        }
+
+        private IEnumerator FuseCoroutine()
+        {
+            yield return new WaitForSeconds(fuseTime);
+            Explode();
+        }
+
+        private void Explode()
+        {
+            // Create explosion effect
+            Vector3 pos = transform.position;
+            
+            // Find nearby objects and apply force
+            Collider[] nearbyObjects = Physics.OverlapSphere(pos, 5f);
+            foreach (Collider col in nearbyObjects)
+            {
+                Rigidbody rb = col.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    Vector3 direction = (col.transform.position - pos).normalized;
+                    float distance = Vector3.Distance(pos, col.transform.position);
+                    float force = Mathf.Lerp(10f, 0f, distance / 5f);
+                    rb.AddForce(direction * force, ForceMode.Impulse);
+                }
+            }
+
+            Destroy(gameObject);
+        }
+    }
+
+    public class PillowZeroGravity : MonoBehaviour
+    {
+        private float duration;
+        private float originalGravity;
+
+        public void Initialize(float dur)
+        {
+            duration = dur;
+            originalGravity = Physics.gravity.y;
+            StartCoroutine(ZeroGravityCoroutine());
+        }
+
+        private IEnumerator ZeroGravityCoroutine()
+        {
+            Physics.gravity = Vector3.zero;
+            yield return new WaitForSeconds(duration);
+            Physics.gravity = new Vector3(0, originalGravity, 0);
+            Destroy(this);
+        }
+    }
+
+    public class PillowSlomo : MonoBehaviour
+    {
+        private float duration;
+
+        public void Initialize(float dur, EffectsManager effects)
+        {
+            duration = dur;
+            StartCoroutine(SlomoCoroutine(effects));
+        }
+
+        private IEnumerator SlomoCoroutine(EffectsManager effectsManager)
+        {
+            if (effectsManager != null)
+            {
+                // Use the pillow slomo activation method instead
+                yield return effectsManager.StartCoroutine(effectsManager.ActivatePillowSlomo(duration));
+            }
+            Destroy(this);
+        }
     }
 }

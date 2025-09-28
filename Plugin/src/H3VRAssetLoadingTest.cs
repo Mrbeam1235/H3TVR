@@ -194,28 +194,66 @@ namespace H3TVR
         /// </summary>
         private static void TestLoadoutCreation()
         {
-            SosigLoadoutManager.Initialize();
-            var loadouts = SosigLoadoutManager.GetLoadouts();
+            Debug.Log("  Testing H3VR asset-based loadout creation...");
             
-            Debug.Log($"  Found {loadouts.Count} advanced loadouts");
-            
-            foreach (var loadout in loadouts)
+            try
             {
-                Debug.Log($"    Loadout: {loadout.Value.loadoutName}");
-                Debug.Log($"      Description: {loadout.Value.description}");
-                Debug.Log($"      IFF: {loadout.Value.defaultIFF}");
-                Debug.Log($"      Follow Player: {loadout.Value.followPlayer}");
-                Debug.Log($"      Primary weapons: {loadout.Value.primaryWeapons.Count}");
-                Debug.Log($"      Secondary weapons: {loadout.Value.secondaryWeapons.Count}");
+                // Test basic asset availability for loadout creation
+                var allWeapons = H3VRAssetLoader.GetAllWeapons();
+                var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
+                var templates = H3VRAssetLoader.GetAllSosigTemplates();
+                
+                Debug.Log($"  Available weapons for loadouts: {allWeapons.Count}");
+                Debug.Log($"  Available armor categories: {armorCategories.Count}");
+                Debug.Log($"  Available sosig templates: {templates.Count}");
+                
+                // Test creating a simple loadout configuration
+                var testOutfit = H3VRAssetLoader.CreateCustomOutfitFromAssets(
+                    headwearChance: 0.7f,
+                    torsowearChance: 0.9f,
+                    pantswearChance: 0.8f,
+                    backpackChance: 0.5f
+                );
+                
+                if (testOutfit != null)
+                {
+                    Debug.Log("  Successfully created test outfit configuration");
+                    Debug.Log($"    Headwear pieces: {testOutfit.Headwear?.Count ?? 0}");
+                    Debug.Log($"    Torsowear pieces: {testOutfit.Torsowear?.Count ?? 0}");
+                    Debug.Log($"    Pantswear pieces: {testOutfit.Pantswear?.Count ?? 0}");
+                    Debug.Log($"    Backpack pieces: {testOutfit.Backpacks?.Count ?? 0}");
+                }
+                
+                // Create a few different outfit types for testing
+                var lightOutfit = H3VRAssetLoader.CreateCustomOutfitFromAssets(
+                    headwearChance: 0.2f,
+                    torsowearChance: 0.6f,
+                    pantswearChance: 0.7f,
+                    backpackChance: 0.1f
+                );
+                
+                var heavyOutfit = H3VRAssetLoader.CreateCustomOutfitFromAssets(
+                    headwearChance: 1.0f,
+                    torsowearChance: 1.0f,
+                    pantswearChance: 1.0f,
+                    backpackChance: 0.8f
+                );
+                
+                Debug.Log($"  Created light outfit (low armor): {lightOutfit != null}");
+                Debug.Log($"  Created heavy outfit (high armor): {heavyOutfit != null}");
+                
+                if (allWeapons.Count > 0 && templates.Count > 0)
+                {
+                    Debug.Log("  PASSED: Loadout creation assets available");
+                }
+                else
+                {
+                    Debug.LogWarning("  WARNING: Limited assets available for loadout creation");
+                }
             }
-            
-            if (loadouts.Count > 0)
+            catch (Exception ex)
             {
-                Debug.Log("  PASSED: Advanced loadouts created");
-            }
-            else
-            {
-                Debug.LogWarning("  WARNING: No advanced loadouts created");
+                Debug.LogError($"  FAILED: Loadout creation test error: {ex.Message}");
             }
         }
         
@@ -255,45 +293,74 @@ namespace H3TVR
             
             try
             {
-                var loadouts = SosigLoadoutManager.GetLoadouts();
-                if (loadouts.Count == 0)
+                // Test asset availability for sosig creation
+                var allWeapons = H3VRAssetLoader.GetAllWeapons();
+                var templates = H3VRAssetLoader.GetAllSosigTemplates();
+                var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
+                
+                Debug.Log($"Available for sosig creation:");
+                Debug.Log($"  Weapons: {allWeapons.Count}");
+                Debug.Log($"  Templates: {templates.Count}");
+                Debug.Log($"  Armor categories: {armorCategories.Count}");
+                
+                // Test weapon selection by category
+                var firearms = H3VRAssetLoader.GetWeaponsByCategory(FVRObject.ObjectCategory.Firearm);
+                var meleeWeapons = H3VRAssetLoader.GetWeaponsByCategory(FVRObject.ObjectCategory.MeleeWeapon);
+                
+                Debug.Log($"  Firearms: {firearms.Count}");
+                Debug.Log($"  Melee weapons: {meleeWeapons.Count}");
+                
+                // Test random selections
+                var randomWeapon = H3VRAssetLoader.GetRandomWeapon();
+                var randomArmor = H3VRAssetLoader.GetRandomArmor("Torsowear");
+                
+                Debug.Log($"Random weapon test: {randomWeapon?.ItemID ?? "none"}");
+                Debug.Log($"Random armor test: {randomArmor?.ItemID ?? "none"}");
+                
+                // Test outfit creation for sosigs
+                var sosigOutfit = H3VRAssetLoader.CreateCustomOutfitFromAssets();
+                if (sosigOutfit != null)
                 {
-                    Debug.LogWarning("No loadouts available for testing");
-                    return;
+                    Debug.Log("Test sosig outfit created successfully");
+                    Debug.Log($"  Total armor pieces: {GetTotalArmorPieces(sosigOutfit)}");
                 }
                 
-                var firstLoadout = loadouts.FirstOrDefault();
-                if (firstLoadout.Key == null)
-                {
-                    Debug.LogWarning("No valid loadouts found for testing");
-                    return;
-                }
+                bool hasSufficientAssets = allWeapons.Count > 0 && 
+                                         (templates.Count > 0 || armorCategories.Count > 0);
                 
-                var testLoadout = firstLoadout.Value;
-                Debug.Log($"Testing with loadout: {testLoadout.loadoutName}");
-                
-                // Test loadout validation
-                bool hasWeapons = testLoadout.primaryWeapons.Count > 0 || 
-                                 testLoadout.secondaryWeapons.Count > 0 ||
-                                 H3VRAssetLoader.GetAllWeapons().Count > 0;
-                                  
-                Debug.Log($"Has available weapons: {hasWeapons}");
-                Debug.Log($"Has primary weapons: {testLoadout.primaryWeapons.Count}");
-                Debug.Log($"Available H3VR templates: {H3VRAssetLoader.GetAllSosigTemplates().Count}");
-                
-                if (hasWeapons)
+                if (hasSufficientAssets)
                 {
                     Debug.Log("PASSED: Sosig creation prerequisites met");
                 }
                 else
                 {
-                    Debug.LogWarning("WARNING: Missing weapons for sosig creation");
+                    Debug.LogWarning("WARNING: Insufficient assets for sosig creation");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"FAILED: Sosig creation test error: {ex.Message}");
+                Debug.LogError($"FAILED: Sosig creation dry run error: {ex.Message}");
             }
+        }
+        
+        /// <summary>
+        /// Helper method to count total armor pieces in an outfit
+        /// </summary>
+        private static int GetTotalArmorPieces(SosigOutfitConfig outfit)
+        {
+            if (outfit == null) return 0;
+            
+            int total = 0;
+            total += outfit.Headwear?.Count ?? 0;
+            total += outfit.Facewear?.Count ?? 0;
+            total += outfit.Eyewear?.Count ?? 0;
+            total += outfit.Torsowear?.Count ?? 0;
+            total += outfit.Pantswear?.Count ?? 0;
+            total += outfit.Pantswear_Lower?.Count ?? 0;
+            total += outfit.Backpacks?.Count ?? 0;
+            total += outfit.TorosDecoration?.Count ?? 0;
+            
+            return total;
         }
     }
 }

@@ -1,15 +1,11 @@
 using BepInEx;
 using BepInEx.Configuration;
+using BepInEx.Logging;
 using FistVR;
-using HarmonyLib;
 using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Reflection;
 using UnityEngine;
-using Valve.VR;
-using System;
+using System.Collections.Generic;
+using HarmonyLib;
 
 namespace H3TVR
 {
@@ -89,6 +85,7 @@ namespace H3TVR
         private SpawnManager spawnManager;
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
+        private EnhancedChatSpawner enhancedChatSpawner; // Use standalone enhanced chat spawner
         #endregion
 
         #region Initialization
@@ -230,14 +227,17 @@ namespace H3TVR
 
         private void InitializeSosigSpawner()
         {
-            // Initialize the simplified Twitch Chat Sosig Manager
-            GameObject sosigSpawnerObject = new GameObject("TwitchChatSosigManager");
-            sosigSpawnerObject.transform.SetParent(transform);
+            // Initialize the standalone Enhanced Chat Spawner
+            GameObject enhancedSpawnerObject = new GameObject("EnhancedChatSpawner");
+            enhancedSpawnerObject.transform.SetParent(transform);
             
-            var twitchChatManager = sosigSpawnerObject.AddComponent<TwitchChatSosigManager>();
-            twitchChatManager.Initialize(this, Logger);
+            enhancedChatSpawner = enhancedSpawnerObject.AddComponent<EnhancedChatSpawner>();
+            enhancedChatSpawner.Initialize(this, Logger);
             
-            Logger.LogInfo("Simplified Twitch Chat Sosig Manager initialized!");
+            // Set the enhanced chat spawner reference in SpawnManager
+            spawnManager.SetEnhancedChatSpawner(enhancedChatSpawner);
+            
+            Logger.LogInfo("Enhanced Chat Spawner initialized (standalone mode)!");
         }
         #endregion
 

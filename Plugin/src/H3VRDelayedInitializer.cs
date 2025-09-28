@@ -55,7 +55,6 @@ namespace H3TVR
                         if (H3VRAssetLoader.IsInitialized)
                         {
                             Debug.Log("[H3VRDelayedInitializer] H3VR asset loading successful!");
-                            SosigLoadoutManager.Initialize();
                             
                             // Notify other systems that assets are ready
                             NotifySystemsReady();
@@ -80,19 +79,14 @@ namespace H3TVR
         
         private void NotifySystemsReady()
         {
-            // Find and notify spawner managers that assets are ready
-            var spawnerManagers = FindObjectsOfType<SosigSpawnerManager>();
-            foreach (var manager in spawnerManagers)
+            // Find and notify enhanced chat spawners that assets are ready
+            var enhancedSpawners = FindObjectsOfType<EnhancedChatSpawner>();
+            foreach (var spawner in enhancedSpawners)
             {
-                // You could add a method to notify the manager that assets are ready
-                Debug.Log("[H3VRDelayedInitializer] Notified SosigSpawnerManager that H3VR assets are ready");
+                Debug.Log("[H3VRDelayedInitializer] Notified EnhancedChatSpawner that H3VR assets are ready");
             }
             
-            var integrations = FindObjectsOfType<SosigSpawnerIntegration>();
-            foreach (var integration in integrations)
-            {
-                Debug.Log("[H3VRDelayedInitializer] Notified SosigSpawnerIntegration that H3VR assets are ready");
-            }
+            Debug.Log("[H3VRDelayedInitializer] Asset loading notification complete");
         }
         
         /// <summary>

@@ -16,7 +16,6 @@ namespace H3TVR
         private SpawnManager spawnManager;
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
-        private TwitchChatSosigManager chatSosigManager;
         private ManualLogSource logger;
 
         public void Initialize(Dictionary<string, ConfigEntry<KeyCode>> bindings, H3TVRImproved pluginInstance)
@@ -29,9 +28,6 @@ namespace H3TVR
             spawnManager = plugin.GetSpawnManager();
             effectsManager = plugin.GetEffectsManager();
             weaponManager = plugin.GetWeaponManager();
-            
-            // Get chat sosig manager reference
-            chatSosigManager = FindObjectOfType<TwitchChatSosigManager>();
         }
 
         void Update()
@@ -41,7 +37,6 @@ namespace H3TVR
             ProcessWeaponInputs();
             ProcessUtilityInputs();
             ProcessChatSosigInputs();
-            ProcessArmorGUIInputs();
         }
 
         private void ProcessSpawnInputs()
@@ -129,26 +124,20 @@ namespace H3TVR
         {
             try
             {
-                // Chat Sosig Controls
+                // Chat Sosig Controls - using EnhancedChatSpawner directly
                 if (Input.GetKeyDown(keyBindings["SpawnChatSosigFriendly"].Value))
                 {
-                    plugin.GetSpawnManager()?.SpawnChatSosigFriendly();
+                    spawnManager?.SpawnChatSosigFriendly();
                 }
                 
                 if (Input.GetKeyDown(keyBindings["SpawnChatSosigEnemy"].Value))
                 {
-                    plugin.GetSpawnManager()?.SpawnChatSosigEnemy();
-                }
-                
-                if (Input.GetKeyDown(keyBindings["CycleChatSosigArmor"].Value))
-                {
-                    // This will be handled by the TwitchChatSosigManager directly
-                    // The key binding is processed there
+                    spawnManager?.SpawnChatSosigEnemy();
                 }
                 
                 if (Input.GetKeyDown(keyBindings["ClearChatSosigs"].Value))
                 {
-                    plugin.GetSpawnManager()?.ClearAllChatSosigs();
+                    spawnManager?.ClearAllChatSosigs();
                 }
                 
                 if (Input.GetKeyDown(keyBindings["ChatSosigStats"].Value))
@@ -162,29 +151,11 @@ namespace H3TVR
             }
         }
 
-        private void ProcessArmorGUIInputs()
-        {
-            try
-            {
-                // Armor GUI Control - this is handled directly by TwitchChatSosigManager
-                // but we can add additional processing here if needed
-                if (Input.GetKeyDown(keyBindings["ArmorGUI"].Value) && chatSosigManager != null)
-                {
-                    // Optional: Add logging or additional processing
-                    logger.LogInfo("Armor GUI toggle requested");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Armor GUI input handling error: {ex.Message}");
-            }
-        }
-
         private void ShowChatSosigStats()
         {
             try
             {
-                var stats = plugin.GetSpawnManager()?.GetChatSosigStats();
+                var stats = spawnManager?.GetChatSosigStats();
                 if (stats != null)
                 {
                     string statsMessage = $"Chat Sosigs - Active: {stats.activeSosigCount} | " +
@@ -197,14 +168,6 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"Failed to show chat sosig stats: {ex.Message}");
-            }
-        }
-
-        public void UpdateChatSosigManagerReference()
-        {
-            if (chatSosigManager == null)
-            {
-                chatSosigManager = FindObjectOfType<TwitchChatSosigManager>();
             }
         }
     }
