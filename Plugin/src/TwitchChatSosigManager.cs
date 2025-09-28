@@ -13,7 +13,7 @@ using BepInEx.Logging;
 namespace H3TVR
 {
     /// <summary>
-    /// Simple Twitch chat-integrated sosig spawner using only two file paths for names
+    /// Twitch chat-integrated sosig spawner with complex armor GUI and redeemer names
     /// </summary>
     public class TwitchChatSosigManager : MonoBehaviour
     {
@@ -32,7 +32,7 @@ namespace H3TVR
         [Header("Active Sosigs")]
         public List<Sosig> activeSosigs = new List<Sosig>();
 
-        // Configuration entries - simplified to just file paths
+        // Configuration entries
         private ConfigEntry<string> allyFilePath;
         private ConfigEntry<string> enemyFilePath;
         private ConfigEntry<KeyCode> spawnAllyKey;
@@ -100,6 +100,10 @@ namespace H3TVR
             
             InitializeArmorSystem();
             InitializeConfiguration();
+            
+            // Validate LioranBoard 2.0 files after configuration
+            ValidateLB2Files();
+            
             StartCoroutine(UpdateSosigsCoroutine());
         }
 
@@ -108,7 +112,7 @@ namespace H3TVR
             plugin = pluginInstance;
             logger = logSource;
             
-            logger.LogInfo("TwitchChatSosigManager initialized with armor GUI system!");
+            logger.LogInfo("TwitchChatSosigManager initialized with LioranBoard 2.0 integration, redeemer names, and complex armor GUI!");
         }
 
         private void InitializeArmorSystem()
@@ -183,14 +187,17 @@ namespace H3TVR
             
             var config = plugin.Config;
 
-            // File paths for sosig names
+            // File paths for sosig names - Updated to use LioranBoard 2.0 folder in Documents
+            string documentsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
+            string lioranBoardPath = Path.Combine(documentsPath, "LioranBoard 2.0");
+            
             allyFilePath = config.Bind("Chat Sosigs", "AllyNamesFilePath", 
-                Path.Combine(BepInEx.Paths.GameRootPath, "ally_names.txt"),
-                "Path to file containing ally sosig names (one per line)");
+                Path.Combine(lioranBoardPath, "ally.ini"),
+                "Path to LioranBoard 2.0's ally.ini file containing ally sosig names");
                 
             enemyFilePath = config.Bind("Chat Sosigs", "EnemyNamesFilePath", 
-                Path.Combine(BepInEx.Paths.GameRootPath, "enemy_names.txt"),
-                "Path to file containing enemy sosig names (one per line)");
+                Path.Combine(lioranBoardPath, "enemy.ini"),
+                "Path to LioranBoard 2.0's enemy.ini file containing enemy sosig names");
 
             // Basic controls
             spawnAllyKey = config.Bind("Chat Sosigs", "SpawnAllyKey", KeyCode.P,
@@ -206,14 +213,14 @@ namespace H3TVR
             maxActiveSosigs = config.Bind("Chat Sosigs", "MaxActiveSosigs", 10,
                 "Maximum number of active sosigs");
             enableNameplates = config.Bind("Chat Sosigs", "ShowNames", true,
-                "Show names above sosigs");
+                "Show redeemer names above sosigs");
 
             // Set the file paths
             allyNamesFilePath = allyFilePath.Value;
             enemyNamesFilePath = enemyFilePath.Value;
 
-            // Create example files if they don't exist
-            CreateExampleFilesIfNeeded();
+            // Create LioranBoard 2.0 files if they don't exist
+            CreateLioranBoard20FilesIfNeeded();
         }
 
         void Update()
@@ -380,7 +387,7 @@ namespace H3TVR
                     selectedSosigIndex = -2;
                 }
 
-                // Sosig info
+                // Sosig info with redeemer name
                 string sosigInfo = $"Sosig {i + 1} ({(activeSosigs[i].E.IFFCode == 0 ? "Ally" : "Enemy")})";
                 GUILayout.Label(sosigInfo, labelStyle);
 
@@ -905,15 +912,15 @@ namespace H3TVR
                 return;
             }
 
-            string sosigName = GetRandomNameFromFile(allyNamesFilePath, true);
-            if (string.IsNullOrEmpty(sosigName))
+            string redeemerName = GetRandomNameFromFile(allyNamesFilePath, true);
+            if (string.IsNullOrEmpty(redeemerName))
             {
-                sosigName = "AllyBot";
+                redeemerName = "Unknown_Redeemer";
                 if (logger != null)
-                    logger.LogWarning("No ally names found, using default name");
+                    logger.LogWarning("No ally names found in LioranBoard 2.0 ally.ini, using default name");
             }
 
-            SpawnSosig(sosigName, true);
+            SpawnSosig(redeemerName, true);
         }
 
         public void SpawnEnemySosig()
@@ -925,15 +932,37 @@ namespace H3TVR
                 return;
             }
 
-            string sosigName = GetRandomNameFromFile(enemyNamesFilePath, false);
-            if (string.IsNullOrEmpty(sosigName))
+            string redeemerName = GetRandomNameFromFile(enemyNamesFilePath, false);
+            if (string.IsNullOrEmpty(redeemerName))
             {
-                sosigName = "EnemyBot";
+                redeemerName = "Unknown_Redeemer";
                 if (logger != null)
-                    logger.LogWarning("No enemy names found, using default name");
+                    logger.LogWarning("No enemy names found in LioranBoard 2.0 enemy.ini, using default name");
             }
 
-            SpawnSosig(sosigName, false);
+            SpawnSosig(redeemerName, false);
+        }
+
+        /// <summary>
+        /// Spawn a sosig with a specific redeemer name from Twitch/LioranBoard integration
+        /// </summary>
+        /// <param name="redeemerName">Name of the person who redeemed the sosig</param>
+        /// <param name="isFriendly">Whether the sosig should be friendly</param>
+        public void SpawnSosigForRedeemer(string redeemerName, bool isFriendly = true)
+        {
+            if (activeSosigs.Count >= maxActiveSosigs.Value)
+            {
+                if (logger != null)
+                    logger.LogWarning("Maximum sosigs reached. Cannot spawn more.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(redeemerName))
+            {
+                redeemerName = "Anonymous_Redeemer";
+            }
+
+            SpawnSosig(redeemerName, isFriendly);
         }
 
         private string GetRandomNameFromFile(string filePath, bool isAlly)
@@ -961,41 +990,78 @@ namespace H3TVR
             try
             {
                 if (!File.Exists(filePath))
+                {
+                    if (logger != null)
+                        logger.LogWarning($"LioranBoard 2.0 name file not found: {filePath}");
                     return new List<string>();
+                }
 
                 var lines = File.ReadAllLines(filePath);
                 var result = new List<string>();
                 
                 foreach (string line in lines)
                 {
-                    if (!string.IsNullOrEmpty(line) && !line.Trim().StartsWith("#"))
+                    if (string.IsNullOrEmpty(line)) continue;
+                    
+                    string trimmedLine = line.Trim();
+                    
+                    // Skip empty lines and comments (lines starting with # or ;)
+                    if (string.IsNullOrEmpty(trimmedLine) || 
+                        trimmedLine.StartsWith("#") || 
+                        trimmedLine.StartsWith(";"))
+                        continue;
+                    
+                    // Skip INI sections (lines with [section])
+                    if (trimmedLine.StartsWith("[") && trimmedLine.EndsWith("]"))
+                        continue;
+                    
+                    // Handle INI key=value pairs - extract the value part
+                    if (trimmedLine.Contains("="))
                     {
-                        string trimmedLine = line.Trim();
-                        if (!string.IsNullOrEmpty(trimmedLine))
+                        string[] parts = trimmedLine.Split('=');
+                        if (parts.Length >= 2)
                         {
-                            result.Add(trimmedLine);
+                            string value = parts[1].Trim();
+                            // Remove quotes if present
+                            if ((value.StartsWith("\"") && value.EndsWith("\"")) ||
+                                (value.StartsWith("'") && value.EndsWith("'")))
+                            {
+                                value = value.Substring(1, value.Length - 2);
+                            }
+                            if (!string.IsNullOrEmpty(value))
+                            {
+                                result.Add(value);
+                            }
                         }
                     }
+                    else
+                    {
+                        // Plain name on its own line
+                        result.Add(trimmedLine);
+                    }
                 }
+                
+                if (logger != null)
+                    logger.LogInfo($"Successfully loaded {result.Count} redeemer names from LioranBoard 2.0 {Path.GetFileName(filePath)}");
                 
                 return result;
             }
             catch (Exception ex)
             {
                 if (logger != null)
-                    logger.LogError($"Failed to read names from {filePath}: {ex.Message}");
+                    logger.LogError($"Failed to read LioranBoard 2.0 names from {filePath}: {ex.Message}");
                 return new List<string>();
             }
         }
 
-        private void SpawnSosig(string sosigName, bool isAlly)
+        private void SpawnSosig(string redeemerName, bool isAlly)
         {
             try
             {
                 Vector3 spawnPosition = CalculateSpawnPosition();
                 
                 // Use existing H3VR sosig spawning if available, otherwise basic spawn
-                Sosig spawnedSosig = CreateBasicSosig(spawnPosition, sosigName, isAlly);
+                Sosig spawnedSosig = CreateBasicSosig(spawnPosition, redeemerName, isAlly);
                 
                 if (spawnedSosig != null)
                 {
@@ -1004,7 +1070,7 @@ namespace H3TVR
                     
                     activeSosigs.Add(spawnedSosig);
                     if (logger != null)
-                        logger.LogInfo($"Spawned {(isAlly ? "ally" : "enemy")} sosig: {sosigName}");
+                        logger.LogInfo($"Spawned {(isAlly ? "ally" : "enemy")} sosig for redeemer: {redeemerName}");
                 }
                 else
                 {
@@ -1015,11 +1081,11 @@ namespace H3TVR
             catch (Exception ex)
             {
                 if (logger != null)
-                    logger.LogError($"Error spawning sosig {sosigName}: {ex.Message}");
+                    logger.LogError($"Error spawning sosig for redeemer {redeemerName}: {ex.Message}");
             }
         }
 
-        private Sosig CreateBasicSosig(Vector3 position, string name, bool isAlly)
+        private Sosig CreateBasicSosig(Vector3 position, string redeemerName, bool isAlly)
         {
             // Cache sosig templates for better performance
             if (cachedSosigTemplates == null)
@@ -1083,83 +1149,195 @@ namespace H3TVR
                 sosig.SetCurrentOrder(Sosig.SosigOrder.Assault);
             }
 
-            // Add nameplate if enabled
+            // Add nameplate showing redeemer name if enabled
             if (enableNameplates.Value)
             {
-                CreateSimpleNameplate(sosig, name, isAlly);
+                CreateRedeemerNameplate(sosig, redeemerName, isAlly);
             }
 
             return sosig;
         }
 
-        private void CreateSimpleNameplate(Sosig sosig, string name, bool isAlly)
+        /// <summary>
+        /// Create a simple nameplate showing the redeemer's name above the sosig's head
+        /// </summary>
+        private void CreateRedeemerNameplate(Sosig sosig, string redeemerName, bool isAlly)
         {
-            if (sosig.Links.Count < 2) return;
+            if (sosig.Links.Count == 0) return;
 
-            // Create a simple nameplate
-            GameObject nameplate = new GameObject("Nameplate");
-            nameplate.transform.SetParent(sosig.Links[1].transform);
-            nameplate.transform.localPosition = Vector3.up * 0.3f;
+            // Use the head link (first link) for positioning
+            SosigLink headLink = sosig.Links[0];
+            
+            // Create a nameplate positioned above the head
+            GameObject nameplate = new GameObject("RedeemerNameplate");
+            nameplate.transform.SetParent(headLink.transform);
+            
+            // Position nameplate above the head
+            nameplate.transform.localPosition = Vector3.up * 0.6f;
             nameplate.transform.localRotation = Quaternion.identity;
 
             // Add canvas for UI text
             Canvas canvas = nameplate.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
+            canvas.sortingOrder = 100;
             
-            // Fix potential null reference
+            // Set world canvas size
+            var rectTransform = canvas.GetComponent<RectTransform>();
+            rectTransform.sizeDelta = new Vector2(3f, 0.8f);
+            
+            // Set camera
             var mainCamera = Camera.main;
             if (mainCamera != null)
             {
                 canvas.worldCamera = mainCamera;
             }
             
+            // Add canvas scaler
             CanvasScaler scaler = nameplate.AddComponent<CanvasScaler>();
-            scaler.scaleFactor = 0.01f;
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.dynamicPixelsPerUnit = 10f;
 
-            // Add text
-            GameObject textObject = new GameObject("NameText");
+            // Add semi-transparent background
+            GameObject backgroundObject = new GameObject("Background");
+            backgroundObject.transform.SetParent(nameplate.transform);
+            
+            var backgroundImage = backgroundObject.AddComponent<UnityEngine.UI.Image>();
+            backgroundImage.color = new Color(0f, 0f, 0f, 0.8f);
+            
+            var backgroundRect = backgroundObject.GetComponent<RectTransform>();
+            backgroundRect.anchorMin = Vector2.zero;
+            backgroundRect.anchorMax = Vector2.one;
+            backgroundRect.sizeDelta = Vector2.zero;
+            backgroundRect.anchoredPosition = Vector2.zero;
+
+            // Add redeemer name text
+            GameObject textObject = new GameObject("RedeemerText");
             textObject.transform.SetParent(nameplate.transform);
             
             var text = textObject.AddComponent<UnityEngine.UI.Text>();
-            text.text = name;
+            text.text = redeemerName;
             text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            text.fontSize = 20;
-            text.color = isAlly ? Color.green : Color.red;
+            text.fontSize = 28;
+            text.color = isAlly ? new Color(0.3f, 1f, 0.3f, 1f) : new Color(1f, 0.3f, 0.3f, 1f);
             text.alignment = TextAnchor.MiddleCenter;
+            text.fontStyle = FontStyle.Bold;
+            
+            // Add text outline
+            var outline = textObject.AddComponent<UnityEngine.UI.Outline>();
+            outline.effectColor = Color.black;
+            outline.effectDistance = new Vector2(2, -2);
 
-            var rectTransform = textObject.GetComponent<RectTransform>();
-            rectTransform.sizeDelta = new Vector2(150, 30);
-            rectTransform.localPosition = Vector3.zero;
+            var textRect = textObject.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            textRect.anchoredPosition = Vector2.zero;
+
+            // Make nameplate always face the camera
+            var lookAtCamera = nameplate.AddComponent<LookAtCamera>();
+            
+            if (logger != null)
+                logger.LogInfo($"Created nameplate for redeemer: {redeemerName} ({(isAlly ? "Ally" : "Enemy")})");
         }
 
-        private void CreateExampleFilesIfNeeded()
+        /// <summary>
+        /// Component to make nameplate always face the camera
+        /// </summary>
+        public class LookAtCamera : MonoBehaviour
         {
+            private Camera targetCamera;
+            
+            void Start()
+            {
+                targetCamera = Camera.main;
+                if (targetCamera == null)
+                {
+                    // Find VR camera if main camera is not available
+                    targetCamera = FindObjectOfType<Camera>();
+                }
+            }
+            
+            void Update()
+            {
+                if (targetCamera != null)
+                {
+                    // Make the nameplate face the camera
+                    transform.LookAt(targetCamera.transform);
+                    // Flip it so text reads correctly
+                    transform.Rotate(0, 180, 0);
+                }
+            }
+        }
+
+        private void CreateLioranBoard20FilesIfNeeded()
+        {
+            // Create LioranBoard 2.0 directory if it doesn't exist
+            string documentsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
+            string lioranBoardDirectory = Path.Combine(documentsPath, "LioranBoard 2.0");
+            
+            if (!Directory.Exists(lioranBoardDirectory))
+            {
+                Directory.CreateDirectory(lioranBoardDirectory);
+                if (logger != null)
+                    logger.LogInfo($"Created LioranBoard 2.0 directory at: {lioranBoardDirectory}");
+            }
+
             if (!File.Exists(allyNamesFilePath))
             {
+                // Create LioranBoard 2.0-compatible ally.ini file with redeemer names
                 string[] exampleAllyNames = {
-                    "ChatViewer1",
-                    "FriendlyHelper",
-                    "SupportGuy",
-                    "BackupBuddy",
-                    "AllyMcAllyFace"
+                    "# LioranBoard 2.0 Ally Redeemer Names Configuration",
+                    "# These are the names of viewers who can redeem friendly sosigs",
+                    "# One name per line, lines starting with # are comments",
+                    "",
+                    "ViewerName1",
+                    "FriendlyFan",
+                    "SupporterGuy",
+                    "AllyViewer",
+                    "GoodStreamer",
+                    "TeamPlayer_123",
+                    "HelpfulUser",
+                    "FriendlyBot",
+                    "SupportSquad",
+                    "BuddySystem",
+                    "AllyMcAllyFace",
+                    "GoodGuy_89",
+                    "PositiveVibes",
+                    "TeamMate",
+                    "Guardian_Angel"
                 };
                 File.WriteAllLines(allyNamesFilePath, exampleAllyNames);
                 if (logger != null)
-                    logger.LogInfo($"Created example ally names file at: {allyNamesFilePath}");
+                    logger.LogInfo($"Created LioranBoard 2.0 ally redeemer names file at: {allyNamesFilePath}");
             }
 
             if (!File.Exists(enemyNamesFilePath))
             {
+                // Create LioranBoard 2.0-compatible enemy.ini file with redeemer names
                 string[] exampleEnemyNames = {
+                    "# LioranBoard 2.0 Enemy Redeemer Names Configuration",
+                    "# These are the names of viewers who can redeem hostile sosigs",
+                    "# One name per line, lines starting with # are comments",
+                    "",
                     "TrollUser",
-                    "EnemyBot",
-                    "HostileViewer",
+                    "ChaosViewer",
+                    "HostileRedeemer",
                     "BadGuy123",
-                    "OpponentPlayer"
+                    "OpponentPlayer",
+                    "EvilTwin_456",
+                    "Nemesis_User",
+                    "VillainViewer",
+                    "ChaosAgent", 
+                    "Troublemaker",
+                    "RivalStreamer",
+                    "BadBot_77",
+                    "MischievousFan",
+                    "AntagonistUser",
+                    "EnemyRedeemer"
                 };
                 File.WriteAllLines(enemyNamesFilePath, exampleEnemyNames);
                 if (logger != null)
-                    logger.LogInfo($"Created example enemy names file at: {enemyNamesFilePath}");
+                    logger.LogInfo($"Created LioranBoard 2.0 enemy redeemer names file at: {enemyNamesFilePath}");
             }
         }
 
@@ -1200,8 +1378,68 @@ namespace H3TVR
                 logger.LogInfo("Cleared all spawned sosigs");
         }
 
+        /// <summary>
+        /// Validate LioranBoard 2.0 files and report status
+        /// </summary>
+        public void ValidateLB2Files()
+        {
+            try
+            {
+                if (logger == null) return;
+
+                string documentsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
+                string lioranBoardDirectory = Path.Combine(documentsPath, "LioranBoard 2.0");
+                
+                logger.LogInfo($"=== LioranBoard 2.0 Redeemer Integration Status ===");
+                logger.LogInfo($"Documents Path: {documentsPath}");
+                logger.LogInfo($"LioranBoard 2.0 Directory: {lioranBoardDirectory}");
+                logger.LogInfo($"Directory Exists: {Directory.Exists(lioranBoardDirectory)}");
+                
+                // Check ally redeemer names
+                logger.LogInfo($"Ally Redeemers File: {allyNamesFilePath}");
+                logger.LogInfo($"Ally File Exists: {File.Exists(allyNamesFilePath)}");
+                if (File.Exists(allyNamesFilePath))
+                {
+                    var allyNames = GetAllyNames();
+                    logger.LogInfo($"Ally Redeemer Names Loaded: {allyNames.Count}");
+                    if (allyNames.Count > 0)
+                    {
+                        logger.LogInfo($"Sample Ally Redeemers: {string.Join(", ", allyNames.Take(3).ToArray())}");
+                    }
+                    else
+                    {
+                        logger.LogInfo("No ally redeemers found");
+                    }
+                }
+                
+                // Check enemy redeemer names
+                logger.LogInfo($"Enemy Redeemers File: {enemyNamesFilePath}");
+                logger.LogInfo($"Enemy File Exists: {File.Exists(enemyNamesFilePath)}");
+                if (File.Exists(enemyNamesFilePath))
+                {
+                    var enemyNames = GetEnemyNames();
+                    logger.LogInfo($"Enemy Redeemer Names Loaded: {enemyNames.Count}");
+                    if (enemyNames.Count > 0)
+                    {
+                        logger.LogInfo($"Sample Enemy Redeemers: {string.Join(", ", enemyNames.Take(3).ToArray())}");
+                    }
+                    else
+                    {
+                        logger.LogInfo("No enemy redeemers found");
+                    }
+                }
+                
+                logger.LogInfo($"=== End LioranBoard 2.0 Status ===");
+            }
+            catch (Exception ex)
+            {
+                if (logger != null)
+                    logger.LogError($"Error validating LioranBoard 2.0 files: {ex.Message}");
+            }
+        }
+
         // Public API methods for external use
-        public void SpawnSosigByName(string name, bool isAlly)
+        public void SpawnSosigByName(string redeemerName, bool isAlly)
         {
             if (activeSosigs.Count >= maxActiveSosigs.Value)
             {
@@ -1210,7 +1448,7 @@ namespace H3TVR
                 return;
             }
 
-            SpawnSosig(name, isAlly);
+            SpawnSosig(redeemerName, isAlly);
         }
 
         // Methods expected by other components
@@ -1226,8 +1464,8 @@ namespace H3TVR
 
         public void QueueChatSpawn(string userName, bool isFriendly = true, string armorSetName = null)
         {
-            // For the simplified version, just spawn directly
-            SpawnSosig(userName, isFriendly);
+            // Spawn directly with redeemer name
+            SpawnSosigForRedeemer(userName, isFriendly);
         }
 
         public void ClearAllChatSosigs()
@@ -1243,7 +1481,7 @@ namespace H3TVR
                 activeSosigCount = activeSosigs.Count,
                 friendlyCount = activeSosigs.Count(s => s != null && s.E.IFFCode == 0),
                 enemyCount = activeSosigs.Count(s => s != null && s.E.IFFCode == 1),
-                queuedSpawns = 0, // No queue in simplified version
+                queuedSpawns = 0,
                 totalSpawned = activeSosigs.Count
             };
         }
@@ -1280,34 +1518,7 @@ namespace H3TVR
 
         private List<string> GetNamesFromFile(string filePath)
         {
-            try
-            {
-                if (!File.Exists(filePath))
-                    return new List<string>();
-
-                var lines = File.ReadAllLines(filePath);
-                var result = new List<string>();
-                
-                foreach (string line in lines)
-                {
-                    if (!string.IsNullOrEmpty(line) && !line.Trim().StartsWith("#"))
-                    {
-                        string trimmedLine = line.Trim();
-                        if (!string.IsNullOrEmpty(trimmedLine))
-                        {
-                            result.Add(trimmedLine);
-                        }
-                    }
-                }
-                
-                return result;
-            }
-            catch (Exception ex)
-            {
-                if (logger != null)
-                    logger.LogError($"Failed to read names from {filePath}: {ex.Message}");
-                return new List<string>();
-            }
+            return LoadNamesFromFile(filePath);
         }
 
         void OnDestroy()
