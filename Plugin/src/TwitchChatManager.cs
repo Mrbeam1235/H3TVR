@@ -5,11 +5,12 @@ using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Linq;
 using UnityEngine;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
-using Newtonsoft.Json;
+using Valve.Newtonsoft.Json;
 using FistVR;
 
 namespace H3TVR
@@ -1535,6 +1536,100 @@ namespace H3TVR
         {
             userSpawnCounts.Clear();
             userCooldowns.Clear();
+        }
+
+        /// <summary>
+        /// Toggle Twitch GUI visibility
+        /// </summary>
+        private void ToggleTwitchGUI()
+        {
+            showTwitchGUI = !showTwitchGUI;
+            logger?.LogInfo($"Twitch GUI {(showTwitchGUI ? "shown" : "hidden")}");
+        }
+
+        /// <summary>
+        /// Add message to recent messages list
+        /// </summary>
+        private void AddRecentMessage(string message)
+        {
+            recentMessages.Add(message);
+            if (recentMessages.Count > MaxRecentMessages)
+            {
+                recentMessages.RemoveAt(0);
+            }
+        }
+
+        /// <summary>
+        /// Clean up expired cooldowns
+        /// </summary>
+        private void CleanupExpiredCooldowns()
+        {
+            var now = DateTime.Now;
+            var expiredKeys = userCooldowns.Where(kvp => kvp.Value < now).Select(kvp => kvp.Key).ToList();
+            
+            foreach (var key in expiredKeys)
+            {
+                userCooldowns.Remove(key);
+            }
+        }
+
+        /// <summary>
+        /// Check if user is on cooldown
+        /// </summary>
+        private bool IsUserOnCooldown(string username)
+        {
+            if (userCooldowns.TryGetValue(username, out DateTime cooldownEnd))
+            {
+                return DateTime.Now < cooldownEnd;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Get remaining cooldown time for user
+        /// </summary>
+        private float GetRemainingCooldown(string username)
+        {
+            if (userCooldowns.TryGetValue(username, out DateTime cooldownEnd))
+            {
+                return (float)(cooldownEnd - DateTime.Now).TotalSeconds;
+            }
+            return 0f;
+        }
+
+        /// <summary>
+        /// Set user cooldown
+        /// </summary>
+        private void SetUserCooldown(string username)
+        {
+            userCooldowns[username] = DateTime.Now.AddSeconds(commandCooldownSeconds.Value);
+        }
+
+        /// <summary>
+        /// Get user sosig count
+        /// </summary>
+        private int GetUserSosigCount(string username)
+        {
+            if (userSpawnCounts.TryGetValue(username, out int count))
+            {
+                return count;
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Increment user sosig count
+        /// </summary>
+        private void IncrementUserSosigCount(string username)
+        {
+            if (userSpawnCounts.ContainsKey(username))
+            {
+                userSpawnCounts[username]++;
+            }
+            else
+            {
+                userSpawnCounts[username] = 1;
+            }
         }
         #endregion
     }

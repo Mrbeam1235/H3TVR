@@ -462,151 +462,32 @@ namespace H3TVR
                 friendlyCount = ActiveAllies.Count,
                 enemyCount = ActiveEnemies.Count,
                 queuedSpawns = spawnQueue.Count + prioritySpawnQueue.Count,
-                totalSpawned = totalSpawnCount
+                totalSpawned = totalSpawnCount,
+                ActiveAllies = ActiveAllies.Count,
+                ActiveEnemies = ActiveEnemies.Count,
+                QueueLength = spawnQueue.Count + prioritySpawnQueue.Count,
+                TotalSpawned = totalSpawnCount
             };
         }
-
+        
         /// <summary>
-        /// Get user experience data
+        /// Stats structure for sosig spawning
         /// </summary>
-        public UserExperience GetUserExperience(string username)
+        public struct ChatSosigStats
         {
-            if (!userExperienceData.TryGetValue(username, out var experience))
-            {
-                experience = new UserExperience
-                {
-                    Username = username,
-                    FirstSpawn = DateTime.Now,
-                    LastActivity = DateTime.Now,
-                    Level = 1
-                };
-                userExperienceData[username] = experience;
-            }
-
-            return experience;
+            public int activeSosigCount;
+            public int friendlyCount;
+            public int enemyCount;
+            public int queuedSpawns;
+            public int totalSpawned;
+            
+            // Additional properties for TwitchChatManager compatibility
+            public int ActiveAllies;
+            public int ActiveEnemies;
+            public int QueueLength;
+            public int TotalSpawned;
         }
-
-        /// <summary>
-        /// Award experience to user
-        /// </summary>
-        public void AwardExperience(string username, float points, string reason = "")
-        {
-            if (!enableSosigExperience.Value) return;
-
-            var userExp = GetUserExperience(username);
-            userExp.ExperiencePoints += points * experienceGainRate.Value;
-            userExp.LastActivity = DateTime.Now;
-
-            // Check for level up
-            int newLevel = Mathf.FloorToInt(userExp.ExperiencePoints / 100f) + 1;
-            if (newLevel > userExp.Level)
-            {
-                userExp.Level = newLevel;
-                NotifyUser(username, $"Level up! You are now level {newLevel}! {GetLevelUpReward(newLevel)}", NotificationType.Achievement);
-                PlayAudioFeedback(commandSuccessSound);
-            }
-
-            if (!string.IsNullOrEmpty(reason))
-            {
-                logger?.LogDebug($"Awarded {points} XP to {username} for {reason}");
-            }
-        }
-
-        /// <summary>
-        /// Get level up rewards
-        /// </summary>
-        private string GetLevelUpReward(int level)
-        {
-            switch (level)
-            {
-                case 2: return "Unlocked: Reduced spawn cooldown!";
-                case 3: return "Unlocked: Behavior commands!";
-                case 5: return "Unlocked: Advanced armor presets!";
-                case 10: return "Unlocked: Group commands!";
-                default: return "New abilities unlocked!";
-            }
-        }
-
-        /// <summary>
-        /// Notify user with message
-        /// </summary>
-        public void NotifyUser(string username, string message, NotificationType type)
-        {
-            var notification = new UserNotification
-            {
-                Username = username,
-                Message = message,
-                Type = type,
-                Timestamp = DateTime.Now
-            };
-
-            notificationQueue.Enqueue(notification);
-
-            // Also send to Twitch chat if connected
-            if (twitchManager != null && twitchManager.IsConnected)
-            {
-                string emoji = type switch
-                {
-                    NotificationType.Success => "✅",
-                    NotificationType.Warning => "⚠️",
-                    NotificationType.Error => "❌",
-                    NotificationType.Achievement => "🏆",
-                    _ => "ℹ️"
-                };
-
-                twitchManager.SendChatMessage($"{emoji} @{username} {message}");
-            }
-        }
-
-        /// <summary>
-        /// Clear all sosigs with enhanced cleanup and user notification
-        /// </summary>
-        public void ClearSosigs(bool allies = true, bool enemies = true)
-        {
-            var clearedUsers = new HashSet<string>();
-
-            if (allies)
-            {
-                foreach (var chatSosig in ActiveAllies.ToList())
-                {
-                    if (!string.IsNullOrEmpty(chatSosig.TwitchUsername))
-                        clearedUsers.Add(chatSosig.TwitchUsername);
-                    DestroyChatSosig(chatSosig);
-                }
-                spawnedChatters.Clear();
-            }
-
-            if (enemies)
-            {
-                foreach (var chatSosig in ActiveEnemies.ToList())
-                {
-                    if (!string.IsNullOrEmpty(chatSosig.TwitchUsername))
-                        clearedUsers.Add(chatSosig.TwitchUsername);
-                    DestroyChatSosig(chatSosig);
-                }
-                spawnedEnemyChatters.Clear();
-            }
-
-            // Clear user tracking
-            userSosigMap.Clear();
-
-            // Notify cleared users
-            foreach (var username in clearedUsers)
-            {
-                NotifyUser(username, "Your sosigs have been cleared by a moderator.", NotificationType.Info);
-            }
-
-            // Notify Twitch manager to reset user counts
-            if (twitchManager != null)
-            {
-                twitchManager.ResetAllUserCounts();
-            }
-
-            PlayAudioFeedback(commandSuccessSound);
-            logger?.LogInfo($"Cleared sosigs - Allies: {allies}, Enemies: {enemies}");
-        }
-
-        #endregion  // <-- Close: Public API Methods (Enhanced for Advanced Features)
+        #endregion
 
         #region Initialization (Enhanced)
         public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
@@ -1982,117 +1863,126 @@ namespace H3TVR
 
             while (true)
             {
-                try
+                bool shouldYield = false;
+                Exception caughtEx = null;
+
+                // throttle by cooldown
+                if (Time.time - lastSpawnTime < (spawnCooldown != null ? spawnCooldown.Value : 2.0f))
                 {
-                    // throttle by cooldown
-                    if (Time.time - lastSpawnTime < (spawnCooldown != null ? spawnCooldown.Value : 2.0f))
+                    shouldYield = true;
+                }
+                // performance safeguard: if performance mode is on and we are over recommended count, pause spawns
+                else if (performanceMode && recommendedSosigCount > 0 && (ActiveAllies.Count + ActiveEnemies.Count) >= recommendedSosigCount)
+                {
+                    shouldYield = true;
+                }
+                else
+                {
+                    try
                     {
-                        yield return wait;
-                        continue;
-                    }
+                        TwitchSpawnRequest request = null;
 
-                    // performance safeguard: if performance mode is on and we are over recommended count, pause spawns
-                    int activeCount = ActiveAllies.Count + ActiveEnemies.Count;
-                    if (performanceMode && recommendedSosigCount > 0 && activeCount >= recommendedSosigCount)
-                    {
-                        yield return wait;
-                        continue;
-                    }
+                        // priority first
+                        if (prioritySpawnQueue.Count > 0)
+                            request = prioritySpawnQueue.Dequeue();
+                        else if (spawnQueue.Count > 0)
+                            request = spawnQueue.Dequeue();
 
-                    TwitchSpawnRequest request = null;
-
-                    // priority first
-                    if (prioritySpawnQueue.Count > 0)
-                        request = prioritySpawnQueue.Dequeue();
-                    else if (spawnQueue.Count > 0)
-                        request = spawnQueue.Dequeue();
-
-                    if (request == null)
-                    {
-                        yield return wait;
-                        continue;
-                    }
-
-                    // Validate capacity
-                    if (!CanSpawn(request.IsFriendly))
-                    {
-                        logger?.LogWarning("Spawn skipped: capacity reached");
-                        NotifyUser(request.TwitchUsername ?? request.UserName, "Server is at capacity. Your spawn stayed in queue too long.", NotificationType.Warning);
-                        yield return wait;
-                        continue;
-                    }
-
-                    // Determine name and placement
-                    string displayName = request.DisplayName;
-                    if (string.IsNullOrEmpty(displayName))
-                    {
-                        if (!request.IsFromTwitch || (useTwitchNamesOverIni != null && !useTwitchNamesOverIni.Value))
-                            displayName = request.IsFriendly ? (GetRandomAllyName() ?? SpawnerName) : (GetRandomEnemyName() ?? SpawnerName);
+                        if (request == null)
+                        {
+                            shouldYield = true;
+                        }
+                        else if (!CanSpawn(request.IsFriendly))
+                        {
+                            logger?.LogWarning("Spawn skipped: capacity reached");
+                            NotifyUser(request.TwitchUsername ?? request.UserName, "Server is at capacity. Your spawn stayed in queue too long.", NotificationType.Warning);
+                            shouldYield = true;
+                        }
                         else
-                            displayName = request.UserName ?? SpawnerName;
-                    }
-
-                    Vector3 spawnPos = request.CustomSpawnPoint ?? request.PreferredSpawnLocation ?? CalculateSpawnPoint(request.IsFriendly);
-                    Quaternion rot = Quaternion.identity;
-
-                    // Choose template
-                    SosigEnemyTemplate template = GetTemplate(request.IsFriendly);
-                    if (template == null)
-                    {
-                        logger?.LogError("No Sosig template available; cannot spawn.");
-                        NotifyUser(request.TwitchUsername ?? request.UserName, "No Sosig template available. Spawn failed.", NotificationType.Error);
-                        yield return wait;
-                        continue;
-                    }
-
-                    // Spawn Sosig
-                    int iff = request.IsFriendly ? 0 : Mathf.Max(1, (int)(enemyIFF != null ? enemyIFF.Value : 1f));
-                    var sosig = SpawnSosigFromTemplate(template, spawnPos, rot, iff, displayName);
-                    if (sosig == null)
-                    {
-                        NotifyUser(request.TwitchUsername ?? request.UserName, "Spawn failed due to internal error.", NotificationType.Error);
-                        yield return wait;
-                        continue;
-                    }
-
-                    // Wrap ChatSosig
-                    var chatSosig = CreateChatSosig(sosig, request.UserName ?? request.TwitchUsername ?? "UnknownUser", displayName, request.IsFriendly);
-                    chatSosig.IsFromTwitch = request.IsFromTwitch;
-                    if (request.CustomData != null)
-                    {
-                        foreach (var kv in request.CustomData)
-                            chatSosig.CustomData[kv.Key] = kv.Value;
-                    }
-
-                    // Register and finalize
-                    RegisterSpawn(chatSosig);
-
-                    // Behavior request (if eligible)
-                    if (enableBehaviorCommands != null && enableBehaviorCommands.Value && !string.IsNullOrEmpty(request.RequestedBehavior))
-                    {
-                        try
                         {
-                            var parsed = (SosigBehaviorState)Enum.Parse(typeof(SosigBehaviorState), request.RequestedBehavior, true);
-                            SetSosigBehavior(chatSosig, parsed);
-                        }
-                        catch
-                        {
-                            // ignore invalid behavior strings
+                            // Determine name and placement
+                            string displayName = request.DisplayName;
+                            if (string.IsNullOrEmpty(displayName))
+                            {
+                                if (!request.IsFromTwitch || (useTwitchNamesOverIni != null && !useTwitchNamesOverIni.Value))
+                                    displayName = request.IsFriendly ? (GetRandomAllyName() ?? SpawnerName) : (GetRandomEnemyName() ?? SpawnerName);
+                                else
+                                    displayName = request.UserName ?? SpawnerName;
+                            }
+
+                            Vector3 spawnPos = request.CustomSpawnPoint ?? request.PreferredSpawnLocation ?? CalculateSpawnPoint(request.IsFriendly);
+                            Quaternion rot = Quaternion.identity;
+
+                            // Choose template
+                            SosigEnemyTemplate template = GetTemplate(request.IsFriendly);
+                            if (template == null)
+                            {
+                                logger?.LogError("No Sosig template available; cannot spawn.");
+                                NotifyUser(request.TwitchUsername ?? request.UserName, "No Sosig template available. Spawn failed.", NotificationType.Error);
+                                shouldYield = true;
+                            }
+                            else
+                            {
+                                // Spawn Sosig
+                                int iff = request.IsFriendly ? 0 : Mathf.Max(1, (int)(enemyIFF != null ? enemyIFF.Value : 1f));
+                                var sosig = SpawnSosigFromTemplate(template, spawnPos, rot, iff, displayName);
+                                if (sosig == null)
+                                {
+                                    NotifyUser(request.TwitchUsername ?? request.UserName, "Spawn failed due to internal error.", NotificationType.Error);
+                                    shouldYield = true;
+                                }
+                                else
+                                {
+                                    // Wrap ChatSosig
+                                    var chatSosig = CreateChatSosig(sosig, request.UserName ?? request.TwitchUsername ?? "UnknownUser", displayName, request.IsFriendly);
+                                    chatSosig.IsFromTwitch = request.IsFromTwitch;
+                                    if (request.CustomData != null)
+                                    {
+                                        foreach (var kv in request.CustomData)
+                                            chatSosig.CustomData[kv.Key] = kv.Value;
+                                    }
+
+                                    // Register and finalize
+                                    RegisterSpawn(chatSosig);
+
+                                    // Behavior request (if eligible)
+                                    if (enableBehaviorCommands != null && enableBehaviorCommands.Value && !string.IsNullOrEmpty(request.RequestedBehavior))
+                                    {
+                                        try
+                                        {
+                                            var parsed = (SosigBehaviorState)Enum.Parse(typeof(SosigBehaviorState), request.RequestedBehavior, true);
+                                            SetSosigBehavior(chatSosig, parsed);
+                                        }
+                                        catch
+                                        {
+                                            // ignore invalid behavior strings
+                                        }
+                                    }
+
+                                    // Effects/audio
+                                    if (enableSpawnEffects != null && enableSpawnEffects.Value)
+                                        CreateSpawnEffects(chatSosig);
+
+                                    PlayAudioFeedback(spawnSound, chatSosig.Sosig.transform.position);
+                                }
+                            }
                         }
                     }
-
-                    // Effects/audio
-                    if (enableSpawnEffects != null && enableSpawnEffects.Value)
-                        CreateSpawnEffects(chatSosig);
-
-                    PlayAudioFeedback(spawnSound, chatSosig.Sosig.transform.position);
+                    catch (Exception ex)
+                    {
+                        caughtEx = ex;
+                    }
                 }
-                catch (Exception ex)
+
+                if (caughtEx != null)
                 {
-                    logger?.LogError("Error in ProcessSpawnQueueCoroutine: " + ex.Message);
+                    logger?.LogError("Error in ProcessSpawnQueueCoroutine: " + caughtEx.Message);
                 }
 
-                yield return wait;
+                if (shouldYield)
+                {
+                    yield return wait;
+                }
             }
         }
 
@@ -2164,14 +2054,14 @@ namespace H3TVR
             return null;
         }
 
-        // Manual spawn via keys (friendly)
-        private void SpawningSequence(string username)
+        // Manual spawn via keys (friendly) - made public for SpawnManager
+        public void SpawningSequence(string username)
         {
             SpawnImmediate(true, username ?? "ManualAlly");
         }
 
-        // Manual spawn via keys (enemy)
-        private void SpawningSequenceEnemy(int IFF, string username)
+        // Manual spawn via keys (enemy) - made public for SpawnManager
+        public void SpawningSequenceEnemy(int IFF, string username)
         {
             // IFF param is accepted for backwards compatibility; actual IFF is taken from config enemyIFF
             SpawnImmediate(false, username ?? "ManualEnemy");
@@ -2406,7 +2296,8 @@ namespace H3TVR
                         break;
 
                     case SosigBehaviorState.Guarding:
-                        sosig.CommandGuardPosition(sosig.transform.position);
+                        // Sosig doesn't have CommandGuardPosition, use CommandAssaultPoint instead
+                        sosig.CommandAssaultPoint(sosig.transform.position);
                         break;
 
                     case SosigBehaviorState.Patrolling:
@@ -2567,3 +2458,4 @@ namespace H3TVR
         }
     }
 }
+

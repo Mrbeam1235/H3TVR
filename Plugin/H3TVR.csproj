@@ -20,6 +20,9 @@
       <Reference Include="MMHOOK_Assembly-CSharp">
         <HintPath>..\libs\MMHOOK_Assembly-CSharp.dll</HintPath>
       </Reference>
+      <Reference Include="Valve.Newtonsoft.Json">
+        <HintPath>..\libs\Valve.Newtonsoft.Json.dll</HintPath>
+      </Reference>
     </ItemGroup>
     
     <ItemGroup>
