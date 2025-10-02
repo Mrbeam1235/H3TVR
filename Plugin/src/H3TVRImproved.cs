@@ -77,11 +77,18 @@ namespace H3TVR
         // Key Bindings - Organized
         private readonly Dictionary<string, ConfigEntry<KeyCode>> keyBindings = new Dictionary<string, ConfigEntry<KeyCode>>();
         
-        // Chat Sosig Configuration - Simplified
+        // Chat Sosig Configuration - Enhanced for TwitchLib
         private ConfigEntry<bool> enableTwitchChatSosigs;
-        private ConfigEntry<string> twitchChatFilePath;
-        private ConfigEntry<string> twitchEnemyChatFilePath;
+        private ConfigEntry<bool> enableLegacyFileMode; // For backwards compatibility
+        private ConfigEntry<string> twitchChatFilePath; // Legacy
+        private ConfigEntry<string> twitchEnemyChatFilePath; // Legacy
         private ConfigEntry<int> maxChatSosigs;
+        
+        // New TwitchLib Configuration
+        private ConfigEntry<string> twitchUsername;
+        private ConfigEntry<string> twitchChannel;
+        private ConfigEntry<bool> twitchAutoConnect;
+        private ConfigEntry<KeyCode> twitchGUIKey;
         #endregion
 
         #region Components
@@ -94,13 +101,14 @@ namespace H3TVR
         private AudioManager audioManager;
         private EnhancedChatSpawner enhancedChatSpawner;
         private SosigArmorWristMenuIntegration sosigArmorWristMenu;
+        private TwitchChatManager twitchChatManager; // New Twitch integration
         #endregion
 
         #region Initialization
         public H3TVRImproved()
         {
             hooks.Hook();
-            Logger.LogInfo("Loading H3TVR Enhanced Edition");
+            Logger.LogInfo("Loading H3TVR Enhanced Edition with TwitchLib Integration");
         }
 
         private void Awake()
@@ -110,7 +118,7 @@ namespace H3TVR
                 // Initialize optional dependency manager early
                 OptionalDependencyManager.Initialize(base.Logger);
                 
-                base.Logger.LogInfo("H3TVR Enhanced Edition is loading...");
+                base.Logger.LogInfo("H3TVR Enhanced Edition with TwitchLib Integration is loading...");
                 
                 // Initialize configuration
                 InitializeConfiguration();
@@ -124,10 +132,20 @@ namespace H3TVR
                 // Initialize chat spawner
                 InitializeSosigSpawner();
                 
-                // Initialize wrist menu integration
-                InitializeSosigArmorWristMenuIntegration();
+                // Initialize TwitchLib integration
+                InitializeTwitchIntegration();
                 
-                base.Logger.LogInfo("H3TVR Enhanced Edition loaded successfully!");
+                // Initialize wrist menu integration with error handling
+                try
+                {
+                    InitializeSosigArmorWristMenuIntegration();
+                }
+                catch (Exception ex)
+                {
+                    base.Logger.LogWarning($"Non-critical error in wrist menu integration: {ex.Message}");
+                }
+                
+                base.Logger.LogInfo("H3TVR Enhanced Edition with TwitchLib loaded successfully!");
                 
                 // Log dependency status
                 base.Logger.LogInfo(OptionalDependencyManager.GetDependencyStatusReport());
@@ -138,11 +156,37 @@ namespace H3TVR
                     base.Logger.LogInfo("Meatyceiver 2 Integration: ACTIVE");
                     base.Logger.LogInfo(MeatyceiverIntegrationManager.GetTransformationStats());
                 }
+
+                // Log TwitchLib status
+                if (enableTwitchChatSosigs.Value && !enableLegacyFileMode.Value)
+                {
+                    base.Logger.LogInfo("TwitchLib Integration: ACTIVE - Real-time chat enabled");
+                    base.Logger.LogInfo("Use F8 to open Twitch Integration GUI for setup");
+                }
+                else if (enableLegacyFileMode.Value)
+                {
+                    base.Logger.LogInfo("Legacy File Mode: ACTIVE - Using file-based chat monitoring");
+                }
+                else
+                {
+                    base.Logger.LogInfo("Chat Integration: DISABLED");
+                }
             }
             catch (Exception ex)
             {
                 base.Logger.LogError($"Error during H3TVR initialization: {ex.Message}");
                 base.Logger.LogError($"Stack trace: {ex.StackTrace}");
+                
+                // Try to continue with basic functionality
+                try
+                {
+                    InitializeConfiguration();
+                    Logger.LogInfo("H3TVR running in fallback mode with basic functionality");
+                }
+                catch (Exception fallbackEx)
+                {
+                    Logger.LogError($"Critical error - H3TVR cannot initialize: {fallbackEx.Message}");
+                }
             }
         }
 
@@ -204,11 +248,18 @@ namespace H3TVR
             dangerCloseMinCount = Config.Bind("DangerClose", "MinCount", 1, "Minimum danger close rounds");
             dangerCloseMaxCount = Config.Bind("DangerClose", "MaxCount", 5, "Maximum danger close rounds");
 
-            // Chat Sosig Configuration - Simplified
+            // Chat Sosig Configuration - Enhanced for TwitchLib
             enableTwitchChatSosigs = Config.Bind("Chat Sosigs", "EnableTwitchChatSosigs", true, "Enable Twitch chat sosig spawning");
-            twitchChatFilePath = Config.Bind("Chat Sosigs", "TwitchChatFilePath", "ally_names.txt", "File path for ally sosig names");
-            twitchEnemyChatFilePath = Config.Bind("Chat Sosigs", "TwitchEnemyChatFilePath", "enemy_names.txt", "File path for enemy sosig names");
+            enableLegacyFileMode = Config.Bind("Chat Sosigs", "EnableLegacyFileMode", false, "Enable legacy file-based chat monitoring (for backwards compatibility)");
+            twitchChatFilePath = Config.Bind("Chat Sosigs", "TwitchChatFilePath", "ally_names.txt", "File path for ally sosig names (legacy mode only)");
+            twitchEnemyChatFilePath = Config.Bind("Chat Sosigs", "TwitchEnemyChatFilePath", "enemy_names.txt", "File path for enemy sosig names (legacy mode only)");
             maxChatSosigs = Config.Bind("Chat Sosigs", "MaxChatSosigs", 10, "Maximum number of active chat sosigs");
+            
+            // TwitchLib Integration
+            twitchUsername = Config.Bind("Twitch Integration", "TwitchUsername", "", "Twitch username (auto-filled after OAuth)");
+            twitchChannel = Config.Bind("Twitch Integration", "TwitchChannel", "", "Twitch channel to monitor");
+            twitchAutoConnect = Config.Bind("Twitch Integration", "AutoConnect", false, "Auto-connect to Twitch on startup");
+            twitchGUIKey = Config.Bind("Twitch Integration", "TwitchGUIKey", KeyCode.F8, "Key to open Twitch GUI");
         }
 
         private void InitializeKeyBindings()
@@ -348,6 +399,49 @@ namespace H3TVR
         }
 
         /// <summary>
+        /// Initialize TwitchLib integration for real-time chat
+        /// </summary>
+        private void InitializeTwitchIntegration()
+        {
+            try
+            {
+                if (!enableTwitchChatSosigs.Value)
+                {
+                    Logger.LogInfo("Twitch chat sosigs disabled - skipping TwitchLib initialization");
+                    return;
+                }
+
+                if (enableLegacyFileMode.Value)
+                {
+                    Logger.LogInfo("Legacy file mode enabled - TwitchLib integration disabled");
+                    return;
+                }
+
+                Logger.LogInfo("Initializing TwitchLib integration...");
+
+                // TwitchChatManager is already created within EnhancedChatSpawner
+                // Just log that it's being handled there
+                Logger.LogInfo("TwitchLib integration will be initialized by EnhancedChatSpawner");
+
+                // Log integration status
+                if (enhancedChatSpawner != null)
+                {
+                    Logger.LogInfo("Enhanced Chat Spawner will handle TwitchLib integration");
+                }
+                else
+                {
+                    Logger.LogWarning("Enhanced Chat Spawner not available for TwitchLib integration");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Error initializing TwitchLib integration: {ex.Message}");
+                Logger.LogInfo("Falling back to legacy file-based chat monitoring");
+                enableLegacyFileMode.Value = true;
+            }
+        }
+
+        /// <summary>
         /// Initialize the Sosig Armor Wrist Menu Integration
         /// </summary>
         private void InitializeSosigArmorWristMenuIntegration()
@@ -364,10 +458,40 @@ namespace H3TVR
                 sosigArmorWristMenu.Initialize(this, null);
                 
                 Logger.LogInfo("Sosig Armor Wrist Menu Integration initialized successfully");
+                
+                // Start delayed armor system initialization to avoid H3VR timing issues
+                StartCoroutine(DelayedArmorSystemInitialization());
             }
             catch (Exception ex)
             {
                 Logger.LogError($"Failed to initialize Sosig Armor Wrist Menu Integration: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Initialize armor system with delay to ensure H3VR systems are ready
+        /// </summary>
+        private IEnumerator DelayedArmorSystemInitialization()
+        {
+            // Wait a few seconds for H3VR systems to be fully loaded
+            yield return new WaitForSeconds(3f);
+            
+            try
+            {
+                // Try to initialize H3VR Asset Loader
+                H3VRAssetLoader.TryInitializeWithDelay();
+                
+                // Force reload armor in the wrist menu
+                if (sosigArmorWristMenu?.GetArmorMenu() != null)
+                {
+                    sosigArmorWristMenu.GetArmorMenu().ShowMessage("Reloading armor assets after H3VR initialization...");
+                }
+                
+                Logger.LogInfo("Delayed armor system initialization completed");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"Delayed armor initialization warning: {ex.Message}");
             }
         }
         #endregion
@@ -389,35 +513,57 @@ namespace H3TVR
 
         private void HandleSlomoStateMachine()
         {
-            switch (slomoStatus)
+            try
             {
-                case "Slowing":
-                    Logger.LogInfo("Slowing!");
-                    effectsManager.SlomoScaleDown();
-                    break;
-                case "Wait":
-                    Logger.LogInfo("Waiting!");
-                    slomoStatus = "Paused";
-                    audioManager?.PlaySlomoSound("active"); // Play slomo active sound
-                    StartCoroutine(effectsManager.SlomoWait(() => slomoStatus = "Return"));
-                    break;
-                case "Return":
-                    Logger.LogInfo("Returning!");
-                    effectsManager.SlomoReturn();
-                    break;
-            }
-
-            if (Time.timeScale == 1)
-            {
-                if (slomoStatus != "Off")
+                switch (slomoStatus)
                 {
-                    audioManager?.PlaySlomoSound("end"); // Play slomo end sound
+                    case "Slowing":
+                        Logger.LogInfo("Slowing!");
+                        effectsManager.SlomoScaleDown();
+                        break;
+                    case "Wait":
+                        Logger.LogInfo("Waiting!");
+                        slomoStatus = "Paused";
+                        try
+                        {
+                            audioManager?.PlaySlomoSound("active"); // Play slomo active sound
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning($"Audio error during slomo: {ex.Message}");
+                        }
+                        StartCoroutine(effectsManager.SlomoWait(() => slomoStatus = "Return"));
+                        break;
+                    case "Return":
+                        Logger.LogInfo("Returning!");
+                        effectsManager.SlomoReturn();
+                        break;
                 }
-                slomoStatus = "Off";
+
+                if (Time.timeScale == 1)
+                {
+                    if (slomoStatus != "Off")
+                    {
+                        try
+                        {
+                            audioManager?.PlaySlomoSound("end"); // Play slomo end sound
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning($"Audio error ending slomo: {ex.Message}");
+                        }
+                    }
+                    slomoStatus = "Off";
+                }
+                
+                // Update movement scaling based on current time scale
+                slomoMovementController?.UpdateMovementScale(Time.timeScale);
             }
-            
-            // Update movement scaling based on current time scale
-            slomoMovementController?.UpdateMovementScale(Time.timeScale);
+            catch (Exception ex)
+            {
+                Logger.LogError($"Error in slomo state machine: {ex.Message}");
+                slomoStatus = "Off"; // Reset to safe state
+            }
         }
 
         private void HandleZeroGravityStateMachine()
@@ -568,27 +714,10 @@ namespace H3TVR
         // State setters
         public void SetSlomoStatus(string status) => slomoStatus = status;
 
-        // Chat Sosig Configuration Access - Simplified
-        public bool IsTwitchChatSosigsEnabled()
-        {
-            return enableTwitchChatSosigs?.Value ?? false;
-        }
-
-        public string GetTwitchChatFilePath()
-        {
-            return twitchChatFilePath?.Value ?? "";
-        }
-
-        public string GetTwitchEnemyChatFilePath()
-        {
-            return twitchEnemyChatFilePath?.Value ?? "";
-        }
-
-        public int GetMaxChatSosigs()
-        {
-            return maxChatSosigs?.Value ?? 10;
-        }
-
+        // Add missing methods
+        /// <summary>
+        /// Get the SosigArmorWristMenuIntegration instance
+        /// </summary>
         public SosigArmorWristMenuIntegration GetSosigArmorWristMenu()
         {
             return sosigArmorWristMenu;
@@ -618,10 +747,15 @@ namespace H3TVR
                 }
                 else
                 {
-                    // Apply custom pitch scaling
-                    value *= (Time.timeScale * pitchScale);
+                    // Apply custom pitch scaling with proper clamping
+                    float newPitch = value * (Time.timeScale * pitchScale);
+                    // Clamp to reasonable audio range (0.1 to 3.0)
+                    value = Mathf.Clamp(newPitch, 0.1f, 3.0f);
                 }
             }
+            
+            // Always ensure pitch is within reasonable bounds
+            value = Mathf.Clamp(value, 0.1f, 3.0f);
         }
 
         private void OnDestroy()

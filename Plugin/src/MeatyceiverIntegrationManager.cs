@@ -669,7 +669,7 @@ namespace H3TVR
 
             return $"Meatyceiver 2 Compatibility:\n" +
                    $"• Version: {DetectedVersion}\n" +
-                   $"• API Version: {DetectedApiVersion}\n" +
+                   $"• API Version: {DetectedApiVersion}\n" + features.Count +
                    $"• Available Features: {string.Join(", ", features.ToArray())}\n" +
                    $"• Integration Status: {(IsIntegrationEnabled() ? "Active" : "Disabled")}";
         }

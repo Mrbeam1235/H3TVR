@@ -80,17 +80,39 @@ namespace H3TVR
         {
             if (isInitialized) return;
             
-            instance = this;
-            plugin = pluginInstance;
-            
-            InitializeArmorSystem();
-            LoadArmorPresets();
-            SetupDefaultConfigurations();
-            
-            isInitialized = true;
-            
-            Debug.Log("[SosigArmorWristMenuComplete] Complete armor wrist menu system initialized successfully");
-            ShowMessage("Sosig Armor System Loaded - Press F6 to toggle menu");
+            try
+            {
+                instance = this;
+                plugin = pluginInstance;
+                
+                InitializeArmorSystem();
+                LoadArmorPresets();
+                SetupDefaultConfigurations();
+                
+                isInitialized = true;
+                
+                Debug.Log("[SosigArmorWristMenuComplete] Complete armor wrist menu system initialized successfully");
+                ShowMessage("Sosig Armor System Loaded - Press F6 to toggle menu");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[SosigArmorWristMenuComplete] Failed to initialize: {ex.Message}");
+                Debug.LogError($"Stack trace: {ex.StackTrace}");
+                
+                // Initialize basic system even if armor loading fails
+                try
+                {
+                    instance = this;
+                    plugin = pluginInstance;
+                    InitializeEmptyArmorCategories();
+                    isInitialized = true;
+                    Debug.Log("[SosigArmorWristMenuComplete] Initialized in minimal mode");
+                }
+                catch (Exception fallbackEx)
+                {
+                    Debug.LogError($"[SosigArmorWristMenuComplete] Critical initialization failure: {fallbackEx.Message}");
+                }
+            }
         }
 
         private void InitializeArmorSystem()
@@ -148,20 +170,41 @@ namespace H3TVR
         {
             InitializeEmptyArmorCategories();
             
-            if (IM.OD == null) return;
-
-            foreach (var kvp in IM.OD)
+            if (IM.OD == null) 
             {
-                FVRObject obj = kvp.Value;
-                if (obj == null) continue;
+                Debug.LogWarning("[SosigArmorWristMenuComplete] ItemManager ObjectDatabase is null");
+                return;
+            }
 
-                string objectId = kvp.Key.ToLower();
-                
-                // Basic armor categorization
-                if (IsArmorPiece(objectId))
+            try
+            {
+                foreach (var kvp in IM.OD)
                 {
-                    CategorizeArmorPiece(objectId, obj);
+                    try
+                    {
+                        FVRObject obj = kvp.Value;
+                        if (obj == null) continue;
+
+                        string objectId = kvp.Key?.ToLower();
+                        if (string.IsNullOrEmpty(objectId)) continue;
+                        
+                        // Basic armor categorization
+                        if (IsArmorPiece(objectId))
+                        {
+                            CategorizeArmorPiece(objectId, obj);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Skip individual problematic items
+                        Debug.LogWarning($"[SosigArmorWristMenuComplete] Error processing item {kvp.Key}: {ex.Message}");
+                        continue;
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[SosigArmorWristMenuComplete] Error scanning ItemManager: {ex.Message}");
             }
             
             Debug.Log($"[SosigArmorWristMenuComplete] Scanned ItemManager - found {availableArmor.Values.Sum(list => list.Count)} armor pieces");
@@ -343,11 +386,22 @@ namespace H3TVR
 
         public void ApplyArmorToSosig(Sosig sosig, bool isAlly)
         {
-            if (!isInitialized || sosig == null || !factionArmorEnabled) return;
+            if (!isInitialized || sosig == null || !factionArmorEnabled) 
+            {
+                if (sosig == null)
+                    Debug.LogWarning("[SosigArmorWristMenuComplete] Cannot apply armor - sosig is null");
+                return;
+            }
             
             try
             {
                 ArmorConfiguration config = isAlly ? currentAllyConfig : currentEnemyConfig;
+                if (config == null)
+                {
+                    Debug.LogWarning("[SosigArmorWristMenuComplete] Cannot apply armor - configuration is null");
+                    return;
+                }
+
                 ApplyArmorConfiguration(sosig, config, isAlly);
                 
                 Debug.Log($"[SosigArmorWristMenuComplete] Applied {config.presetName} armor to {(isAlly ? "ally" : "enemy")} sosig");
@@ -405,42 +459,53 @@ namespace H3TVR
         #region Armor Application
         private void ApplyArmorConfiguration(Sosig sosig, ArmorConfiguration config, bool isAlly)
         {
-            if (sosig.Links == null || sosig.Links.Count == 0) return;
-
-            // Apply armor pieces based on configuration
-            if (config.useHeadwear && ShouldApplyArmor(config.headwearChance, config.forceFullArmor))
+            if (sosig?.Links == null || sosig.Links.Count == 0) 
             {
-                ApplyArmorPiece(sosig, "Headwear", 0); // Head link
+                Debug.LogWarning("[SosigArmorWristMenuComplete] Cannot apply armor - sosig has no links");
+                return;
             }
 
-            if (config.useFacewear && ShouldApplyArmor(config.facewearChance, config.forceFullArmor))
+            try
             {
-                ApplyArmorPiece(sosig, "Facewear", 0); // Head link
-            }
+                // Apply armor pieces based on configuration
+                if (config.useHeadwear && ShouldApplyArmor(config.headwearChance, config.forceFullArmor))
+                {
+                    ApplyArmorPiece(sosig, "Headwear", 0); // Head link
+                }
 
-            if (config.useEyewear && ShouldApplyArmor(config.eyewearChance, config.forceFullArmor))
-            {
-                ApplyArmorPiece(sosig, "Eyewear", 0); // Head link
-            }
+                if (config.useFacewear && ShouldApplyArmor(config.facewearChance, config.forceFullArmor))
+                {
+                    ApplyArmorPiece(sosig, "Facewear", 0); // Head link
+                }
 
-            if (config.useTorsowear && ShouldApplyArmor(config.torsowearChance, config.forceFullArmor))
-            {
-                ApplyArmorPiece(sosig, "Torsowear", 1); // Torso link
-            }
+                if (config.useEyewear && ShouldApplyArmor(config.eyewearChance, config.forceFullArmor))
+                {
+                    ApplyArmorPiece(sosig, "Eyewear", 0); // Head link
+                }
 
-            if (config.usePantswear && ShouldApplyArmor(config.pantswearChance, config.forceFullArmor))
-            {
-                ApplyArmorPiece(sosig, "Pantswear", 2); // Legs link
-            }
+                if (config.useTorsowear && ShouldApplyArmor(config.torsowearChance, config.forceFullArmor))
+                {
+                    ApplyArmorPiece(sosig, "Torsowear", 1); // Torso link
+                }
 
-            if (config.useBackpacks && ShouldApplyArmor(config.backpackChance, config.forceFullArmor))
-            {
-                ApplyArmorPiece(sosig, "Backpacks", 1); // Torso link
-            }
+                if (config.usePantswear && ShouldApplyArmor(config.pantswearChance, config.forceFullArmor))
+                {
+                    ApplyArmorPiece(sosig, "Pantswear", 2); // Legs link
+                }
 
-            if (config.useDecorations && ShouldApplyArmor(config.decorationChance, config.forceFullArmor))
+                if (config.useBackpacks && ShouldApplyArmor(config.backpackChance, config.forceFullArmor))
+                {
+                    ApplyArmorPiece(sosig, "Backpacks", 1); // Torso link
+                }
+
+                if (config.useDecorations && ShouldApplyArmor(config.decorationChance, config.forceFullArmor))
+                {
+                    ApplyArmorPiece(sosig, "Decorations", 1); // Torso link
+                }
+            }
+            catch (Exception ex)
             {
-                ApplyArmorPiece(sosig, "Decorations", 1); // Torso link
+                Debug.LogError($"[SosigArmorWristMenuComplete] Error applying armor configuration: {ex.Message}");
             }
         }
 
@@ -451,10 +516,17 @@ namespace H3TVR
 
         private void ApplyArmorPiece(Sosig sosig, string armorType, int linkIndex)
         {
-            if (!availableArmor.ContainsKey(armorType) || availableArmor[armorType].Count == 0)
+            if (sosig?.Links == null || linkIndex >= sosig.Links.Count || linkIndex < 0)
+            {
+                Debug.LogWarning($"[SosigArmorWristMenuComplete] Invalid link index {linkIndex} for sosig with {sosig?.Links?.Count ?? 0} links");
                 return;
+            }
 
-            if (linkIndex >= sosig.Links.Count) return;
+            if (!availableArmor.ContainsKey(armorType) || availableArmor[armorType].Count == 0)
+            {
+                Debug.LogWarning($"[SosigArmorWristMenuComplete] No {armorType} armor available");
+                return;
+            }
 
             try
             {
@@ -465,6 +537,10 @@ namespace H3TVR
                 {
                     AttachArmorToLink(sosig.Links[linkIndex], selectedArmor);
                 }
+                else
+                {
+                    Debug.LogWarning($"[SosigArmorWristMenuComplete] Selected armor for {armorType} is null");
+                }
             }
             catch (Exception ex)
             {
@@ -474,22 +550,54 @@ namespace H3TVR
 
         private void AttachArmorToLink(SosigLink link, FVRObject armorObject)
         {
+            if (link == null || armorObject == null)
+            {
+                Debug.LogWarning("[SosigArmorWristMenuComplete] Cannot attach armor - null link or armor object");
+                return;
+            }
+
             try
             {
-                GameObject armorGO = Instantiate(armorObject.GetGameObject(), link.transform.position, link.transform.rotation);
+                GameObject armorPrefab = armorObject.GetGameObject();
+                if (armorPrefab == null)
+                {
+                    Debug.LogWarning($"[SosigArmorWristMenuComplete] Armor object {armorObject.ItemID} has no GameObject");
+                    return;
+                }
+
+                GameObject armorGO = Instantiate(armorPrefab, link.transform.position, link.transform.rotation);
+                if (armorGO == null)
+                {
+                    Debug.LogWarning($"[SosigArmorWristMenuComplete] Failed to instantiate armor {armorObject.ItemID}");
+                    return;
+                }
+
                 armorGO.transform.SetParent(link.transform);
                 
                 // Try to register as sosig wearable
                 SosigWearable wearable = armorGO.GetComponent<SosigWearable>();
                 if (wearable != null)
                 {
-                    wearable.RegisterWearable(link);
+                    try
+                    {
+                        wearable.RegisterWearable(link);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[SosigArmorWristMenuComplete] Failed to register wearable {armorObject.ItemID}: {ex.Message}");
+                        // Continue with manual attachment
+                    }
                 }
-                else
+                
+                // Manual attachment positioning
+                try
                 {
-                    // Manual attachment if no SosigWearable component
                     armorGO.transform.localPosition = Vector3.zero;
                     armorGO.transform.localRotation = Quaternion.identity;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[SosigArmorWristMenuComplete] Failed to set armor transform {armorObject.ItemID}: {ex.Message}");
                 }
             }
             catch (Exception ex)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -13,10 +13,9 @@ using BepInEx.Logging;
 namespace H3TVR
 {
     /// <summary>
-    /// Enhanced Chat Spawner - Advanced Sosig spawning system with Twitch integration
-    /// Based on proven ChatSpawner.cs logic with enhanced features like armor presets, 
-    /// queue management, performance optimization, and extensive customization options
-    /// This version is fully self-contained and doesn't require TwitchChatSosigManager
+    /// Enhanced Chat Spawner - Advanced Sosig spawning system with TwitchLib integration
+    /// Features: TwitchLib real-time chat integration, name loading from INI files, armor GUI integration, nameplate display,
+    /// advanced AI behaviors, dynamic difficulty scaling, audio integration, and performance monitoring
     /// </summary>
     public class EnhancedChatSpawner : MonoBehaviour
     {
@@ -27,11 +26,15 @@ namespace H3TVR
         public static event Action<Sosig, string, bool> OnSosigSpawned;
         public static event Action<Sosig, string> OnSosigDestroyed;
         public static event Action<int, int> OnSosigCountChanged; // allies, enemies
+        public static event Action<ChatSosig, string> OnSosigBehaviorChanged; // sosig, new behavior
+        public static event Action<float> OnDifficultyChanged; // new difficulty level
         #endregion
 
         #region Core Components
         private H3TVRImproved plugin;
         private ManualLogSource logger;
+        private TwitchChatManager twitchManager;
+        private AudioManager audioManager;
         #endregion
 
         #region Sosig Templates and Assets
@@ -40,29 +43,69 @@ namespace H3TVR
         public List<SosigEnemyTemplate> allyTemplates = new List<SosigEnemyTemplate>();
         public List<SosigEnemyTemplate> enemyTemplates = new List<SosigEnemyTemplate>();
         
-        [Header("Nameplate Prefabs")]
-        public GameObject allyNameplatePrefab;
-        public GameObject enemyNameplatePrefab;
+        [Header("Nameplate System")]
+        public GameObject nameplatePrefab;
+        public Font nameplateFont;
+        public Material nameplateMaterial;
+        
+        [Header("Audio Integration")]
+        public AudioClip spawnSound;
+        public AudioClip deathSound;
+        public AudioClip commandSuccessSound;
+        public AudioClip commandFailSound;
         
         private SosigEnemyTemplate[] cachedSosigTemplates;
         #endregion
 
-        #region Sosig Management
+        #region Sosig Management with Twitch Integration
         public List<ChatSosig> ActiveAllies { get; private set; } = new List<ChatSosig>();
         public List<ChatSosig> ActiveEnemies { get; private set; } = new List<ChatSosig>();
         private readonly Dictionary<Sosig, ChatSosig> sosigLookup = new Dictionary<Sosig, ChatSosig>();
+        private readonly Dictionary<string, List<ChatSosig>> userSosigMap = new Dictionary<string, List<ChatSosig>>();
         #endregion
 
-        #region Name Management (Self-contained)
-        private List<string> cachedAllyNames = new List<string>();
-        private List<string> cachedEnemyNames = new List<string>();
-        private DateTime allyNamesLastWrite;
-        private DateTime enemyNamesLastWrite;
-        private string allyNamesFilePath;
-        private string enemyNamesFilePath;
+        #region Enhanced AI and Behavior System
+        public enum SosigBehaviorState
+        {
+            Idle,
+            Following,
+            Guarding,
+            Patrolling,
+            Attacking,
+            Searching,
+            Retreating,
+            Supporting,
+            Custom
+        }
+
+        private readonly Dictionary<ChatSosig, SosigBehaviorState> sosigBehaviors = new Dictionary<ChatSosig, SosigBehaviorState>();
+        private readonly Dictionary<ChatSosig, Vector3> sosigWaypoints = new Dictionary<ChatSosig, Vector3>();
+        private readonly Dictionary<ChatSosig, float> sosigNextBehaviorUpdate = new Dictionary<ChatSosig, float>();
         #endregion
 
-        #region Configuration
+        #region Dynamic Difficulty System
+        private float currentDifficulty = 1.0f;
+        private readonly List<float> recentPlayerPerformance = new List<float>();
+        private DateTime lastDifficultyAdjustment = DateTime.Now;
+        private int playerKillCount;
+        private int sosigKillCount;
+        private const float DifficultyAdjustmentInterval = 120f; // 2 minutes
+        #endregion
+
+        #region Name Management System (Enhanced with Twitch)
+        private List<string> allyNames = new List<string>();
+        private List<string> enemyNames = new List<string>();
+        private Dictionary<string, string> usedNames = new Dictionary<string, string>(); // sosig -> name mapping
+        private Dictionary<string, string> twitchUserNames = new Dictionary<string, string>(); // twitch user -> display name
+        private Dictionary<string, List<string>> customUserNames = new Dictionary<string, List<string>>(); // user -> custom names
+        private string allyNamesPath;
+        private string enemyNamesPath;
+        private DateTime lastAllyNamesCheck;
+        private DateTime lastEnemyNamesCheck;
+        private readonly TimeSpan nameFileCheckInterval = TimeSpan.FromSeconds(30);
+        #endregion
+
+        #region Configuration (Enhanced)
         private ConfigEntry<int> maxAllySosigs;
         private ConfigEntry<int> maxEnemySosigs;
         private ConfigEntry<float> spawnCooldown;
@@ -75,29 +118,118 @@ namespace H3TVR
         private ConfigEntry<float> sosigLifetime;
         private ConfigEntry<bool> enableAutoCleanup;
         private ConfigEntry<float> enemyIFF;
-        private ConfigEntry<string> allyFilePath;
-        private ConfigEntry<string> enemyFilePath;
+        private ConfigEntry<string> allyNamesFile;
+        private ConfigEntry<string> enemyNamesFile;
         private ConfigEntry<KeyCode> spawnAllyKey;
         private ConfigEntry<KeyCode> spawnEnemyKey;
         private ConfigEntry<KeyCode> clearSosigsKey;
+        private ConfigEntry<float> nameplateHeight;
+        private ConfigEntry<float> nameplateScale;
+        private ConfigEntry<Color> allyNameplateColor;
+        private ConfigEntry<Color> enemyNameplateColor;
+        
+        // Enhanced Twitch-specific config
+        private ConfigEntry<bool> enableTwitchIntegration;
+        private ConfigEntry<bool> useTwitchNamesOverIni;
+        private ConfigEntry<bool> enableTwitchUserTracking;
+        private ConfigEntry<int> maxSosigsPerTwitchUser;
+        
+        // New Advanced Features
+        private ConfigEntry<bool> enableDynamicDifficulty;
+        private ConfigEntry<bool> enableSosigPersonalities;
+        private ConfigEntry<bool> enableAudioFeedback;
+        private ConfigEntry<bool> enableSosigChat;
+        private ConfigEntry<float> sosigChatFrequency;
+        private ConfigEntry<bool> enableBehaviorCommands;
+        private ConfigEntry<bool> enableSosigGroups;
+        private ConfigEntry<int> maxSosigGroupSize;
+        private ConfigEntry<bool> enablePerformanceScaling;
+        private ConfigEntry<float> performanceThreshold;
+        private ConfigEntry<bool> enableSosigExperience;
+        private ConfigEntry<float> experienceGainRate;
+        
+        // Advanced Behavior Settings
+        private ConfigEntry<float> allyFollowDistance;
+        private ConfigEntry<float> allyReactionTime;
+        private ConfigEntry<float> enemyAggressionLevel;
+        private ConfigEntry<bool> enableAdvancedPathfinding;
+        private ConfigEntry<bool> enableSosigCommunication;
         #endregion
 
-        #region Spawn Queue and Management
-        private readonly Queue<SpawnRequest> spawnQueue = new Queue<SpawnRequest>();
+        #region Spawn Queue and Management (Enhanced for Twitch)
+        private readonly Queue<TwitchSpawnRequest> spawnQueue = new Queue<TwitchSpawnRequest>();
+        private readonly Queue<TwitchSpawnRequest> prioritySpawnQueue = new Queue<TwitchSpawnRequest>();
         private readonly Dictionary<string, DateTime> userSpawnCooldowns = new Dictionary<string, DateTime>();
         private float lastSpawnTime;
         private int totalSpawnCount;
         public string SpawnerName { get; set; } = "ChatUser";
         #endregion
 
-        #region Performance Monitoring
+        #region Performance Monitoring (Enhanced)
         private float lastPerformanceCheck;
         private const float PerformanceCheckInterval = 5f;
         private readonly List<float> recentFrameTimes = new List<float>();
+        private readonly List<int> recentSosigCounts = new List<int>();
         private bool performanceMode;
+        private float currentFrameRate;
+        private float averageFrameTime;
+        private int recommendedSosigCount;
         #endregion
 
-        #region Spawn Request Class
+        #region Audio Integration System
+        private readonly Dictionary<string, AudioClip> customSounds = new Dictionary<string, AudioClip>();
+        private readonly Dictionary<ChatSosig, AudioSource> sosigAudioSources = new Dictionary<ChatSosig, AudioSource>();
+        private AudioSource globalAudioSource;
+        #endregion
+
+        #region User Experience and Feedback System
+        private readonly Dictionary<string, UserExperience> userExperienceData = new Dictionary<string, UserExperience>();
+        private readonly Queue<UserNotification> notificationQueue = new Queue<UserNotification>();
+        
+        public class UserExperience
+        {
+            public string Username { get; set; }
+            public int TotalSosigsSpawned { get; set; }
+            public int SosigsKilled { get; set; }
+            public int PlayerKills { get; set; }
+            public float ExperiencePoints { get; set; }
+            public int Level { get; set; }
+            public DateTime FirstSpawn { get; set; }
+            public DateTime LastActivity { get; set; }
+            public List<string> UnlockedFeatures { get; set; } = new List<string>();
+            public Dictionary<string, int> PreferredArmor { get; set; } = new Dictionary<string, int>();
+        }
+
+        public class UserNotification
+        {
+            public string Username { get; set; }
+            public string Message { get; set; }
+            public NotificationType Type { get; set; }
+            public DateTime Timestamp { get; set; }
+        }
+
+        public enum NotificationType
+        {
+            Info,
+            Success,
+            Warning,
+            Error,
+            Achievement
+        }
+        #endregion
+
+        #region Twitch Spawn Request Class (Enhanced)
+        public class TwitchSpawnRequest : SpawnRequest
+        {
+            public string TwitchUsername { get; set; }
+            public bool IsFromTwitch { get; set; }
+            public DateTime TwitchRequestTime { get; set; }
+            public string TwitchDisplayName { get; set; }
+            public string RequestedBehavior { get; set; }
+            public Vector3? PreferredSpawnLocation { get; set; }
+            public Dictionary<string, string> ChatTags { get; set; } = new Dictionary<string, string>();
+        }
+
         public class SpawnRequest
         {
             public string UserName { get; set; }
@@ -120,35 +252,57 @@ namespace H3TVR
         }
         #endregion
 
-        #region ChatSosig Wrapper Class
+        #region ChatSosig Wrapper Class (Enhanced with Advanced Features)
         public class ChatSosig
         {
             public Sosig Sosig { get; set; }
             public string UserName { get; set; }
             public string DisplayName { get; set; }
+            public string TwitchUsername { get; set; }
             public bool IsFriendly { get; set; }
             public string ArmorPreset { get; set; }
             public DateTime SpawnTime { get; set; }
             public float Lifetime { get; set; }
             public GameObject Nameplate { get; set; }
+            public bool IsFromTwitch { get; set; }
             public Dictionary<string, object> CustomData { get; set; } = new Dictionary<string, object>();
+            
+            // Enhanced Properties
+            public SosigBehaviorState CurrentBehavior { get; set; } = SosigBehaviorState.Idle;
+            public float ExperiencePoints { get; set; }
+            public int Level { get; set; } = 1;
+            public List<string> PersonalityTraits { get; set; } = new List<string>();
+            public Vector3 LastKnownPosition { get; set; }
+            public DateTime LastBehaviorChange { get; set; }
+            public int KillCount { get; set; }
+            public int DamageDealt { get; set; }
+            public int DamageTaken { get; set; }
+            public bool IsGroupLeader { get; set; }
+            public List<ChatSosig> GroupMembers { get; set; } = new List<ChatSosig>();
+            public ChatSosig GroupLeader { get; set; }
+            public AudioSource AudioSource { get; set; }
+            public float NextChatTime { get; set; }
+            public List<string> ChatPhrases { get; set; } = new List<string>();
             
             public bool IsValid => Sosig != null && Sosig.gameObject != null;
             public bool IsDead => Sosig == null || Sosig.BodyState == Sosig.SosigBodyState.Dead;
             public float Age => Time.time - (float)SpawnTime.Subtract(DateTime.MinValue).TotalSeconds;
+            public bool IsExperienced => ExperiencePoints >= 100f;
+            public bool IsVeteran => ExperiencePoints >= 500f;
         }
         #endregion
 
-        #region Public API Methods
+        #region Public API Methods (Enhanced for Advanced Features)
         /// <summary>
-        /// Queue a spawn request from Twitch chat
+        /// Queue a spawn request from Twitch chat with enhanced tracking and behavior options
         /// </summary>
-        public bool QueueSpawnRequest(string userName, bool isFriendly, string armorPreset = null, SpawnPriority priority = SpawnPriority.Normal)
+        public bool QueueTwitchSpawnRequest(string twitchUsername, string displayName, bool isFriendly, string armorPreset = null, SpawnPriority priority = SpawnPriority.Normal, string requestedBehavior = null)
         {
             // Check user cooldown
-            if (IsUserOnCooldown(userName))
+            if (IsUserOnCooldown(twitchUsername))
             {
-                logger?.LogWarning($"User {userName} is on spawn cooldown");
+                logger?.LogWarning($"Twitch user {twitchUsername} is on spawn cooldown");
+                NotifyUser(twitchUsername, "You are on cooldown. Please wait before spawning another sosig.", NotificationType.Warning);
                 return false;
             }
 
@@ -156,67 +310,267 @@ namespace H3TVR
             if (!CanSpawn(isFriendly))
             {
                 logger?.LogWarning($"Cannot spawn {(isFriendly ? "ally" : "enemy")} - at limit");
+                NotifyUser(twitchUsername, $"Cannot spawn {(isFriendly ? "ally" : "enemy")} - server at capacity.", NotificationType.Error);
                 return false;
             }
 
-            var request = new SpawnRequest
+            // Check per-user limits
+            if (enableTwitchUserTracking.Value && GetUserActiveSosigCount(twitchUsername) >= maxSosigsPerTwitchUser.Value)
             {
-                UserName = userName,
-                DisplayName = userName,
+                logger?.LogWarning($"Twitch user {twitchUsername} already has maximum sosigs active");
+                NotifyUser(twitchUsername, $"You already have the maximum number of sosigs active ({maxSosigsPerTwitchUser.Value}).", NotificationType.Warning);
+                return false;
+            }
+
+            // Check if user qualifies for advanced features
+            var userExp = GetUserExperience(twitchUsername);
+            bool canUseAdvancedFeatures = userExp.Level >= 3 || userExp.ExperiencePoints >= 150f;
+
+            var request = new TwitchSpawnRequest
+            {
+                UserName = twitchUsername,
+                DisplayName = displayName ?? twitchUsername,
+                TwitchUsername = twitchUsername,
+                TwitchDisplayName = displayName,
                 IsFriendly = isFriendly,
                 ArmorPreset = armorPreset ?? (isFriendly ? defaultAllyArmor.Value : defaultEnemyArmor.Value),
                 RequestTime = DateTime.Now,
+                TwitchRequestTime = DateTime.Now,
                 Priority = priority,
-                CustomData = new Dictionary<string, object>()
+                IsFromTwitch = true,
+                RequestedBehavior = canUseAdvancedFeatures ? requestedBehavior : null,
+                CustomData = new Dictionary<string, object>
+                {
+                    { "TwitchUser", true },
+                    { "OriginalUsername", twitchUsername },
+                    { "UserLevel", userExp.Level },
+                    { "UserExperience", userExp.ExperiencePoints }
+                }
             };
 
-            // Add to queue based on priority
-            if (priority == SpawnPriority.Immediate)
+            // Add to appropriate queue based on priority
+            if (priority == SpawnPriority.Immediate || priority == SpawnPriority.High)
             {
-                var tempQueue = new Queue<SpawnRequest>();
-                tempQueue.Enqueue(request);
-                while (spawnQueue.Count > 0)
-                    tempQueue.Enqueue(spawnQueue.Dequeue());
-                spawnQueue.Clear();
-                while (tempQueue.Count > 0)
-                    spawnQueue.Enqueue(tempQueue.Dequeue());
+                prioritySpawnQueue.Enqueue(request);
             }
             else
             {
                 spawnQueue.Enqueue(request);
             }
 
-            // Set user cooldown
-            userSpawnCooldowns[userName] = DateTime.Now.AddSeconds(spawnCooldown.Value * 2);
+            // Set user cooldown with experience-based reduction
+            float cooldownMultiplier = Mathf.Max(0.3f, 1f - (userExp.Level * 0.1f));
+            userSpawnCooldowns[twitchUsername] = DateTime.Now.AddSeconds(spawnCooldown.Value * cooldownMultiplier);
 
-            logger?.LogInfo($"Queued spawn request for {userName} ({(isFriendly ? "ally" : "enemy")})");
+            logger?.LogInfo($"Queued Twitch spawn request for {twitchUsername} ({displayName}) ({(isFriendly ? "ally" : "enemy")})");
+            NotifyUser(twitchUsername, $"{(isFriendly ? "Ally" : "Enemy")} sosig queued for spawn!", NotificationType.Success);
+            
             return true;
         }
 
         /// <summary>
-        /// Get sosig statistics
+        /// Advanced sosig behavior control
+        /// </summary>
+        public bool SetSosigBehavior(string username, SosigBehaviorState behavior)
+        {
+            var sosigs = GetSosigsByTwitchUser(username);
+            if (sosigs.Count == 0)
+            {
+                NotifyUser(username, "You don't have any active sosigs to control.", NotificationType.Warning);
+                return false;
+            }
+
+            bool anyChanged = false;
+            foreach (var sosig in sosigs)
+            {
+                if (SetSosigBehavior(sosig, behavior))
+                {
+                    anyChanged = true;
+                }
+            }
+
+            if (anyChanged)
+            {
+                NotifyUser(username, $"Changed behavior of your sosigs to {behavior}.", NotificationType.Success);
+                PlayAudioFeedback(commandSuccessSound);
+            }
+
+            return anyChanged;
+        }
+
+        /// <summary>
+        /// Set individual sosig behavior
+        /// </summary>
+        public bool SetSosigBehavior(ChatSosig chatSosig, SosigBehaviorState behavior)
+        {
+            if (!chatSosig.IsValid) return false;
+
+            var oldBehavior = chatSosig.CurrentBehavior;
+            chatSosig.CurrentBehavior = behavior;
+            chatSosig.LastBehaviorChange = DateTime.Now;
+            
+            sosigBehaviors[chatSosig] = behavior;
+            sosigNextBehaviorUpdate[chatSosig] = Time.time + UnityEngine.Random.Range(1f, 3f);
+
+            // Apply behavior immediately
+            ApplyBehaviorToSosig(chatSosig, behavior);
+
+            OnSosigBehaviorChanged?.Invoke(chatSosig, behavior.ToString());
+            logger?.LogDebug($"Changed {chatSosig.DisplayName} behavior from {oldBehavior} to {behavior}");
+
+            return true;
+        }
+
+        /// <summary>
+        /// Create sosig group for coordinated behavior
+        /// </summary>
+        public bool CreateSosigGroup(string username, List<ChatSosig> sosigs, ChatSosig leader = null)
+        {
+            if (!enableSosigGroups.Value || sosigs.Count > maxSosigGroupSize.Value)
+                return false;
+
+            if (leader == null)
+                leader = sosigs.FirstOrDefault(s => s.IsValid);
+
+            if (leader == null) return false;
+
+            // Set up group
+            leader.IsGroupLeader = true;
+            leader.GroupMembers.Clear();
+            leader.GroupMembers.AddRange(sosigs.Where(s => s != leader));
+
+            foreach (var member in sosigs.Where(s => s != leader))
+            {
+                member.GroupLeader = leader;
+                member.IsGroupLeader = false;
+            }
+
+            logger?.LogInfo($"Created sosig group for {username} with {sosigs.Count} members, leader: {leader.DisplayName}");
+            NotifyUser(username, $"Created sosig group with {sosigs.Count} members!", NotificationType.Success);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Get comprehensive stats including advanced metrics
         /// </summary>
         public ChatSosigStats GetStats()
         {
             return new ChatSosigStats
             {
-                ActiveAllies = ActiveAllies.Count,
-                ActiveEnemies = ActiveEnemies.Count,
-                QueueLength = spawnQueue.Count,
-                TotalSpawned = totalSpawnCount,
-                PerformanceMode = performanceMode
+                activeSosigCount = ActiveAllies.Count + ActiveEnemies.Count,
+                friendlyCount = ActiveAllies.Count,
+                enemyCount = ActiveEnemies.Count,
+                queuedSpawns = spawnQueue.Count + prioritySpawnQueue.Count,
+                totalSpawned = totalSpawnCount
             };
         }
 
         /// <summary>
-        /// Clear all sosigs of specified type
+        /// Get user experience data
+        /// </summary>
+        public UserExperience GetUserExperience(string username)
+        {
+            if (!userExperienceData.TryGetValue(username, out var experience))
+            {
+                experience = new UserExperience
+                {
+                    Username = username,
+                    FirstSpawn = DateTime.Now,
+                    LastActivity = DateTime.Now,
+                    Level = 1
+                };
+                userExperienceData[username] = experience;
+            }
+
+            return experience;
+        }
+
+        /// <summary>
+        /// Award experience to user
+        /// </summary>
+        public void AwardExperience(string username, float points, string reason = "")
+        {
+            if (!enableSosigExperience.Value) return;
+
+            var userExp = GetUserExperience(username);
+            userExp.ExperiencePoints += points * experienceGainRate.Value;
+            userExp.LastActivity = DateTime.Now;
+
+            // Check for level up
+            int newLevel = Mathf.FloorToInt(userExp.ExperiencePoints / 100f) + 1;
+            if (newLevel > userExp.Level)
+            {
+                userExp.Level = newLevel;
+                NotifyUser(username, $"Level up! You are now level {newLevel}! {GetLevelUpReward(newLevel)}", NotificationType.Achievement);
+                PlayAudioFeedback(commandSuccessSound);
+            }
+
+            if (!string.IsNullOrEmpty(reason))
+            {
+                logger?.LogDebug($"Awarded {points} XP to {username} for {reason}");
+            }
+        }
+
+        /// <summary>
+        /// Get level up rewards
+        /// </summary>
+        private string GetLevelUpReward(int level)
+        {
+            switch (level)
+            {
+                case 2: return "Unlocked: Reduced spawn cooldown!";
+                case 3: return "Unlocked: Behavior commands!";
+                case 5: return "Unlocked: Advanced armor presets!";
+                case 10: return "Unlocked: Group commands!";
+                default: return "New abilities unlocked!";
+            }
+        }
+
+        /// <summary>
+        /// Notify user with message
+        /// </summary>
+        public void NotifyUser(string username, string message, NotificationType type)
+        {
+            var notification = new UserNotification
+            {
+                Username = username,
+                Message = message,
+                Type = type,
+                Timestamp = DateTime.Now
+            };
+
+            notificationQueue.Enqueue(notification);
+
+            // Also send to Twitch chat if connected
+            if (twitchManager != null && twitchManager.IsConnected)
+            {
+                string emoji = type switch
+                {
+                    NotificationType.Success => "✅",
+                    NotificationType.Warning => "⚠️",
+                    NotificationType.Error => "❌",
+                    NotificationType.Achievement => "🏆",
+                    _ => "ℹ️"
+                };
+
+                twitchManager.SendChatMessage($"{emoji} @{username} {message}");
+            }
+        }
+
+        /// <summary>
+        /// Clear all sosigs with enhanced cleanup and user notification
         /// </summary>
         public void ClearSosigs(bool allies = true, bool enemies = true)
         {
+            var clearedUsers = new HashSet<string>();
+
             if (allies)
             {
                 foreach (var chatSosig in ActiveAllies.ToList())
                 {
+                    if (!string.IsNullOrEmpty(chatSosig.TwitchUsername))
+                        clearedUsers.Add(chatSosig.TwitchUsername);
                     DestroyChatSosig(chatSosig);
                 }
                 spawnedChatters.Clear();
@@ -226,224 +580,35 @@ namespace H3TVR
             {
                 foreach (var chatSosig in ActiveEnemies.ToList())
                 {
+                    if (!string.IsNullOrEmpty(chatSosig.TwitchUsername))
+                        clearedUsers.Add(chatSosig.TwitchUsername);
                     DestroyChatSosig(chatSosig);
                 }
                 spawnedEnemyChatters.Clear();
             }
 
+            // Clear user tracking
+            userSosigMap.Clear();
+
+            // Notify cleared users
+            foreach (var username in clearedUsers)
+            {
+                NotifyUser(username, "Your sosigs have been cleared by a moderator.", NotificationType.Info);
+            }
+
+            // Notify Twitch manager to reset user counts
+            if (twitchManager != null)
+            {
+                twitchManager.ResetAllUserCounts();
+            }
+
+            PlayAudioFeedback(commandSuccessSound);
             logger?.LogInfo($"Cleared sosigs - Allies: {allies}, Enemies: {enemies}");
         }
 
-        /// <summary>
-        /// Spawn ally sosig - compatibility method for SpawnManager
-        /// </summary>
-        public void SpawningSequence(string userName = "Unknown")
-        {
-            if (allyTemplates.Count == 0)
-            {
-                logger?.LogError("No ally templates available for spawning");
-                return;
-            }
+        #endregion  // <-- Close: Public API Methods (Enhanced for Advanced Features)
 
-            try
-            {
-                var template = allyTemplates[UnityEngine.Random.Range(0, allyTemplates.Count)];
-                if (template == null) return;
-
-                // Use H3VR sosig spawning logic
-                Sosig sosig = SpawnSosigFromTemplate(
-                    template,
-                    CalculateSpawnPoint(true),
-                    Quaternion.identity,
-                    0, // Ally IFF
-                    userName
-                );
-
-                if (sosig != null)
-                {
-                    // Set up ally behavior
-                    SetupAllyBehavior(sosig);
-                    
-                    // Create enhanced wrapper
-                    var chatSosig = CreateChatSosig(sosig, userName, true);
-                    ActiveAllies.Add(chatSosig);
-                    spawnedChatters.Add(sosig);
-                    sosigLookup[sosig] = chatSosig;
-
-                    // Create nameplate
-                    if (enableNameplates?.Value == true && allyNameplatePrefab != null)
-                        CreateNameplate(allyNameplatePrefab, sosig, userName);
-
-                    // Effects
-                    if (enableSpawnEffects?.Value == true)
-                        CreateSpawnEffects(chatSosig);
-
-                    totalSpawnCount++;
-                    OnSosigSpawned?.Invoke(sosig, userName, true);
-                    OnSosigCountChanged?.Invoke(ActiveAllies.Count, ActiveEnemies.Count);
-
-                    logger?.LogInfo($"Spawned ally sosig for {userName}");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to spawn ally sosig for {userName}: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Spawn enemy sosig - compatibility method for SpawnManager  
-        /// </summary>
-        public void SpawningSequenceEnemy(int IFF, string userName = "Unknown")
-        {
-            if (enemyTemplates.Count == 0)
-            {
-                logger?.LogError("No enemy templates available for spawning");
-                return;
-            }
-
-            try
-            {
-                var template = enemyTemplates[UnityEngine.Random.Range(0, enemyTemplates.Count)];
-                if (template == null) return;
-
-                // Use H3VR sosig spawning logic
-                Sosig sosig = SpawnSosigFromTemplate(
-                    template,
-                    CalculateSpawnPoint(false),
-                    Quaternion.identity,
-                    IFF,
-                    userName
-                );
-
-                if (sosig != null)
-                {
-                    // Set up enemy behavior
-                    SetupEnemyBehavior(sosig);
-                    
-                    // Create enhanced wrapper
-                    var chatSosig = CreateChatSosig(sosig, userName, false);
-                    ActiveEnemies.Add(chatSosig);
-                    spawnedEnemyChatters.Add(sosig);
-                    sosigLookup[sosig] = chatSosig;
-
-                    // Create nameplate
-                    if (enableNameplates?.Value == true && enemyNameplatePrefab != null)
-                        CreateNameplate(enemyNameplatePrefab, sosig, userName);
-
-                    // Effects
-                    if (enableSpawnEffects?.Value == true)
-                        CreateSpawnEffects(chatSosig);
-
-                    totalSpawnCount++;
-                    OnSosigSpawned?.Invoke(sosig, userName, false);
-                    OnSosigCountChanged?.Invoke(ActiveAllies.Count, ActiveEnemies.Count);
-
-                    logger?.LogInfo($"Spawned enemy sosig for {userName}");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to spawn enemy sosig for {userName}: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Find a chat sosig by user name
-        /// </summary>
-        public ChatSosig FindSosigByUser(string userName)
-        {
-            return ActiveAllies.Concat(ActiveEnemies)
-                .FirstOrDefault(cs => cs.UserName.Equals(userName, StringComparison.OrdinalIgnoreCase));
-        }
-        #endregion
-
-        #region Helper Classes
-        public class ChatSosigStats
-        {
-            public int ActiveAllies { get; set; }
-            public int ActiveEnemies { get; set; }
-            public int QueueLength { get; set; }
-            public int TotalSpawned { get; set; }
-            public bool PerformanceMode { get; set; }
-        }
-        #endregion
-
-        #region Helper Methods (Minimal Implementation)
-        private ChatSosig CreateChatSosig(Sosig sosig, string userName, bool isFriendly)
-        {
-            return new ChatSosig
-            {
-                Sosig = sosig,
-                UserName = userName,
-                DisplayName = userName,
-                IsFriendly = isFriendly,
-                ArmorPreset = isFriendly ? defaultAllyArmor?.Value ?? "Light" : defaultEnemyArmor?.Value ?? "Heavy",
-                SpawnTime = DateTime.Now,
-                Lifetime = sosigLifetime?.Value ?? 300f,
-                CustomData = new Dictionary<string, object>()
-            };
-        }
-
-        private bool CanSpawn(bool isFriendly)
-        {
-            if (Time.time - lastSpawnTime < (spawnCooldown?.Value ?? 2f))
-                return false;
-
-            int currentCount = isFriendly ? ActiveAllies.Count : ActiveEnemies.Count;
-            int maxCount = isFriendly ? (maxAllySosigs?.Value ?? 8) : (maxEnemySosigs?.Value ?? 8);
-
-            return currentCount < maxCount;
-        }
-
-        private bool IsUserOnCooldown(string userName)
-        {
-            if (userSpawnCooldowns.TryGetValue(userName, out DateTime cooldownEnd))
-                return DateTime.Now < cooldownEnd;
-            return false;
-        }
-
-        private void DestroyChatSosig(ChatSosig chatSosig)
-        {
-            if (chatSosig == null)
-                return;
-
-            try
-            {
-                // Remove from lookup
-                if (chatSosig.Sosig != null)
-                    sosigLookup.Remove(chatSosig.Sosig);
-
-                // Destroy nameplate
-                if (chatSosig.Nameplate != null)
-                    Destroy(chatSosig.Nameplate);
-
-                // Destroy sosig
-                if (chatSosig.Sosig != null)
-                {
-                    OnSosigDestroyed?.Invoke(chatSosig.Sosig, chatSosig.UserName);
-                    Destroy(chatSosig.Sosig.gameObject);
-                }
-
-                // Remove from lists
-                ActiveAllies.Remove(chatSosig);
-                ActiveEnemies.Remove(chatSosig);
-                if (chatSosig.Sosig != null)
-                {
-                    spawnedChatters.Remove(chatSosig.Sosig);
-                    spawnedEnemyChatters.Remove(chatSosig.Sosig);
-                }
-
-                OnSosigCountChanged?.Invoke(ActiveAllies.Count, ActiveEnemies.Count);
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Error destroying sosig {chatSosig.UserName}: {ex.Message}");
-            }
-        }
-        #endregion
-
-        #region Initialization (Minimal)
+        #region Initialization (Enhanced)
         public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
         {
             if (Instance != null)
@@ -459,17 +624,36 @@ namespace H3TVR
             // Initialize configuration
             InitializeConfiguration();
 
-            logger?.LogInfo("Enhanced Chat Spawner initialized successfully (minimal mode)");
+            // Set up name file paths
+            SetupNameFilePaths();
+
+            // Load initial names
+            LoadNamesFromFiles();
+
+            // Initialize Twitch integration if enabled
+            if (enableTwitchIntegration.Value)
+            {
+                InitializeTwitchIntegration();
+            }
+
+            // Initialize audio system
+            InitializeAudioSystem();
+
+            logger?.LogInfo("Enhanced Chat Spawner initialized with TwitchLib integration");
 
             // Start coroutines
             StartCoroutine(ProcessSpawnQueueCoroutine());
             StartCoroutine(UpdateSosigsCoroutine());
             StartCoroutine(PerformanceMonitorCoroutine());
             StartCoroutine(CleanupCoroutine());
+            StartCoroutine(NameFileMonitorCoroutine());
+            StartCoroutine(BehaviorUpdateCoroutine());
+            StartCoroutine(DifficultyUpdateCoroutine());
+            StartCoroutine(NotificationProcessorCoroutine());
         }
 
         /// <summary>
-        /// Initialize all configuration entries
+        /// Initialize all configuration entries (Enhanced with Twitch settings)
         /// </summary>
         private void InitializeConfiguration()
         {
@@ -493,17 +677,17 @@ namespace H3TVR
                 enableAdvancedAI = plugin.Config.Bind("Enhanced Chat Spawner", "EnableAdvancedAI", true, 
                     "Enable advanced AI");
                 enableNameplates = plugin.Config.Bind("Enhanced Chat Spawner", "EnableNameplates", true, 
-                    "Show nameplates");
+                    "Show nameplates above sosigs");
                 enableVoiceLines = plugin.Config.Bind("Enhanced Chat Spawner", "EnableVoiceLines", false, 
                     "Enable voice lines");
                 enableSpawnEffects = plugin.Config.Bind("Enhanced Chat Spawner", "EnableSpawnEffects", true, 
                     "Enable spawn effects");
                 
                 // Defaults
-                defaultAllyArmor = plugin.Config.Bind("Enhanced Chat Spawner", "DefaultAllyArmor", "Light", 
-                    "Default ally armor");
-                defaultEnemyArmor = plugin.Config.Bind("Enhanced Chat Spawner", "DefaultEnemyArmor", "Heavy", 
-                    "Default enemy armor");
+                defaultAllyArmor = plugin.Config.Bind("Enhanced Chat Spawner", "DefaultAllyArmor", "Standard", 
+                    "Default ally armor preset");
+                defaultEnemyArmor = plugin.Config.Bind("Enhanced Chat Spawner", "DefaultEnemyArmor", "Heavy Assault", 
+                    "Default enemy armor preset");
                 sosigLifetime = plugin.Config.Bind("Enhanced Chat Spawner", "SosigLifetime", 300.0f, 
                     "Sosig lifetime seconds");
                 enableAutoCleanup = plugin.Config.Bind("Enhanced Chat Spawner", "EnableAutoCleanup", true, 
@@ -511,11 +695,57 @@ namespace H3TVR
                 enemyIFF = plugin.Config.Bind("Enhanced Chat Spawner", "EnemyIFF", 1.0f, 
                     "Enemy IFF code");
                 
-                // File paths
-                allyFilePath = plugin.Config.Bind("Enhanced Chat Spawner", "AllyFilePath", "ally_names.txt", 
-                    "Ally names file");
-                enemyFilePath = plugin.Config.Bind("Enhanced Chat Spawner", "EnemyFilePath", "enemy_names.txt", 
-                    "Enemy names file");
+                // Name file paths
+                allyNamesFile = plugin.Config.Bind("Enhanced Chat Spawner", "AllyNamesFile", "H3TVR_AllyNames.ini", 
+                    "Ally names INI file");
+                enemyNamesFile = plugin.Config.Bind("Enhanced Chat Spawner", "EnemyNamesFile", "H3TVR_EnemyNames.ini", 
+                    "Enemy names INI file");
+                
+                // Twitch Integration Settings
+                enableTwitchIntegration = plugin.Config.Bind("Enhanced Chat Spawner", "EnableTwitchIntegration", true, 
+                    "Enable TwitchLib integration for real-time chat");
+                useTwitchNamesOverIni = plugin.Config.Bind("Enhanced Chat Spawner", "UseTwitchNamesOverIni", true, 
+                    "Use Twitch usernames instead of INI file names");
+                enableTwitchUserTracking = plugin.Config.Bind("Enhanced Chat Spawner", "EnableTwitchUserTracking", true, 
+                    "Track sosigs per Twitch user");
+                maxSosigsPerTwitchUser = plugin.Config.Bind("Enhanced Chat Spawner", "MaxSosigsPerTwitchUser", 2, 
+                    "Maximum sosigs per Twitch user");
+                
+                // Advanced Features
+                enableDynamicDifficulty = plugin.Config.Bind("Enhanced Chat Spawner", "EnableDynamicDifficulty", true, 
+                    "Enable dynamic difficulty scaling based on player performance");
+                enableSosigPersonalities = plugin.Config.Bind("Enhanced Chat Spawner", "EnableSosigPersonalities", true, 
+                    "Enable distinct sosig personalities and traits");
+                enableAudioFeedback = plugin.Config.Bind("Enhanced Chat Spawner", "EnableAudioFeedback", true, 
+                    "Enable audio feedback for commands and events");
+                enableSosigChat = plugin.Config.Bind("Enhanced Chat Spawner", "EnableSosigChat", true, 
+                    "Enable chat interactions for sosigs");
+                sosigChatFrequency = plugin.Config.Bind("Enhanced Chat Spawner", "SosigChatFrequency", 0.1f, 
+                    "Frequency of sosig chat messages (lower is more frequent)");
+                enableBehaviorCommands = plugin.Config.Bind("Enhanced Chat Spawner", "EnableBehaviorCommands", true, 
+                    "Enable custom behavior commands for sosigs");
+                enableSosigGroups = plugin.Config.Bind("Enhanced Chat Spawner", "EnableSosigGroups", true, 
+                    "Enable grouping of sosigs for coordinated actions");
+                maxSosigGroupSize = plugin.Config.Bind("Enhanced Chat Spawner", "MaxSosigGroupSize", 5, 
+                    "Maximum size of sosig groups");
+                enablePerformanceScaling = plugin.Config.Bind("Enhanced Chat Spawner", "EnablePerformanceScaling", true, 
+                    "Enable scaling of sosig performance based on system capability");
+                performanceThreshold = plugin.Config.Bind("Enhanced Chat Spawner", "PerformanceThreshold", 0.033f, 
+                    "Frame time threshold for performance scaling (in seconds)");
+                enableSosigExperience = plugin.Config.Bind("Enhanced Chat Spawner", "EnableSosigExperience", true, 
+                    "Enable experience and leveling for sosigs");
+                experienceGainRate = plugin.Config.Bind("Enhanced Chat Spawner", "ExperienceGainRate", 1.0f, 
+                    "Rate of experience gain for sosigs");
+                
+                // Nameplate settings
+                nameplateHeight = plugin.Config.Bind("Enhanced Chat Spawner Nameplates", "NameplateHeight", 2.5f, 
+                    "Height above sosig head for nameplate");
+                nameplateScale = plugin.Config.Bind("Enhanced Chat Spawner Nameplates", "NameplateScale", 0.02f, 
+                    "Scale of nameplate text");
+                allyNameplateColor = plugin.Config.Bind("Enhanced Chat Spawner Nameplates", "AllyNameplateColor", Color.green, 
+                    "Color for ally nameplates");
+                enemyNameplateColor = plugin.Config.Bind("Enhanced Chat Spawner Nameplates", "EnemyNameplateColor", Color.red, 
+                    "Color for enemy nameplates");
                 
                 // Keys
                 spawnAllyKey = plugin.Config.Bind("Enhanced Chat Spawner Keys", "SpawnAllyKey", KeyCode.P, 
@@ -525,7 +755,7 @@ namespace H3TVR
                 clearSosigsKey = plugin.Config.Bind("Enhanced Chat Spawner Keys", "ClearSosigsKey", KeyCode.Delete, 
                     "Clear sosigs key");
 
-                logger?.LogInfo("Configuration initialized successfully");
+                logger?.LogInfo("Configuration initialized successfully with Twitch integration");
             }
             catch (Exception ex)
             {
@@ -536,6 +766,33 @@ namespace H3TVR
             InitializeSosigTemplates();
         }
 
+        /// <summary>
+        /// Set up paths for name files
+        /// </summary>
+        private void SetupNameFilePaths()
+        {
+            try
+            {
+                string configDir = Path.Combine(Path.GetDirectoryName(plugin.Config.ConfigFilePath), "config");
+                if (!Directory.Exists(configDir))
+                    Directory.CreateDirectory(configDir);
+
+                allyNamesPath = Path.Combine(configDir, allyNamesFile?.Value ?? "H3TVR_AllyNames.ini");
+                enemyNamesPath = Path.Combine(configDir, enemyNamesFile?.Value ?? "H3TVR_EnemyNames.ini");
+
+                logger?.LogInfo($"Name files: Allies={allyNamesPath}, Enemies={enemyNamesPath}");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to setup name file paths: {ex.Message}");
+                // Fallback paths
+                allyNamesPath = "H3TVR_AllyNames.ini";
+                enemyNamesPath = "H3TVR_EnemyNames.ini";
+            }
+        }
+        #endregion
+
+        #region Template Loading and Management
         /// <summary>
         /// Initialize sosig templates from H3VR systems
         /// </summary>
@@ -559,14 +816,21 @@ namespace H3TVR
         {
             yield return null; // Wait one frame
 
+            Exception caughtException = null;
+            bool done = false;
             try
             {
                 // Try to get templates from various H3VR manager sources
                 LoadTemplatesFromManagers();
+                done = true;
             }
             catch (Exception ex)
             {
-                logger?.LogError($"Template loading failed: {ex.Message}");
+                caughtException = ex;
+            }
+            if (!done && caughtException != null)
+            {
+                logger?.LogError($"Template loading failed: {caughtException.Message}");
                 CreateFallbackTemplates();
             }
         }
@@ -600,23 +864,7 @@ namespace H3TVR
                 return;
             }
 
-            // Method 2: Try to find templates through ItemManager if available
-            if (IM.Instance != null)
-            {
-                // Look for any sosig-related objects in ItemManager
-                // This is a fallback approach since direct SosigEDB access isn't available
-                logger?.LogInfo("ItemManager found but no direct sosig template access available");
-            }
-
             // If no templates found, create fallbacks
-            CreateFallbackTemplates();
-        }
-
-        /// <summary>
-        /// Fallback template loading when primary method fails
-        /// </summary>
-        private void TryLoadFallbackTemplates()
-        {
             CreateFallbackTemplates();
         }
 
@@ -662,53 +910,11 @@ namespace H3TVR
         }
         #endregion
 
-        #region Unity Lifecycle
-        void Update()
-        {
-            // Handle keyboard input for manual spawning
-            HandleKeyboardInput();
-        }
-
-        void OnDestroy()
-        {
-            if (Instance == this)
-                Instance = null;
-        }
-
-        /// <summary>
-        /// Handle keyboard input for manual sosig spawning
-        /// </summary>
-        private void HandleKeyboardInput()
-        {
-            try
-            {
-                if (spawnAllyKey?.Value != KeyCode.None && Input.GetKeyDown(spawnAllyKey.Value))
-                {
-                    SpawningSequence("ManualAlly");
-                }
-
-                if (spawnEnemyKey?.Value != KeyCode.None && Input.GetKeyDown(spawnEnemyKey.Value))
-                {
-                    SpawningSequenceEnemy((int)(enemyIFF?.Value ?? 1f), "ManualEnemy");
-                }
-
-                if (clearSosigsKey?.Value != KeyCode.None && Input.GetKeyDown(clearSosigsKey.Value))
-                {
-                    ClearSosigs(true, true);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Input handling error: {ex.Message}");
-            }
-        }
-        #endregion
-
         #region Core Sosig Spawning Logic
         /// <summary>
-        /// Core sosig spawning method using H3VR systems (Enhanced with TNH armor and optional dependencies)
+        /// Core sosig spawning method using H3VR systems
         /// </summary>
-        private Sosig SpawnSosigFromTemplate(SosigEnemyTemplate template, Vector3 position, Quaternion rotation, int IFF, string userName)
+        private Sosig SpawnSosigFromTemplate(SosigEnemyTemplate template, Vector3 position, Quaternion rotation, int IFF, string displayName)
         {
             try
             {
@@ -754,17 +960,13 @@ namespace H3TVR
 
                 // Set IFF
                 sosig.E.IFFCode = IFF;
-                sosig.Priority.IFFChart[IFF] = true;
+                if (IFF < sosig.Priority.IFFChart.Length)
+                {
+                    sosig.Priority.IFFChart[IFF] = true;
+                }
 
                 // Equip weapons
                 EquipSosigWeapons(sosig, template, position, rotation);
-
-                // Apply TNH armor instead of basic outfit
-                bool isFriendly = IFF == 0;
-                ApplyTNHArmorToSosig(sosig, isFriendly, isFriendly ? defaultAllyArmor?.Value : defaultEnemyArmor?.Value);
-
-                // ENHANCED: Apply optional dependency enhancements
-                ApplyOptionalDependencyEnhancements(sosig, userName, !isFriendly);
 
                 lastSpawnTime = Time.time;
                 return sosig;
@@ -773,27 +975,6 @@ namespace H3TVR
             {
                 logger?.LogError($"Exception in SpawnSosigFromTemplate: {ex.Message}");
                 return null;
-            }
-        }
-
-        /// <summary>
-        /// Apply enhancements from optional dependencies
-        /// </summary>
-        private void ApplyOptionalDependencyEnhancements(Sosig sosig, string spawnerContext, bool isEnemy)
-        {
-            try
-            {
-                // Initialize sosig weapon enhancer if not done
-                SosigWeaponEnhancer.Initialize(logger);
-
-                // Apply contextual enhancements based on spawner and sosig type
-                SosigWeaponEnhancer.ApplyContextualEnhancements(sosig, spawnerContext);
-
-                logger?.LogDebug($"[EnhancedChatSpawner] Applied optional dependency enhancements to sosig for {spawnerContext}");
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"[EnhancedChatSpawner] Error applying optional dependency enhancements: {ex.Message}");
             }
         }
 
@@ -872,6 +1053,77 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger?.LogError($"Failed to spawn and equip weapon: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Apply armor to sosig using the armor GUI system
+        /// </summary>
+        private void ApplyArmorToSosig(Sosig sosig, bool isFriendly)
+        {
+            try
+            {
+                if (sosig?.Links == null || sosig.Links.Count == 0)
+                {
+                    logger?.LogWarning("Cannot apply armor - sosig has no valid links");
+                    return;
+                }
+
+                // Try to get the armor integration from the plugin
+                var armorIntegration = plugin?.GetComponent<SosigArmorWristMenuIntegration>();
+                if (armorIntegration != null && armorIntegration.IsArmorIntegrationAvailable())
+                {
+                    // Use the armor GUI system
+                    armorIntegration.ApplyArmorToSosig(sosig, isFriendly);
+                    logger?.LogDebug($"Applied armor to sosig via armor GUI system (faction: {(isFriendly ? "ally" : "enemy")})");
+                }
+                else
+                {
+                    // Fallback to basic armor if GUI system not available
+                    logger?.LogDebug("Armor GUI system not available, applying basic armor");
+                    ApplyBasicArmorFallback(sosig, isFriendly);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to apply armor to sosig: {ex.Message}");
+                // Try fallback armor
+                ApplyBasicArmorFallback(sosig, isFriendly);
+            }
+        }
+
+        /// <summary>
+        /// Apply basic armor when GUI system is not available
+        /// </summary>
+        private void ApplyBasicArmorFallback(Sosig sosig, bool isFriendly)
+        {
+            try
+            {
+                if (sosig?.Links == null || sosig.Links.Count == 0) return;
+
+                // Apply basic outfit from template if available
+                if (allyTemplates.Count > 0 && isFriendly)
+                {
+                    var template = allyTemplates[0];
+                    if (template.OutfitConfig != null && template.OutfitConfig.Count > 0)
+                    {
+                        ApplyOutfitToSosig(sosig, template);
+                    }
+                }
+                else if (enemyTemplates.Count > 0 && !isFriendly)
+                {
+                    var template = enemyTemplates[0];
+                    if (template.OutfitConfig != null && template.OutfitConfig.Count > 0)
+                    {
+                        ApplyOutfitToSosig(sosig, template);
+                    }
+                }
+
+                logger?.LogDebug($"Applied basic armor fallback for {(isFriendly ? "ally" : "enemy")} sosig");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning($"Failed to apply basic armor fallback: {ex.Message}");
             }
         }
 
@@ -1017,277 +1269,62 @@ namespace H3TVR
                 );
             }
         }
+        #endregion
+
+        #region Unity Lifecycle
+        void Update()
+        {
+            // Handle keyboard input for manual spawning
+            HandleKeyboardInput();
+        }
+
+        void OnDestroy()
+        {
+            if (Instance == this)
+                Instance = null;
+        }
 
         /// <summary>
-        /// Create nameplate for sosig
+        /// Handle keyboard input for manual sosig spawning
         /// </summary>
-        private void CreateNameplate(GameObject nameplatePrefab, Sosig sosig, string userName)
+        private void HandleKeyboardInput()
         {
-            if (nameplatePrefab == null || sosig == null || sosig.Links.Count < 2) return;
-
             try
             {
-                GameObject nameplate = Instantiate(nameplatePrefab, sosig.Links[1].transform, false);
-                nameplate.transform.localPosition = Vector3.zero;
-                nameplate.transform.localRotation = Quaternion.identity;
-                
-                var textComponents = nameplate.GetComponentsInChildren<Text>();
-                foreach (Text text in textComponents)
+                if (spawnAllyKey?.Value != KeyCode.None && Input.GetKeyDown(spawnAllyKey.Value))
                 {
-                    text.text = userName;
+                    SpawningSequence("ManualAlly");
                 }
 
-                // Store reference for cleanup
-                if (sosigLookup.TryGetValue(sosig, out var chatSosig))
+                if (spawnEnemyKey?.Value != KeyCode.None && Input.GetKeyDown(spawnEnemyKey.Value))
                 {
-                    chatSosig.Nameplate = nameplate;
+                    SpawningSequenceEnemy((int)(enemyIFF?.Value ?? 1f), "ManualEnemy");
+                }
+
+                if (clearSosigsKey?.Value != KeyCode.None && Input.GetKeyDown(clearSosigsKey.Value))
+                {
+                    ClearSosigs(true, true);
                 }
             }
             catch (Exception ex)
             {
-                logger?.LogError($"Failed to create nameplate for {userName}: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Create spawn effects for sosig
-        /// </summary>
-        private void CreateSpawnEffects(ChatSosig chatSosig)
-        {
-            if (!chatSosig.IsValid) return;
-
-            try
-            {
-                var spawnPos = chatSosig.Sosig.transform.position;
-                
-                // Create particle effect
-                var effectObj = new GameObject("SpawnEffect");
-                effectObj.transform.position = spawnPos;
-                
-                var particles = effectObj.AddComponent<ParticleSystem>();
-                var main = particles.main;
-                main.startColor = chatSosig.IsFriendly ? Color.green : Color.red;
-                main.startLifetime = 2f;
-                main.startSpeed = 5f;
-                main.maxParticles = 30;
-                
-                var emission = particles.emission;
-                emission.SetBursts(new ParticleSystem.Burst[]
-                {
-                    new ParticleSystem.Burst(0f, 30)
-                });
-                
-                var shape = particles.shape;
-                shape.shapeType = ParticleSystemShapeType.Sphere;
-                shape.radius = 1f;
-
-                // Auto-destroy
-                Destroy(effectObj, 3f);
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to create spawn effect for {chatSosig.UserName}: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Apply TNH armor to sosig using the integrated armor system
-        /// </summary>
-        private void ApplyTNHArmorToSosig(Sosig sosig, bool isFriendly, string armorPreset)
-        {
-            try
-            {
-                if (sosig?.Links == null || sosig.Links.Count == 0)
-                {
-                    logger?.LogWarning("Cannot apply TNH armor - sosig has no valid links");
-                    return;
-                }
-
-                // Try to get the armor integration from the plugin
-                var armorIntegration = plugin?.GetSosigArmorWristMenu();
-                if (armorIntegration != null && armorIntegration.IsFactionArmorEnabled())
-                {
-                    // Use the advanced armor system
-                    armorIntegration.ApplyArmorToSosig(sosig, isFriendly);
-                    logger?.LogDebug($"Applied advanced armor to sosig via wrist menu integration");
-                }
-                else
-                {
-                    // Fallback to basic TNH armor application
-                    logger?.LogDebug("Using fallback armor application");
-                    ApplyBasicTNHArmor(sosig, isFriendly, armorPreset);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to apply TNH armor to sosig: {ex.Message}");
-                // Fallback to basic armor
-                ApplyBasicTNHArmor(sosig, isFriendly, armorPreset);
-            }
-        }
-
-        /// <summary>
-        /// Apply basic TNH armor when advanced integration is not available
-        /// </summary>
-        private void ApplyBasicTNHArmor(Sosig sosig, bool isFriendly, string armorPreset)
-        {
-            try
-            {
-                // Define basic armor chances based on faction
-                var armorChances = isFriendly ? new Dictionary<string, float>
-                {
-                    {"Headwear", 0.9f}, {"Facewear", 0.3f}, {"Eyewear", 0.6f}, {"Torsowear", 1.0f},
-                    {"Pantswear", 0.8f}, {"PantswearLower", 0.7f}, {"Backpacks", 0.6f}, {"Decorations", 0.4f}
-                } : new Dictionary<string, float>
-                {
-                    {"Headwear", 0.7f}, {"Facewear", 0.8f}, {"Eyewear", 0.4f}, {"Torsowear", 0.8f},
-                    {"Pantswear", 0.7f}, {"PantswearLower", 0.5f}, {"Backpacks", 0.3f}, {"Decorations", 0.2f}
-                };
-
-                // Try to get armor from H3VR asset loader
-                if (H3VRAssetLoader.IsInitialized)
-                {
-                    var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
-                    ApplyArmorFromCategories(sosig, armorCategories, armorChances);
-                }
-                else
-                {
-                    logger?.LogWarning("H3VR Asset Loader not initialized - skipping TNH armor application");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to apply basic TNH armor: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Apply armor from available categories with specified chances
-        /// </summary>
-        private void ApplyArmorFromCategories(Sosig sosig, Dictionary<string, List<FVRObject>> armorCategories, Dictionary<string, float> armorChances)
-        {
-            foreach (var kvp in armorChances)
-            {
-                if (UnityEngine.Random.value < kvp.Value && armorCategories.ContainsKey(kvp.Key))
-                {
-                    var armorList = armorCategories[kvp.Key];
-                    if (armorList.Count > 0)
-                    {
-                        var randomArmor = armorList[UnityEngine.Random.Range(0, armorList.Count)];
-                        ApplyArmorPieceToSosig(sosig, kvp.Key, randomArmor);
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Apply a specific armor piece to a sosig
-        /// </summary>
-        private void ApplyArmorPieceToSosig(Sosig sosig, string category, FVRObject armorObject)
-        {
-            var link = GetLinkForArmorCategory(sosig, category);
-            if (link == null || armorObject?.GetGameObject() == null) return;
-
-            try
-            {
-                var armorInstance = Instantiate(armorObject.GetGameObject(), link.transform);
-                var wearable = armorInstance.GetComponent<SosigWearable>();
-                if (wearable != null)
-                {
-                    wearable.RegisterWearable(link);
-                }
-                
-                logger?.LogDebug($"Applied {category} armor piece to sosig");
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to apply armor piece {category}: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Get the appropriate sosig link for an armor category
-        /// </summary>
-        private SosigLink GetLinkForArmorCategory(Sosig sosig, string category)
-        {
-            if (sosig?.Links == null || sosig.Links.Count == 0) return null;
-
-            switch (category)
-            {
-                case "Headwear":
-                case "Facewear":
-                case "Eyewear":
-                    return sosig.Links[0]; // Head
-                case "Torsowear":
-                case "Backpacks":
-                case "Decorations":
-                    return sosig.Links.Count > 1 ? sosig.Links[1] : null; // Torso
-                case "Pantswear":
-                case "PantswearLower":
-                    return sosig.Links.Count > 2 ? sosig.Links[2] : null; // Legs
-                default:
-                    return sosig.Links[0];
+                logger?.LogError($"Input handling error: {ex.Message}");
             }
         }
         #endregion
 
-        #region Queue Processing and Coroutines
+        #region Coroutines (Enhanced)
         /// <summary>
-        /// Process spawn requests from the queue
+        /// Monitor name files for changes
         /// </summary>
-        private IEnumerator ProcessSpawnQueueCoroutine()
+        private IEnumerator NameFileMonitorCoroutine()
         {
-            var wait = new WaitForSeconds(0.1f);
+            var wait = new WaitForSeconds(30f); // Check every 30 seconds
 
             while (true)
             {
                 yield return wait;
-
-                if (spawnQueue.Count == 0 || performanceMode)
-                    continue;
-
-                if (Time.time - lastSpawnTime < (spawnCooldown?.Value ?? 2f))
-                    continue;
-
-                var request = spawnQueue.Dequeue();
-                
-                // Check if request is still valid
-                if (CanSpawn(request.IsFriendly))
-                {
-                    ExecuteSpawn(request);
-                }
-                else
-                {
-                    // Re-queue if at limit but not too old
-                    if ((DateTime.Now - request.RequestTime).TotalSeconds < 30)
-                    {
-                        spawnQueue.Enqueue(request);
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Execute a spawn request
-        /// </summary>
-        private void ExecuteSpawn(SpawnRequest request)
-        {
-            try
-            {
-                SpawnerName = request.UserName;
-
-                if (request.IsFriendly)
-                {
-                    SpawningSequence(request.UserName);
-                }
-                else
-                {
-                    SpawningSequenceEnemy((int)(enemyIFF?.Value ?? 1f), request.UserName);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Error executing spawn for {request.UserName}: {ex.Message}");
+                LoadNamesFromFiles();
             }
         }
 
@@ -1315,7 +1352,7 @@ namespace H3TVR
             while (true)
             {
                 yield return wait;
-                MonitorPerformance();
+                MonitorPerformanceEnhanced();
             }
         }
 
@@ -1366,7 +1403,7 @@ namespace H3TVR
                 // Check lifetime
                 if (chatSosig.Lifetime > 0 && chatSosig.Age > chatSosig.Lifetime)
                 {
-                    logger?.LogInfo($"Sosig {chatSosig.UserName} expired after {chatSosig.Lifetime} seconds");
+                    logger?.LogInfo($"Sosig {chatSosig.DisplayName} expired after {chatSosig.Lifetime} seconds");
                     DestroyChatSosig(chatSosig);
                 }
             }
@@ -1420,32 +1457,6 @@ namespace H3TVR
         }
 
         /// <summary>
-        /// Monitor performance and enable performance mode if needed
-        /// </summary>
-        private void MonitorPerformance()
-        {
-            try
-            {
-                recentFrameTimes.Add(Time.deltaTime);
-                if (recentFrameTimes.Count > 60) // Keep last 60 frames
-                    recentFrameTimes.RemoveAt(0);
-
-                float averageFrameTime = recentFrameTimes.Average();
-                bool shouldEnterPerformanceMode = averageFrameTime > 0.033f; // 30 FPS threshold
-
-                if (shouldEnterPerformanceMode != performanceMode)
-                {
-                    performanceMode = shouldEnterPerformanceMode;
-                    logger?.LogWarning($"Performance mode {(performanceMode ? "enabled" : "disabled")}");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Error in performance monitoring: {ex.Message}");
-            }
-        }
-
-        /// <summary>
         /// Clean up expired sosigs
         /// </summary>
         private void CleanupExpiredSosigs()
@@ -1469,41 +1480,1090 @@ namespace H3TVR
                 logger?.LogError($"Error in cleanup: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Coroutine for updating advanced behaviors
+        /// </summary>
+        private IEnumerator BehaviorUpdateCoroutine()
+        {
+            var wait = new WaitForSeconds(2f);
+
+            while (true)
+            {
+                yield return wait;
+                
+                if (enableAdvancedAI?.Value == true)
+                {
+                    UpdateAdvancedBehaviors();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Coroutine for updating dynamic difficulty
+        /// </summary>
+        private IEnumerator DifficultyUpdateCoroutine()
+        {
+            var wait = new WaitForSeconds(30f);
+
+            while (true)
+            {
+                yield return wait;
+                UpdateDynamicDifficulty();
+            }
+        }
+
+        /// <summary>
+        /// Coroutine for processing user notifications
+        /// </summary>
+        private IEnumerator NotificationProcessorCoroutine()
+        {
+            var wait = new WaitForSeconds(1f);
+
+            while (true)
+            {
+                yield return wait;
+                ProcessNotifications();
+            }
+        }
+
+        private void ProcessNotifications()
+        {
+            // Process queued notifications
+            while (notificationQueue.Count > 0)
+            {
+                var notification = notificationQueue.Dequeue();
+                // Handle notification display/logging
+                logger?.LogInfo($"Notification for {notification.Username}: {notification.Message}");
+            }
+        }
         #endregion
 
-        #region Enhanced Stats Reporting
+        #region Missing Methods Implementation
         /// <summary>
-        /// Get comprehensive status report including dependencies
+        /// Check if user is on cooldown
         /// </summary>
-        public ChatSosigStats GetStatsWithDependencies()
+        private bool IsUserOnCooldown(string username)
         {
-            var stats = GetStats();
-            
-            // Add dependency information
-            var enhancedStats = new EnhancedChatSosigStats
+            if (userSpawnCooldowns.TryGetValue(username, out DateTime cooldownEnd))
             {
-                ActiveAllies = stats.ActiveAllies,
-                ActiveEnemies = stats.ActiveEnemies,
-                QueueLength = stats.QueueLength,
-                TotalSpawned = stats.TotalSpawned,
-                PerformanceMode = stats.PerformanceMode,
-                DependencyStatus = OptionalDependencyManager.GetDependencyStatusReport(),
-                WeaponEnhancementStatus = SosigWeaponEnhancer.GetEnhancementStats(),
-                EnhancementsActive = OptionalDependencyManager.GetAvailableDependencyCount()
+                return DateTime.Now < cooldownEnd;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Check if spawning is possible
+        /// </summary>
+        private bool CanSpawn(bool isFriendly)
+        {
+            if (isFriendly)
+            {
+                return ActiveAllies.Count < maxAllySosigs.Value;
+            }
+            else
+            {
+                return ActiveEnemies.Count < maxEnemySosigs.Value;
+            }
+        }
+
+        /// <summary>
+        /// Create ChatSosig wrapper with Twitch integration
+        /// </summary>
+        private ChatSosig CreateChatSosig(Sosig sosig, string userName, string displayName, bool isFriendly)
+        {
+            var chatSosig = new ChatSosig
+            {
+                Sosig = sosig,
+                UserName = userName,
+                DisplayName = displayName,
+                TwitchUsername = userName,
+                IsFriendly = isFriendly,
+                ArmorPreset = isFriendly ? defaultAllyArmor.Value : defaultEnemyArmor.Value,
+                SpawnTime = DateTime.Now,
+                Lifetime = sosigLifetime?.Value ?? 300f,
+                IsFromTwitch = enableTwitchIntegration.Value,
+                CustomData = new Dictionary<string, object>()
             };
 
-            return enhancedStats;
+            return chatSosig;
         }
 
         /// <summary>
-        /// Enhanced stats class with dependency information
+        /// Destroy ChatSosig and cleanup
         /// </summary>
-        public class EnhancedChatSosigStats : ChatSosigStats
+        private void DestroyChatSosig(ChatSosig chatSosig)
         {
-            public string DependencyStatus { get; set; }
-            public string WeaponEnhancementStatus { get; set; }
-            public int EnhancementsActive { get; set; }
+            if (chatSosig?.Sosig != null)
+            {
+                // Cleanup nameplate
+                if (chatSosig.Nameplate != null)
+                {
+                    Destroy(chatSosig.Nameplate);
+                }
+
+                // Cleanup audio source
+                if (chatSosig.AudioSource != null)
+                {
+                    Destroy(chatSosig.AudioSource);
+                    sosigAudioSources.Remove(chatSosig);
+                }
+
+                // Remove from tracking
+                sosigLookup.Remove(chatSosig.Sosig);
+                sosigBehaviors.Remove(chatSosig);
+                sosigNextBehaviorUpdate.Remove(chatSosig);
+                sosigWaypoints.Remove(chatSosig);
+                UntrackSosigByUser(chatSosig);
+
+                // Award experience for sosig death
+                if (chatSosig.IsDead)
+                {
+                    AwardExperience(chatSosig.TwitchUsername, 5f, "sosig defeated");
+                }
+
+                // Play death sound
+                PlayAudioFeedback(deathSound, chatSosig.Sosig.transform.position);
+
+                // Destroy sosig
+                Destroy(chatSosig.Sosig.gameObject);
+
+                // Trigger event
+                OnSosigDestroyed?.Invoke(chatSosig.Sosig, chatSosig.DisplayName);
+            }
+
+            // Remove from lists
+            ActiveAllies.Remove(chatSosig);
+            ActiveEnemies.Remove(chatSosig);
+            spawnedChatters.Remove(chatSosig.Sosig);
+            spawnedEnemyChatters.Remove(chatSosig.Sosig);
+
+            // Update count
+            OnSosigCountChanged?.Invoke(ActiveAllies.Count, ActiveEnemies.Count);
+        }
+
+        /// <summary>
+        /// Get random ally name from INI file
+        /// </summary>
+        private string GetRandomAllyName()
+        {
+            if (allyNames.Count > 0)
+            {
+                return allyNames[UnityEngine.Random.Range(0, allyNames.Count)];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Get random enemy name from INI file
+        /// </summary>
+        private string GetRandomEnemyName()
+        {
+            if (enemyNames.Count > 0)
+            {
+                return enemyNames[UnityEngine.Random.Range(0, enemyNames.Count)];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Load names from INI files
+        /// </summary>
+        private void LoadNamesFromFiles()
+        {
+            try
+            {
+                LoadAllyNames();
+                LoadEnemyNames();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to load names from files: {ex.Message}");
+            }
+        }
+
+        private void LoadAllyNames()
+        {
+            try
+            {
+                if (File.Exists(allyNamesPath))
+                {
+                    var lines = File.ReadAllLines(allyNamesPath);
+                    allyNames.Clear();
+                    foreach (var line in lines)
+                    {
+                        var trimmed = line.Trim();
+                        if (!string.IsNullOrEmpty(trimmed) && !trimmed.StartsWith("#"))
+                        {
+                            allyNames.Add(trimmed);
+                        }
+                    }
+                    logger?.LogDebug($"Loaded {allyNames.Count} ally names");
+                }
+                else
+                {
+                    CreateDefaultAllyNamesFile();
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to load ally names: {ex.Message}");
+            }
+        }
+
+        private void LoadEnemyNames()
+        {
+            try
+            {
+                if (File.Exists(enemyNamesPath))
+                {
+                    var lines = File.ReadAllLines(enemyNamesPath);
+                    enemyNames.Clear();
+                    foreach (var line in lines)
+                    {
+                        var trimmed = line.Trim();
+                        if (!string.IsNullOrEmpty(trimmed) && !trimmed.StartsWith("#"))
+                        {
+                            enemyNames.Add(trimmed);
+                        }
+                    }
+                    logger?.LogDebug($"Loaded {enemyNames.Count} enemy names");
+                }
+                else
+                {
+                    CreateDefaultEnemyNamesFile();
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to load enemy names: {ex.Message}");
+            }
+        }
+
+        private void CreateDefaultAllyNamesFile()
+        {
+            try
+            {
+                var defaultNames = new[]
+                {
+                    "# Ally Names for Chat Sosigs",
+                    "# Add one name per line",
+                    "Alpha",
+                    "Bravo", 
+                    "Charlie",
+                    "Delta",
+                    "Echo",
+                    "Foxtrot",
+                    "Guardian",
+                    "Protector",
+                    "Defender",
+                    "Support"
+                };
+                
+                File.WriteAllLines(allyNamesPath, defaultNames);
+                LoadAllyNames();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to create default ally names file: {ex.Message}");
+            }
+        }
+
+        private void CreateDefaultEnemyNamesFile()
+        {
+            try
+            {
+                var defaultNames = new[]
+                {
+                    "# Enemy Names for Chat Sosigs",
+                    "# Add one name per line",
+                    "Hostile",
+                    "Raider",
+                    "Bandit",
+                    "Marauder",
+                    "Enforcer",
+                    "Threat",
+                    "Aggressor",
+                    "Adversary",
+                    "Opponent",
+                    "Nemesis"
+                };
+                
+                File.WriteAllLines(enemyNamesPath, defaultNames);
+                LoadEnemyNames();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to create default enemy names file: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get remaining cooldown time for user
+        /// </summary>
+        private float GetRemainingCooldown(string username)
+        {
+            if (userSpawnCooldowns.TryGetValue(username, out DateTime cooldownEnd))
+            {
+                return (float)(cooldownEnd - DateTime.Now).TotalSeconds;
+            }
+            return 0f;
+        }
+
+        /// <summary>
+        /// Set user cooldown
+        /// </summary>
+        private void SetUserCooldown(string username)
+        {
+            userSpawnCooldowns[username] = DateTime.Now.AddSeconds(spawnCooldown.Value);
+        }
+
+        /// <summary>
+        /// Get user sosig count
+        /// </summary>
+        private int GetUserSosigCount(string username)
+        {
+            return GetUserActiveSosigCount(username);
+        }
+
+        /// <summary>
+        /// Increment user sosig count
+        /// </summary>
+        private void IncrementUserSosigCount(string username)
+        {
+            // This is handled by the tracking system
+        }
+
+        /// <summary>
+        /// Clean up expired cooldowns
+        /// </summary>
+        private void CleanupExpiredCooldowns()
+        {
+            var now = DateTime.Now;
+            var expiredKeys = userSpawnCooldowns.Where(kvp => kvp.Value < now).Select(kvp => kvp.Key).ToList();
+            
+            foreach (var key in expiredKeys)
+            {
+                userSpawnCooldowns.Remove(key);
+            }
         }
         #endregion
+
+        #region Enhanced Effects and Features
+        /// <summary>
+        /// Create nameplate for sosig with proper positioning and styling
+        /// </summary>
+        private void CreateNameplateForSosig(Sosig sosig, string displayName, bool isFriendly)
+        {
+            if (sosig == null || sosig.Links.Count == 0) return;
+
+            try
+            {
+                // Create nameplate GameObject
+                GameObject nameplate = new GameObject($"Nameplate_{displayName}");
+                nameplate.transform.SetParent(sosig.Links[0].transform, false); // Attach to head
+
+                // Position above the head
+                nameplate.transform.localPosition = Vector3.up * (nameplateHeight?.Value ?? 2.5f);
+                nameplate.transform.localRotation = Quaternion.identity;
+
+                // Add Canvas component for UI
+                Canvas canvas = nameplate.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.WorldSpace;
+                canvas.worldCamera = Camera.main;
+
+                // Add CanvasScaler
+                CanvasScaler scaler = nameplate.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+
+                // Create text GameObject
+                GameObject textObj = new GameObject("Text");
+                textObj.transform.SetParent(nameplate.transform, false);
+
+                // Add Text component
+                Text text = textObj.AddComponent<Text>();
+                text.text = displayName;
+                text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+                text.fontSize = 36;
+                text.alignment = TextAnchor.MiddleCenter;
+                text.color = isFriendly ? (allyNameplateColor?.Value ?? Color.green) : (enemyNameplateColor?.Value ?? Color.red);
+
+                // Set up RectTransform for proper sizing
+                RectTransform rectTransform = text.GetComponent<RectTransform>();
+                rectTransform.sizeDelta = new Vector2(200, 50);
+                rectTransform.localPosition = Vector3.zero;
+
+                // Scale the entire nameplate
+                nameplate.transform.localScale = Vector3.one * (nameplateScale?.Value ?? 0.02f);
+
+                // Make nameplate always face the camera
+                StartCoroutine(FaceCamera(nameplate));
+
+                // Store reference for cleanup
+                if (sosigLookup.TryGetValue(sosig, out var chatSosig))
+                {
+                    chatSosig.Nameplate = nameplate;
+                }
+
+                logger?.LogDebug($"Created nameplate for {displayName}");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to create nameplate for {displayName}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Make nameplate always face the camera
+        /// </summary>
+        private IEnumerator FaceCamera(GameObject nameplate)
+        {
+            while (nameplate != null)
+            {
+                if (Camera.main != null)
+                {
+                    nameplate.transform.LookAt(Camera.main.transform);
+                    nameplate.transform.Rotate(0, 180, 0); // Flip to face correctly
+                }
+                yield return new WaitForSeconds(0.1f);
+            }
+        }
+
+        /// <summary>
+        /// Create spawn effects for sosig
+        /// </summary>
+        private void CreateSpawnEffects(ChatSosig chatSosig)
+        {
+            if (!chatSosig.IsValid) return;
+
+            try
+            {
+                var spawnPos = chatSosig.Sosig.transform.position;
+                
+                // Create particle effect
+                var effectObj = new GameObject("SpawnEffect");
+                effectObj.transform.position = spawnPos;
+                
+                var particles = effectObj.AddComponent<ParticleSystem>();
+                var main = particles.main;
+                main.startColor = chatSosig.IsFriendly ? Color.green : Color.red;
+                main.startLifetime = 2f;
+                main.startSpeed = 5f;
+                main.maxParticles = 30;
+                
+                var emission = particles.emission;
+                emission.SetBursts(new ParticleSystem.Burst[]
+                {
+                    new ParticleSystem.Burst(0f, 30)
+                });
+                
+                var shape = particles.shape;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 1f;
+
+                // Auto-destroy
+                Destroy(effectObj, 3f);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to create spawn effect for {chatSosig.DisplayName}: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        // =========================================================
+        // Added: Core spawn queue processing and manual spawn paths
+        // =========================================================
+
+        private IEnumerator ProcessSpawnQueueCoroutine()
+        {
+            var wait = new WaitForSeconds(0.1f);
+
+            while (true)
+            {
+                try
+                {
+                    // throttle by cooldown
+                    if (Time.time - lastSpawnTime < (spawnCooldown != null ? spawnCooldown.Value : 2.0f))
+                    {
+                        yield return wait;
+                        continue;
+                    }
+
+                    // performance safeguard: if performance mode is on and we are over recommended count, pause spawns
+                    int activeCount = ActiveAllies.Count + ActiveEnemies.Count;
+                    if (performanceMode && recommendedSosigCount > 0 && activeCount >= recommendedSosigCount)
+                    {
+                        yield return wait;
+                        continue;
+                    }
+
+                    TwitchSpawnRequest request = null;
+
+                    // priority first
+                    if (prioritySpawnQueue.Count > 0)
+                        request = prioritySpawnQueue.Dequeue();
+                    else if (spawnQueue.Count > 0)
+                        request = spawnQueue.Dequeue();
+
+                    if (request == null)
+                    {
+                        yield return wait;
+                        continue;
+                    }
+
+                    // Validate capacity
+                    if (!CanSpawn(request.IsFriendly))
+                    {
+                        logger?.LogWarning("Spawn skipped: capacity reached");
+                        NotifyUser(request.TwitchUsername ?? request.UserName, "Server is at capacity. Your spawn stayed in queue too long.", NotificationType.Warning);
+                        yield return wait;
+                        continue;
+                    }
+
+                    // Determine name and placement
+                    string displayName = request.DisplayName;
+                    if (string.IsNullOrEmpty(displayName))
+                    {
+                        if (!request.IsFromTwitch || (useTwitchNamesOverIni != null && !useTwitchNamesOverIni.Value))
+                            displayName = request.IsFriendly ? (GetRandomAllyName() ?? SpawnerName) : (GetRandomEnemyName() ?? SpawnerName);
+                        else
+                            displayName = request.UserName ?? SpawnerName;
+                    }
+
+                    Vector3 spawnPos = request.CustomSpawnPoint ?? request.PreferredSpawnLocation ?? CalculateSpawnPoint(request.IsFriendly);
+                    Quaternion rot = Quaternion.identity;
+
+                    // Choose template
+                    SosigEnemyTemplate template = GetTemplate(request.IsFriendly);
+                    if (template == null)
+                    {
+                        logger?.LogError("No Sosig template available; cannot spawn.");
+                        NotifyUser(request.TwitchUsername ?? request.UserName, "No Sosig template available. Spawn failed.", NotificationType.Error);
+                        yield return wait;
+                        continue;
+                    }
+
+                    // Spawn Sosig
+                    int iff = request.IsFriendly ? 0 : Mathf.Max(1, (int)(enemyIFF != null ? enemyIFF.Value : 1f));
+                    var sosig = SpawnSosigFromTemplate(template, spawnPos, rot, iff, displayName);
+                    if (sosig == null)
+                    {
+                        NotifyUser(request.TwitchUsername ?? request.UserName, "Spawn failed due to internal error.", NotificationType.Error);
+                        yield return wait;
+                        continue;
+                    }
+
+                    // Wrap ChatSosig
+                    var chatSosig = CreateChatSosig(sosig, request.UserName ?? request.TwitchUsername ?? "UnknownUser", displayName, request.IsFriendly);
+                    chatSosig.IsFromTwitch = request.IsFromTwitch;
+                    if (request.CustomData != null)
+                    {
+                        foreach (var kv in request.CustomData)
+                            chatSosig.CustomData[kv.Key] = kv.Value;
+                    }
+
+                    // Register and finalize
+                    RegisterSpawn(chatSosig);
+
+                    // Behavior request (if eligible)
+                    if (enableBehaviorCommands != null && enableBehaviorCommands.Value && !string.IsNullOrEmpty(request.RequestedBehavior))
+                    {
+                        try
+                        {
+                            var parsed = (SosigBehaviorState)Enum.Parse(typeof(SosigBehaviorState), request.RequestedBehavior, true);
+                            SetSosigBehavior(chatSosig, parsed);
+                        }
+                        catch
+                        {
+                            // ignore invalid behavior strings
+                        }
+                    }
+
+                    // Effects/audio
+                    if (enableSpawnEffects != null && enableSpawnEffects.Value)
+                        CreateSpawnEffects(chatSosig);
+
+                    PlayAudioFeedback(spawnSound, chatSosig.Sosig.transform.position);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogError("Error in ProcessSpawnQueueCoroutine: " + ex.Message);
+                }
+
+                yield return wait;
+            }
+        }
+
+        private void RegisterSpawn(ChatSosig chatSosig)
+        {
+            if (chatSosig == null || !chatSosig.IsValid) return;
+
+            // Track lists
+            if (chatSosig.IsFriendly)
+            {
+                ActiveAllies.Add(chatSosig);
+                spawnedChatters.Add(chatSosig.Sosig);
+            }
+            else
+            {
+                ActiveEnemies.Add(chatSosig);
+                spawnedEnemyChatters.Add(chatSosig.Sosig);
+            }
+
+            // Track lookup
+            sosigLookup[chatSosig.Sosig] = chatSosig;
+
+            // Track per-user
+            TrackSosigByUser(chatSosig);
+
+            // Armor
+            ApplyArmorToSosig(chatSosig.Sosig, chatSosig.IsFriendly);
+
+            // Default behavior
+            if (chatSosig.IsFriendly)
+                SetupAllyBehavior(chatSosig.Sosig);
+            else
+                SetupEnemyBehavior(chatSosig.Sosig);
+
+            // Nameplate (optional)
+            if (enableNameplates != null && enableNameplates.Value)
+                CreateNameplateForSosig(chatSosig.Sosig, chatSosig.DisplayName, chatSosig.IsFriendly);
+
+            // AudioSource per sosig (for future voice lines)
+            if (!sosigAudioSources.ContainsKey(chatSosig))
+            {
+                var src = chatSosig.Sosig.gameObject.AddComponent<AudioSource>();
+                chatSosig.AudioSource = src;
+                sosigAudioSources[chatSosig] = src;
+            }
+
+            totalSpawnCount++;
+            OnSosigSpawned?.Invoke(chatSosig.Sosig, chatSosig.DisplayName, chatSosig.IsFriendly);
+            OnSosigCountChanged?.Invoke(ActiveAllies.Count, ActiveEnemies.Count);
+
+            logger?.LogInfo(string.Format("Spawned {0} Sosig: {1}", chatSosig.IsFriendly ? "Ally" : "Enemy", chatSosig.DisplayName));
+        }
+
+        private SosigEnemyTemplate GetTemplate(bool isFriendly)
+        {
+            try
+            {
+                var list = isFriendly ? allyTemplates : enemyTemplates;
+                if (list != null && list.Count > 0)
+                    return list[UnityEngine.Random.Range(0, list.Count)];
+
+                if (defaultAllyTemplate != null && isFriendly)
+                    return defaultAllyTemplate;
+
+                if (cachedSosigTemplates != null && cachedSosigTemplates.Length > 0)
+                    return cachedSosigTemplates[0];
+            }
+            catch { }
+            return null;
+        }
+
+        // Manual spawn via keys (friendly)
+        private void SpawningSequence(string username)
+        {
+            SpawnImmediate(true, username ?? "ManualAlly");
+        }
+
+        // Manual spawn via keys (enemy)
+        private void SpawningSequenceEnemy(int IFF, string username)
+        {
+            // IFF param is accepted for backwards compatibility; actual IFF is taken from config enemyIFF
+            SpawnImmediate(false, username ?? "ManualEnemy");
+        }
+
+        private void SpawnImmediate(bool isFriendly, string username, string displayName = null, int? customIFF = null, Vector3? customPos = null)
+        {
+            try
+            {
+                if (!CanSpawn(isFriendly))
+                {
+                    logger?.LogWarning("Immediate spawn denied: capacity reached");
+                    return;
+                }
+
+                var template = GetTemplate(isFriendly);
+                if (template == null)
+                {
+                    logger?.LogError("No Sosig template available for immediate spawn");
+                    return;
+                }
+
+                Vector3 pos = customPos ?? CalculateSpawnPoint(isFriendly);
+                Quaternion rot = Quaternion.identity;
+
+                string finalName = displayName;
+                if (string.IsNullOrEmpty(finalName))
+                    finalName = isFriendly ? (GetRandomAllyName() ?? SpawnerName) : (GetRandomEnemyName() ?? SpawnerName);
+
+                int iff = customIFF ?? (isFriendly ? 0 : Mathf.Max(1, (int)(enemyIFF != null ? enemyIFF.Value : 1f)));
+                var sosig = SpawnSosigFromTemplate(template, pos, rot, iff, finalName);
+                if (sosig == null) return;
+
+                var chat = CreateChatSosig(sosig, username, finalName, isFriendly);
+                RegisterSpawn(chat);
+
+                if (enableSpawnEffects != null && enableSpawnEffects.Value)
+                    CreateSpawnEffects(chat);
+
+                PlayAudioFeedback(spawnSound, pos);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError("SpawnImmediate error: " + ex.Message);
+            }
+        }
+
+        // ===============================================
+        // Added: Twitch, audio, performance/difficulty
+        // ===============================================
+
+        private void InitializeTwitchIntegration()
+        {
+            try
+            {
+                if (enableTwitchIntegration != null && enableTwitchIntegration.Value)
+                {
+                    twitchManager = TwitchChatManager.Instance ?? FindObjectOfType<TwitchChatManager>();
+                    if (twitchManager == null)
+                    {
+                        logger?.LogWarning("TwitchChatManager not found at this time. It may initialize later.");
+                    }
+                    else
+                    {
+                        // Not calling Initialize here to avoid duplicating plugin wiring;
+                        // assume H3TVRImproved.InitializeTwitchIntegration handles it.
+                        logger?.LogInfo("Twitch integration linked to EnhancedChatSpawner.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError("InitializeTwitchIntegration failed: " + ex.Message);
+            }
+        }
+
+        private void InitializeAudioSystem()
+        {
+            try
+            {
+                if (audioManager == null)
+                    audioManager = (plugin != null ? plugin.GetComponent<AudioManager>() : null) ?? FindObjectOfType<AudioManager>();
+
+                if (globalAudioSource == null)
+                {
+                    globalAudioSource = gameObject.GetComponent<AudioSource>();
+                    if (globalAudioSource == null)
+                        globalAudioSource = gameObject.AddComponent<AudioSource>();
+                    globalAudioSource.spatialBlend = 0f;
+                    globalAudioSource.playOnAwake = false;
+                }
+
+                logger?.LogInfo("Audio system initialized for Enhanced Chat Spawner");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError("InitializeAudioSystem failed: " + ex.Message);
+            }
+        }
+
+        private void PlayAudioFeedback(AudioClip clip, Vector3 position)
+        {
+            try
+            {
+                if (clip == null) return;
+
+                if (audioManager != null)
+                {
+                    // Use AudioManager 3D path
+                    var temp = new GameObject("ChatSpawner_SFX");
+                    temp.transform.position = position;
+                    var src = temp.AddComponent<AudioSource>();
+                    src.clip = clip;
+                    src.spatialBlend = 1f;
+                    src.volume = 0.8f;
+                    src.Play();
+                    Destroy(temp, clip.length + 0.1f);
+                }
+                else
+                {
+                    // Fallback
+                    AudioSource.PlayClipAtPoint(clip, position, 0.8f);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning("PlayAudioFeedback(3D) failed: " + ex.Message);
+            }
+        }
+
+        private void PlayAudioFeedback(AudioClip clip)
+        {
+            try
+            {
+                if (clip == null || globalAudioSource == null) return;
+                globalAudioSource.clip = clip;
+                globalAudioSource.volume = 0.8f;
+                globalAudioSource.spatialBlend = 0f;
+                globalAudioSource.Play();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning("PlayAudioFeedback(2D) failed: " + ex.Message);
+            }
+        }
+
+        private void MonitorPerformanceEnhanced()
+        {
+            try
+            {
+                // Collect frame samples
+                recentFrameTimes.Add(Time.deltaTime);
+                if (recentFrameTimes.Count > 120) // keep ~2 seconds at 60fps
+                    recentFrameTimes.RemoveAt(0);
+
+                if (recentFrameTimes.Count == 0) return;
+
+                float sum = 0f;
+                for (int i = 0; i < recentFrameTimes.Count; i++)
+                    sum += recentFrameTimes[i];
+
+                averageFrameTime = sum / recentFrameTimes.Count;
+                currentFrameRate = (averageFrameTime > 0.0001f) ? (1f / averageFrameTime) : 999f;
+
+                float threshold = performanceThreshold != null ? performanceThreshold.Value : 0.033f; // ~30fps default
+                performanceMode = (enablePerformanceScaling != null && enablePerformanceScaling.Value && averageFrameTime > threshold);
+
+                int active = ActiveAllies.Count + ActiveEnemies.Count;
+                recentSosigCounts.Add(active);
+                if (recentSosigCounts.Count > 60) recentSosigCounts.RemoveAt(0);
+
+                // Simple recommendation: if in perf mode reduce target, else allow more
+                if (performanceMode)
+                    recommendedSosigCount = Math.Max(2, active - 1);
+                else
+                    recommendedSosigCount = Math.Max(active, active + 2);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning("MonitorPerformanceEnhanced failed: " + ex.Message);
+            }
+        }
+
+        private void UpdateAdvancedBehaviors()
+        {
+            try
+            {
+                var now = Time.time;
+                var keys = new List<ChatSosig>(sosigBehaviors.Keys);
+                for (int i = 0; i < keys.Count; i++)
+                {
+                    var cs = keys[i];
+                    if (cs == null || !cs.IsValid) continue;
+
+                    float nextAt;
+                    if (!sosigNextBehaviorUpdate.TryGetValue(cs, out nextAt))
+                        nextAt = 0f;
+
+                    if (now >= nextAt)
+                    {
+                        ApplyBehaviorToSosig(cs, cs.CurrentBehavior);
+                        sosigNextBehaviorUpdate[cs] = now + UnityEngine.Random.Range(1.5f, 3.5f);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning("UpdateAdvancedBehaviors failed: " + ex.Message);
+            }
+        }
+
+        private void ApplyBehaviorToSosig(ChatSosig chatSosig, SosigBehaviorState behavior)
+        {
+            if (chatSosig == null || !chatSosig.IsValid) return;
+
+            try
+            {
+                var sosig = chatSosig.Sosig;
+
+                switch (behavior)
+                {
+                    case SosigBehaviorState.Idle:
+                        sosig.CurrentOrder = Sosig.SosigOrder.Idle;
+                        break;
+
+                    case SosigBehaviorState.Following:
+                        if (GM.CurrentPlayerBody != null && GM.CurrentPlayerBody.Head != null)
+                        {
+                            var playerPos = GM.CurrentPlayerBody.Head.position;
+                            sosig.CommandAssaultPoint(playerPos + UnityEngine.Random.insideUnitSphere * (allyFollowDistance != null ? allyFollowDistance.Value : 3f));
+                        }
+                        break;
+
+                    case SosigBehaviorState.Guarding:
+                        sosig.CommandGuardPosition(sosig.transform.position);
+                        break;
+
+                    case SosigBehaviorState.Patrolling:
+                        {
+                            Vector3 wp;
+                            if (!sosigWaypoints.TryGetValue(chatSosig, out wp))
+                            {
+                                wp = sosig.transform.position + UnityEngine.Random.insideUnitSphere * 6f;
+                                wp.y = sosig.transform.position.y;
+                                sosigWaypoints[chatSosig] = wp;
+                            }
+                            sosig.CommandAssaultPoint(wp);
+                        }
+                        break;
+
+                    case SosigBehaviorState.Attacking:
+                        if (GM.CurrentPlayerBody != null)
+                        {
+                            var target = GM.CurrentPlayerBody.transform.position;
+                            sosig.CommandAssaultPoint(target);
+                        }
+                        break;
+
+                    case SosigBehaviorState.Searching:
+                        {
+                            var origin = chatSosig.LastKnownPosition != Vector3.zero ? chatSosig.LastKnownPosition : sosig.transform.position;
+                            var search = origin + UnityEngine.Random.insideUnitSphere * 8f;
+                            search.y = origin.y;
+                            sosig.CommandAssaultPoint(search);
+                        }
+                        break;
+
+                    case SosigBehaviorState.Retreating:
+                        if (GM.CurrentPlayerBody != null && GM.CurrentPlayerBody.Head != null)
+                        {
+                            var from = GM.CurrentPlayerBody.Head.position;
+                            var dir = (sosig.transform.position - from).normalized;
+                            var back = sosig.transform.position + dir * 10f;
+                            sosig.CommandAssaultPoint(back);
+                        }
+                        break;
+
+                    case SosigBehaviorState.Supporting:
+                        {
+                            // Move near allies (simple: toward player with offset)
+                            if (GM.CurrentPlayerBody != null && GM.CurrentPlayerBody.Head != null)
+                            {
+                                var p = GM.CurrentPlayerBody.Head.position + UnityEngine.Random.insideUnitSphere * 4f;
+                                p.y = GM.CurrentPlayerBody.Head.position.y;
+                                sosig.CommandAssaultPoint(p);
+                            }
+                        }
+                        break;
+
+                    case SosigBehaviorState.Custom:
+                        // Intentionally left flexible
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning("ApplyBehaviorToSosig failed: " + ex.Message);
+            }
+        }
+
+        private void UpdateDynamicDifficulty()
+        {
+            try
+            {
+                if (enableDynamicDifficulty != null && !enableDynamicDifficulty.Value)
+                    return;
+
+                // Basic heuristic using frame performance and active enemies
+                float desired = 1.0f;
+
+                if (currentFrameRate < 40f) desired -= 0.1f;
+                if (currentFrameRate < 30f) desired -= 0.2f;
+                if (ActiveEnemies.Count > (maxEnemySosigs != null ? maxEnemySosigs.Value : 8) * 0.75f) desired += 0.1f;
+                if (ActiveAllies.Count > (maxAllySosigs != null ? maxAllySosigs.Value : 8) * 0.75f) desired -= 0.05f;
+
+                desired = Mathf.Clamp(desired, 0.5f, 1.5f);
+
+                // Smooth adjustment every call
+                currentDifficulty = Mathf.Lerp(currentDifficulty, desired, 0.25f);
+                lastDifficultyAdjustment = DateTime.Now;
+
+                if (OnDifficultyChanged != null)
+                    OnDifficultyChanged(currentDifficulty);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning("UpdateDynamicDifficulty failed: " + ex.Message);
+            }
+        }
+
+        // ===============================================
+        // Added: User tracking helpers and queries
+        // ===============================================
+
+        private void TrackSosigByUser(ChatSosig chatSosig)
+        {
+            if (chatSosig == null) return;
+            var key = chatSosig.TwitchUsername ?? chatSosig.UserName ?? "UnknownUser";
+
+            List<ChatSosig> list;
+            if (!userSosigMap.TryGetValue(key, out list))
+            {
+                list = new List<ChatSosig>();
+                userSosigMap[key] = list;
+            }
+
+            if (!list.Contains(chatSosig))
+                list.Add(chatSosig);
+        }
+
+        private void UntrackSosigByUser(ChatSosig chatSosig)
+        {
+            if (chatSosig == null) return;
+            var key = chatSosig.TwitchUsername ?? chatSosig.UserName ?? "UnknownUser";
+
+            List<ChatSosig> list;
+            if (userSosigMap.TryGetValue(key, out list))
+            {
+                list.Remove(chatSosig);
+                if (list.Count == 0)
+                    userSosigMap.Remove(key);
+            }
+        }
+
+        private List<ChatSosig> GetSosigsByTwitchUser(string username)
+        {
+            if (string.IsNullOrEmpty(username)) return new List<ChatSosig>();
+            List<ChatSosig> list;
+            if (userSosigMap.TryGetValue(username, out list))
+                return list.Where(s => s != null && s.IsValid && !s.IsDead).ToList();
+            return new List<ChatSosig>();
+        }
+
+        private int GetTwitchSosigCount()
+        {
+            int count = 0;
+            foreach (var kv in userSosigMap)
+            {
+                count += kv.Value.Count(s => s != null && s.IsValid && !s.IsDead);
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// Get the number of active sosigs for a given user (Twitch username)
+        /// </summary>
+        private int GetUserActiveSosigCount(string username)
+        {
+            if (string.IsNullOrEmpty(username)) return 0;
+            if (userSosigMap.TryGetValue(username, out var list))
+                return list.Count(s => s != null && s.IsValid && !s.IsDead);
+            return 0;
+        }
     }
 }
