@@ -471,6 +471,190 @@ namespace H3TVR
         }
         
         /// <summary>
+        /// Clear all sosigs (allies, enemies, or both)
+        /// </summary>
+        public void ClearSosigs(bool clearAllies = true, bool clearEnemies = true)
+        {
+            try
+            {
+                int cleared = 0;
+
+                if (clearAllies)
+                {
+                    for (int i = ActiveAllies.Count - 1; i >= 0; i--)
+                    {
+                        var chatSosig = ActiveAllies[i];
+                        if (chatSosig?.Sosig != null)
+                        {
+                            Destroy(chatSosig.Sosig.gameObject);
+                            cleared++;
+                        }
+                    }
+                    ActiveAllies.Clear();
+                    spawnedChatters.Clear();
+                }
+
+                if (clearEnemies)
+                {
+                    for (int i = ActiveEnemies.Count - 1; i >= 0; i--)
+                    {
+                        var chatSosig = ActiveEnemies[i];
+                        if (chatSosig?.Sosig != null)
+                        {
+                            Destroy(chatSosig.Sosig.gameObject);
+                            cleared++;
+                        }
+                    }
+                    ActiveEnemies.Clear();
+                    spawnedEnemyChatters.Clear();
+                }
+
+                // Clear all tracking
+                sosigLookup.Clear();
+                sosigBehaviors.Clear();
+                sosigNextBehaviorUpdate.Clear();
+                sosigWaypoints.Clear();
+                sosigAudioSources.Clear();
+                userSosigMap.Clear();
+
+                logger?.LogInfo($"Cleared {cleared} sosigs");
+                OnSosigCountChanged?.Invoke(ActiveAllies.Count, ActiveEnemies.Count);
+
+                // Play audio feedback
+                if (enableAudioFeedback != null && enableAudioFeedback.Value)
+                {
+                    PlayAudioFeedback(commandSuccessSound);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Error clearing sosigs: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Notify a user with a message
+        /// </summary>
+        public void NotifyUser(string username, string message, NotificationType type)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(username)) return;
+
+                var notification = new UserNotification
+                {
+                    Username = username,
+                    Message = message,
+                    Type = type,
+                    Timestamp = DateTime.Now
+                };
+
+                notificationQueue.Enqueue(notification);
+
+                // Also log for visibility
+                switch (type)
+                {
+                    case NotificationType.Error:
+                        logger?.LogError($"[{username}] {message}");
+                        break;
+                    case NotificationType.Warning:
+                        logger?.LogWarning($"[{username}] {message}");
+                        break;
+                    case NotificationType.Achievement:
+                    case NotificationType.Success:
+                        logger?.LogInfo($"[{username}] ✓ {message}");
+                        break;
+                    default:
+                        logger?.LogInfo($"[{username}] {message}");
+                        break;
+                }
+
+                // Send to Twitch chat if available
+                if (twitchManager != null && enableTwitchIntegration != null && enableTwitchIntegration.Value)
+                {
+                    try
+                    {
+                        twitchManager.SendChatMessage($"@{username} {message}");
+                    }
+                    catch
+                    {
+                        // Ignore errors sending to Twitch
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Error notifying user {username}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get user experience data, creating if needed
+        /// </summary>
+        public UserExperience GetUserExperience(string username)
+        {
+            if (!userExperienceData.TryGetValue(username, out var experience))
+            {
+                experience = new UserExperience
+                {
+                    Username = username,
+                    FirstSpawn = DateTime.Now,
+                    LastActivity = DateTime.Now,
+                    Level = 1
+                };
+                userExperienceData[username] = experience;
+            }
+
+            return experience;
+        }
+
+        /// <summary>
+        /// Award experience to user
+        /// </summary>
+        public void AwardExperience(string username, float points, string reason = "")
+        {
+            if (!enableSosigExperience.Value) return;
+
+            var userExp = GetUserExperience(username);
+            userExp.ExperiencePoints += points * experienceGainRate.Value;
+            userExp.LastActivity = DateTime.Now;
+
+            // Check for level up
+            int newLevel = Mathf.FloorToInt(userExp.ExperiencePoints / 100f) + 1;
+            if (newLevel > userExp.Level)
+            {
+                userExp.Level = newLevel;
+                NotifyUser(username, $"Level up! You are now level {newLevel}! {GetLevelUpReward(newLevel)}", NotificationType.Achievement);
+                PlayAudioFeedback(commandSuccessSound);
+            }
+
+            if (!string.IsNullOrEmpty(reason))
+            {
+                logger?.LogDebug($"Awarded {points} XP to {username} for {reason}");
+            }
+        }
+
+        /// <summary>
+        /// Get level up rewards
+        /// </summary>
+        private string GetLevelUpReward(int level)
+        {
+            switch (level)
+            {
+                case 2:
+                    return "Unlocked: Faster spawn cooldown!";
+                case 3:
+                    return "Unlocked: Custom behaviors!";
+                case 5:
+                    return "Unlocked: Advanced sosig commands!";
+                case 10:
+                    return "Unlocked: Elite sosig variants!";
+                default:
+                    return level % 5 == 0 ? "Unlocked: Special reward!" : "";
+            }
+        }
+        
+        /// <summary>
         /// Stats structure for sosig spawning
         /// </summary>
         public struct ChatSosigStats
@@ -1980,7 +2164,7 @@ namespace H3TVR
                 }
 
                 if (shouldYield)
-                {
+ {
                     yield return wait;
                 }
             }
