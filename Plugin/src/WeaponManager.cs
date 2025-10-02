@@ -20,27 +20,94 @@ namespace H3TVR
 
     /// <summary>
     /// Manages all weapon-related functionality including gun randomization, fire mode toggling, and malfunction boosts
-    /// 
-    /// MAGAZINE COMPATIBILITY SYSTEM:
-    /// This WeaponManager integrates with OdEaK's MagazinePatch system to provide intelligent magazine spawning.
-    /// The system uses multiple strategies in order of priority:
-    /// 1. H3VR's built-in CompatibleMagazines list (OdEaK's MagazinePatch integration) - HIGHEST PRIORITY
-    /// 2. Advanced compatibility scoring based on MagazinePatcher methodology
-    /// 3. Config file magazine matching (original H3TVR system)
-    /// 4. Random magazine fallback
-    /// 
-    /// This ensures that spawned guns receive appropriate magazines that are compatible with OdEaK's
-    /// magazine patch system while maintaining backwards compatibility with the original H3TVR configuration.
     /// </summary>
     public class WeaponManager : MonoBehaviour
     {
         private H3TVRImproved plugin;
         private ManualLogSource logger;
+        private AudioManager audioManager;
 
-        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
+        // Weapon statistics
+        private int weaponSpawnCount = 0;
+        private float lastWeaponSpawnTime = 0f;
+
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AudioManager audioManagerInstance)
         {
             plugin = pluginInstance;
             logger = logSource;
+            audioManager = audioManagerInstance;
+
+            // Initialize optional dependency manager first
+            OptionalDependencyManager.Initialize(logger);
+
+            InitializeWeaponData();
+
+            logger.LogInfo("[WeaponManager] Weapon manager initialized successfully");
+            
+            // Log dependency status for weapons
+            if (OptionalDependencyManager.HasAnyDependencies())
+            {
+                logger.LogInfo($"[WeaponManager] Enhanced with {OptionalDependencyManager.GetAvailableDependencyCount()} optional dependencies");
+            }
+            else
+            {
+                logger.LogInfo("[WeaponManager] Running in standard mode - install optional dependencies for enhanced features");
+            }
+        }
+
+        /// <summary>
+        /// Original Skitty gun spawning method from H3TVR
+        /// </summary>
+        private void SpawnSkittyGunFromLists(bool isBigGun)
+        {
+            try
+            {
+                string gunListValue, magListValue;
+                plugin.GetGunLists(out gunListValue, out magListValue);
+                
+                string gunListString = File.Exists(gunListValue) ? File.ReadAllText(gunListValue) : gunListValue;
+                string[] gunList = ParseConfigList(gunListString);
+
+                if (gunList.Length == 0)
+                {
+                    logger.LogError("Gun list is empty after parsing.");
+                    return;
+                }
+
+                string selectedGun = isBigGun ? gunList[0] : gunList[UnityEngine.Random.Range(0, gunList.Length)];
+                
+                if (!IM.OD.ContainsKey(selectedGun))
+                {
+                    logger.LogError($"Gun key '{selectedGun}' not found in IM.OD dictionary.");
+                    return;
+                }
+
+                FVRObject gunObj = IM.OD[selectedGun];
+                SpawnGunAndMagazine(gunObj, isBigGun);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnSkittyGunFromLists failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Initialize weapon data and caches
+        /// </summary>
+        private void InitializeWeaponData()
+        {
+            try
+            {
+                // Initialize any weapon-specific data here
+                weaponSpawnCount = 0;
+                lastWeaponSpawnTime = 0f;
+                
+                logger.LogInfo("[WeaponManager] Weapon data initialized");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"[WeaponManager] Error initializing weapon data: {ex.Message}");
+            }
         }
 
         #region Gun Spawning
@@ -49,6 +116,11 @@ namespace H3TVR
             try
             {
                 if (!ValidateSpawnConditions()) return;
+
+                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
+                
+                // Play weapon spawn sound
+                audioManager?.PlayWeaponSpawnSound(isBigGun ? "gun_spawn" : "skitty_sub_gun", spawnPos, true);
 
                 if (plugin.UseItemManagerForGuns())
                 {
@@ -186,13 +258,19 @@ namespace H3TVR
             {
                 FVRObject selectedMagazine = null;
 
-                // Strategy 1: Use H3VR's built-in compatible magazines (OdEaK magazine patch integration)
-                if (gunObj.CompatibleMagazines != null && gunObj.CompatibleMagazines.Count > 0)
+                // Try to get firearm component to check for compatible magazines
+                var firearmComponent = gunObj.GetGameObject()?.GetComponent<FVRFireArm>();
+                
+                // Strategy 1: Use H3VR's built-in compatible magazines if available
+                if (firearmComponent != null && HasCompatibleMagazines(firearmComponent))
                 {
-                    // Use OdEaK's magazine patch system - this is the highest priority
-                    var compatibleMag = gunObj.CompatibleMagazines[UnityEngine.Random.Range(0, gunObj.CompatibleMagazines.Count)];
-                    selectedMagazine = compatibleMag;
-                    logger.LogInfo($"Using OdEaK MagazinePatch compatible magazine: {compatibleMag.DisplayName}");
+                    var compatibleMagazines = GetCompatibleMagazines(firearmComponent);
+                    if (compatibleMagazines.Count > 0)
+                    {
+                        var compatibleMag = compatibleMagazines[UnityEngine.Random.Range(0, compatibleMagazines.Count)];
+                        selectedMagazine = compatibleMag;
+                        logger.LogInfo($"Using built-in compatible magazine: {compatibleMag.DisplayName}");
+                    }
                 }
 
                 // Strategy 2: Advanced magazine matching using MagazinePatcher-style compatibility
@@ -247,240 +325,214 @@ namespace H3TVR
         }
 
         /// <summary>
+        /// Check if firearm has compatible magazines (safe check)
+        /// </summary>
+        private bool HasCompatibleMagazines(FVRFireArm firearm)
+        {
+            try
+            {
+                // Use reflection to safely check for CompatibleMagazines property
+                var compatibleMagsProperty = firearm.GetType().GetProperty("CompatibleMagazines");
+                if (compatibleMagsProperty != null)
+                {
+                    var compatibleMags = compatibleMagsProperty.GetValue(firearm, null) as System.Collections.IList;
+                    return compatibleMags != null && compatibleMags.Count > 0;
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Get compatible magazines list (safe getter)
+        /// </summary>
+        private List<FVRObject> GetCompatibleMagazines(FVRFireArm firearm)
+        {
+            try
+            {
+                // Use reflection to safely get CompatibleMagazines
+                var compatibleMagsProperty = firearm.GetType().GetProperty("CompatibleMagazines");
+                if (compatibleMagsProperty != null)
+                {
+                    var compatibleMags = compatibleMagsProperty.GetValue(firearm, null) as System.Collections.IList;
+                    if (compatibleMags != null)
+                    {
+                        return compatibleMags.Cast<FVRObject>().ToList();
+                    }
+                }
+                return new List<FVRObject>();
+            }
+            catch
+            {
+                return new List<FVRObject>();
+            }
+        }
+
+        /// <summary>
         /// Advanced magazine matching using MagazinePatcher-style compatibility scoring
         /// This ensures we use OdEaK's magazine patch system effectively
         /// </summary>
         private FVRObject FindBestMagazineMatchAdvanced(FVRObject gunObj)
         {
-            try
+            // FIRST PRIORITY: Use Magazine Patcher if available
+            if (OptionalDependencyManager.IsMagazinePatcherAvailable)
             {
-                // Get all magazines from ItemManager (includes OdEaK patched magazines)
-                var allMagazines = IM.OD.Values
-                    .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Magazine)
-                    .ToArray();
-
-                if (allMagazines.Length == 0) return null;
-
-                var magazineScores = new List<MagazineCompatibilityScore>();
-
-                foreach (var magazine in allMagazines)
+                try
                 {
-                    int score = CalculateAdvancedMagazineCompatibility(gunObj, magazine);
-                    if (score > 0)
+                    var patcherMagazine = OptionalDependencyManager.FindCompatibleMagazine(gunObj);
+                    if (patcherMagazine != null)
                     {
-                        magazineScores.Add(new MagazineCompatibilityScore 
-                        { 
-                            magazine = magazine, 
-                            score = score 
-                        });
+                        logger.LogInfo($"[WeaponManager] Found magazine via Magazine Patcher: {patcherMagazine.ItemID}");
+                        return patcherMagazine;
+                    }
+                    
+                    // Try to get enhanced compatibility list
+                    var enhancedMagazines = OptionalDependencyManager.GetEnhancedMagazineCompatibility(gunObj);
+                    if (enhancedMagazines.Count > 0)
+                    {
+                        var selectedMag = enhancedMagazines[UnityEngine.Random.Range(0, enhancedMagazines.Count)];
+                        logger.LogInfo($"[WeaponManager] Found magazine from enhanced compatibility: {selectedMag.ItemID}");
+                        return selectedMag;
                     }
                 }
-
-                if (magazineScores.Count == 0) return null;
-
-                // Sort by score and select from top tier
-                magazineScores.Sort((x, y) => y.score.CompareTo(x.score));
-                var bestScore = magazineScores[0].score;
-                var topTierMagazines = magazineScores.Where(s => s.score >= bestScore * 0.8f).ToArray();
-
-                var selectedMatch = topTierMagazines[UnityEngine.Random.Range(0, topTierMagazines.Length)];
-                logger.LogInfo($"Advanced magazine matching - Selected: {selectedMatch.magazine.DisplayName} (Score: {selectedMatch.score})");
-
-                return selectedMatch.magazine;
+                catch (Exception ex)
+                {
+                    logger.LogError($"[WeaponManager] Error using Magazine Patcher: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                logger.LogError($"Advanced magazine matching failed: {ex.Message}");
-                return null;
-            }
-        }
 
-        /// <summary>
-        /// Calculate advanced magazine compatibility using OdEaK MagazinePatcher-inspired scoring
-        /// </summary>
-        private int CalculateAdvancedMagazineCompatibility(FVRObject gunObj, FVRObject magObj)
-        {
-            int score = 0;
-
+            // SECOND PRIORITY: H3VR's built-in CompatibleMagazines list
             try
             {
-                // Highest Priority: MagazineType exact match (OdEaK's primary compatibility system)
-                if (gunObj.MagazineType != 0 && magObj.MagazineType == gunObj.MagazineType)
+                var firearmComponent = gunObj.GetGameObject()?.GetComponent<FVRFireArm>();
+                if (firearmComponent != null && HasCompatibleMagazines(firearmComponent))
                 {
-                    score += 200; // Highest priority - this is OdEaK's main compatibility method
+                    var compatibleMagazines = GetCompatibleMagazines(firearmComponent);
+                    if (compatibleMagazines.Count > 0)
+                    {
+                        var magazine = compatibleMagazines[UnityEngine.Random.Range(0, compatibleMagazines.Count)];
+                        logger.LogInfo($"[WeaponManager] Found magazine via H3VR CompatibleMagazines: {magazine.ItemID}");
+                        return magazine;
+                    }
                 }
-
-                // High Priority: RoundType compatibility (ammunition matching)
-                if (gunObj.UsesRoundTypeFlag && magObj.UsesRoundTypeFlag && 
-                    gunObj.RoundType != 0 && gunObj.RoundType == magObj.RoundType)
-                {
-                    score += 150;
-                }
-
-                // ItemID family matching (manufacturer/series compatibility)
-                score += CalculateItemIdFamilyScore(gunObj.ItemID, magObj.ItemID);
-
-                // FirearmAction compatibility
-                if (gunObj.TagFirearmAction != FVRObject.OTagFirearmAction.None && 
-                    gunObj.TagFirearmAction == magObj.TagFirearmAction)
-                {
-                    score += 100;
-                }
-
-                // Era compatibility (historical period matching)
-                if (gunObj.TagEra != FVRObject.OTagEra.None && gunObj.TagEra == magObj.TagEra)
-                {
-                    score += 90;
-                }
-
-                // Country of origin compatibility
-                if (gunObj.TagFirearmCountryOfOrigin != FVRObject.OTagFirearmCountryOfOrigin.None && 
-                    gunObj.TagFirearmCountryOfOrigin == magObj.TagFirearmCountryOfOrigin)
-                {
-                    score += 80;
-                }
-
-                // Set compatibility (Real vs Fictional)
-                if (gunObj.TagSet == magObj.TagSet)
-                {
-                    score += 70;
-                }
-
-                // Round power correlation
-                if (gunObj.TagFirearmRoundPower != FVRObject.OTagFirearmRoundPower.None && 
-                    magObj.TagFirearmRoundPower == gunObj.TagFirearmRoundPower)
-                {
-                    score += 60;
-                }
-
-                // Size and capacity correlation
-                if (CorrelateFirearmSizeWithCapacity(gunObj.TagFirearmSize, magObj.MagazineCapacity))
-                {
-                    score += 50;
-                }
-
-                // Brand/manufacturer matching
-                score += CalculateBrandCompatibility(gunObj.DisplayName, magObj.DisplayName);
-
-                return score;
             }
             catch (Exception ex)
             {
-                logger.LogWarning($"Error calculating compatibility for {magObj.DisplayName}: {ex.Message}");
-                return 0;
+                logger.LogWarning($"[WeaponManager] Could not access H3VR CompatibleMagazines: {ex.Message}");
+            }
+
+            // THIRD PRIORITY: Advanced compatibility scoring (existing logic)
+            if (IM.OD == null) return null;
+
+            FVRObject bestMatch = null;
+            float bestScore = 0f;
+            string gunId = gunObj.ItemID.ToLower();
+
+            // Extract gun characteristics for matching
+            string gunBase = ExtractGunBaseName(gunId);
+            string gunCaliber = ExtractCaliber(gunId);
+
+            foreach (var kvp in IM.OD)
+            {
+                var obj = kvp.Value;
+                if (obj.Category != FVRObject.ObjectCategory.Magazine) continue;
+
+                string magId = obj.ItemID.ToLower();
+                float score = CalculateCompatibilityScore(gunId, magId, gunBase, gunCaliber);
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestMatch = obj;
+                }
+            }
+
+            if (bestMatch != null)
+            {
+                logger.LogInfo($"[WeaponManager] Found magazine via advanced scoring: {bestMatch.ItemID} (score: {bestScore:F2})");
+            }
+
+            return bestMatch;
+        }
+
+        /// <summary>
+        /// Extract gun base name for compatibility matching
+        /// </summary>
+        private string ExtractGunBaseName(string gunId)
+        {
+            try
+            {
+                // Remove common suffixes and numbers
+                string baseName = gunId.ToLower();
+                baseName = System.Text.RegularExpressions.Regex.Replace(baseName, @"[0-9]+", "");
+                baseName = baseName.Replace("_", "").Replace("-", "");
+                
+                // Take first significant portion
+                if (baseName.Length > 5)
+                    baseName = baseName.Substring(0, 5);
+                    
+                return baseName;
+            }
+            catch
+            {
+                return gunId.Length > 3 ? gunId.Substring(0, 3) : gunId;
             }
         }
 
         /// <summary>
-        /// Original Skitty gun spawning logic using config lists and 5-character truncation method
-        /// This preserves the exact original behavior for Skitty guns
+        /// Extract caliber information from gun ID
         /// </summary>
-        private void SpawnSkittyGunFromLists(bool isBigGun)
+        private string ExtractCaliber(string gunId)
         {
-            string gunListValue, magListValue;
-            plugin.GetGunLists(out gunListValue, out magListValue);
-            
-            // Parse gun list
-            string gunListString = File.Exists(gunListValue) ? File.ReadAllText(gunListValue) : gunListValue;
-            string[] gunList = ParseConfigList(gunListString);
-
-            if (gunList.Length == 0)
+            try
             {
-                logger.LogError("Skitty gun list is empty after parsing.");
-                return;
-            }
-
-            // Parse magazine list
-            string magazineListString = File.Exists(magListValue) ? File.ReadAllText(magListValue) : magListValue;
-            string[] magazineList = ParseConfigList(magazineListString);
-
-            string selectedGun;
-            string selectedMagazine = string.Empty;
-
-            if (isBigGun)
-            {
-                // Big gun: use first gun from list
-                selectedGun = gunList[0];
-                logger.LogInfo($"Skitty Big Gun selected: {selectedGun}");
-            }
-            else
-            {
-                // Sub gun: random selection
-                int randomGunIndex = UnityEngine.Random.Range(0, gunList.Length);
-                selectedGun = gunList[randomGunIndex];
-                logger.LogInfo($"Skitty Sub Gun random selection: {selectedGun} (index {randomGunIndex}/{gunList.Length - 1})");
-            }
-
-            // Original 5-character truncation method for magazine matching
-            string selectedGunTruncated = new string(selectedGun.Take(5).ToArray());
-            logger.LogInfo($"Gun truncated for magazine matching: {selectedGunTruncated}");
-
-            // Find matching magazines using original algorithm
-            if (magazineList.Length > 0)
-            {
-                var matchingMagazines = magazineList.Where(m => m.Contains(selectedGunTruncated)).ToArray();
-                if (matchingMagazines.Length > 0)
+                // Look for caliber patterns in the ID
+                var caliberPatterns = new[] { "9mm", "45acp", "762", "556", "308", "50bmg", "12ga", "20ga" };
+                
+                foreach (var pattern in caliberPatterns)
                 {
-                    int randomMagIndex = UnityEngine.Random.Range(0, matchingMagazines.Length);
-                    selectedMagazine = matchingMagazines[randomMagIndex];
-                    logger.LogInfo($"Selected magazine: {selectedMagazine} (index {randomMagIndex}/{matchingMagazines.Length - 1})");
+                    if (gunId.ToLower().Contains(pattern))
+                        return pattern;
                 }
-                else
-                {
-                    logger.LogWarning($"No matching magazines found for truncated gun key: {selectedGunTruncated}");
-                }
+                
+                return "";
             }
-            else
+            catch
             {
-                logger.LogWarning("Magazine list is empty.");
+                return "";
             }
+        }
 
-            // Validate objects exist in ItemManager
-            if (!IM.OD.ContainsKey(selectedGun))
+        /// <summary>
+        /// Calculate compatibility score between gun and magazine
+        /// </summary>
+        private float CalculateCompatibilityScore(string gunId, string magId, string gunBase, string gunCaliber)
+        {
+            try
             {
-                logger.LogError($"Gun key '{selectedGun}' not found in IM.OD dictionary.");
-                return;
+                float score = 0f;
+                
+                // Base name matching
+                if (!string.IsNullOrEmpty(gunBase) && magId.Contains(gunBase))
+                    score += 50f;
+                
+                // Caliber matching
+                if (!string.IsNullOrEmpty(gunCaliber) && magId.Contains(gunCaliber))
+                    score += 30f;
+                
+                // Prefix matching
+                if (gunId.Length >= 3 && magId.StartsWith(gunId.Substring(0, 3)))
+                    score += 20f;
+                
+                return score;
             }
-
-            if (string.IsNullOrEmpty(selectedMagazine) || !IM.OD.ContainsKey(selectedMagazine))
+            catch
             {
-                logger.LogError($"Magazine key '{selectedMagazine}' not found in IM.OD dictionary.");
-                return;
+                return 0f;
             }
-
-            // Spawn gun and magazine
-            FVRObject gunObj = IM.OD[selectedGun];
-            FVRObject magObj = IM.OD[selectedMagazine];
-
-            Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-            
-            // Spawn gun
-            GameObject gunGO = Instantiate(gunObj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
-            var gunRB = gunGO.GetComponent<Rigidbody>();
-            if (gunRB != null)
-            {
-                gunRB.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
-                gunRB.AddForce(GM.CurrentPlayerBody.Head.forward * 100f);
-            }
-
-            // Spawn magazine
-            GameObject magGO = Instantiate(magObj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
-            var magRB = magGO.GetComponent<Rigidbody>();
-            if (magRB != null)
-            {
-                magRB.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
-                magRB.AddForce(GM.CurrentPlayerBody.Head.forward * 100f);
-            }
-
-            // Apply scaling for big gun
-            if (isBigGun)
-            {
-                gunGO.transform.localScale = new Vector3(5, 5, 5);
-                magGO.transform.localScale = new Vector3(5, 5, 5);
-                logger.LogInfo("Applied 5x scaling for big gun mode");
-            }
-
-            logger.LogInfo($"Successfully spawned Skitty {(isBigGun ? "Big" : "Sub")} gun: {selectedGun} with magazine: {selectedMagazine}");
         }
         #endregion
 
@@ -536,11 +588,15 @@ namespace H3TVR
                 if (firearm == null)
                 {
                     logger.LogWarning("ToggleHeldGunFireMode: No firearm found in hands");
+                    audioManager?.PlayUISound("error"); // Play error sound
                     return;
                 }
 
                 string gunType = firearm.GetType().Name;
                 logger.LogInfo($"ToggleHeldGunFireMode: Attempting to toggle fire mode on {gunType}");
+
+                // Play fire mode toggle sound
+                audioManager?.PlayWeaponSpawnSound("weapon_ready", firearm.transform.position, true);
 
                 // Try various method names for fire mode cycling
                 string[] methodNames = { 
@@ -557,6 +613,7 @@ namespace H3TVR
                     {
                         mi.Invoke(firearm, null);
                         logger.LogInfo($"ToggleHeldGunFireMode: Successfully toggled via method '{methodName}'");
+                        audioManager?.PlayUISound("confirm"); // Play confirmation sound
                         return;
                     }
                 }
@@ -568,6 +625,7 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"ToggleHeldGunFireMode failed: {ex.Message}");
+                audioManager?.PlayUISound("error"); // Play error sound
             }
         }
 
@@ -850,111 +908,6 @@ namespace H3TVR
         }
 
         /// <summary>
-        /// Calculate compatibility score based on ItemID similarity
-        /// </summary>
-        private int CalculateItemIdFamilyScore(string gunId, string magId)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(gunId) || string.IsNullOrEmpty(magId))
-                    return 0;
-
-                // Convert to lowercase for comparison
-                gunId = gunId.ToLower();
-                magId = magId.ToLower();
-
-                // Exact match bonus
-                if (gunId == magId) return 120;
-
-                // Substring matching with different lengths
-                for (int len = Math.Min(gunId.Length, magId.Length); len >= 3; len--)
-                {
-                    string gunPrefix = gunId.Substring(0, Math.Min(len, gunId.Length));
-                    if (magId.Contains(gunPrefix))
-                    {
-                        return Math.Max(0, 40 + (len * 10)); // Higher score for longer matches
-                    }
-                }
-
-                return 0;
-            }
-            catch
-            {
-                return 0;
-            }
-        }
-
-        /// <summary>
-        /// Check if firearm size correlates with magazine capacity
-        /// </summary>
-        private bool CorrelateFirearmSizeWithCapacity(FVRObject.OTagFirearmSize gunSize, int magCapacity)
-        {
-            try
-            {
-                switch (gunSize)
-                {
-                    case FVRObject.OTagFirearmSize.Pocket:
-                        return magCapacity <= 10;
-                    case FVRObject.OTagFirearmSize.Pistol:
-                        return magCapacity >= 5 && magCapacity <= 20;
-                    case FVRObject.OTagFirearmSize.Compact:
-                        return magCapacity >= 10 && magCapacity <= 30;
-                    case FVRObject.OTagFirearmSize.Carbine:
-                        return magCapacity >= 15 && magCapacity <= 40;
-                    case FVRObject.OTagFirearmSize.FullSize:
-                        return magCapacity >= 20 && magCapacity <= 50;
-                    case FVRObject.OTagFirearmSize.Bulky:
-                        return magCapacity >= 30;
-                    case FVRObject.OTagFirearmSize.Oversize:
-                        return magCapacity >= 50;
-                    default:
-                        return true; // Unknown size, don't penalize
-                }
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Calculate brand/manufacturer compatibility based on name similarity
-        /// </summary>
-        private int CalculateBrandCompatibility(string gunName, string magName)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(gunName) || string.IsNullOrEmpty(magName))
-                    return 0;
-
-                gunName = gunName.ToLower();
-                magName = magName.ToLower();
-
-                // Common brand/manufacturer keywords
-                string[] brands = { "ak", "ar", "m4", "hk", "sig", "glock", "beretta", "colt", "fn", "steyr", "kel", "ruger" };
-
-                foreach (var brand in brands)
-                {
-                    if (gunName.Contains(brand) && magName.Contains(brand))
-                    {
-                        return 40;
-                    }
-                }
-
-                // Check for common word matches
-                var gunWords = gunName.Split(' ', '-', '_').Where(w => w.Length > 2).ToArray();
-                var magWords = magName.Split(' ', '-', '_').Where(w => w.Length > 2).ToArray();
-
-                int commonWords = gunWords.Intersect(magWords).Count();
-                return commonWords * 15;
-            }
-            catch
-            {
-                return 0;
-            }
-        }
-
-        /// <summary>
         /// Validate spawn conditions
         /// </summary>
         private bool ValidateSpawnConditions()
@@ -984,6 +937,294 @@ namespace H3TVR
                 .Select(g => g.Trim())
                 .Where(g => g.Length > 0)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// Get a random weapon from ItemManager
+        /// </summary>
+        private FVRObject GetRandomWeapon()
+        {
+            try
+            {
+                var allFirearms = IM.OD.Values
+                    .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Firearm)
+                    .ToArray();
+
+                if (allFirearms.Length > 0)
+                {
+                    return allFirearms[UnityEngine.Random.Range(0, allFirearms.Length)];
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"GetRandomWeapon failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Spawn a magazine for a specific weapon
+        /// </summary>
+        private void SpawnMagazineForWeapon(FVRFireArm firearm, FVRObject magazineObj)
+        {
+            try
+            {
+                if (firearm.MagazineEjectPos == null || magazineObj == null)
+                    return;
+
+                Vector3 spawnPos = firearm.MagazineEjectPos.position + Vector3.up * 0.1f;
+                GameObject magGO = Instantiate(magazineObj.GetGameObject(), spawnPos, firearm.transform.rotation);
+                
+                var magRB = magGO.GetComponent<Rigidbody>();
+                if (magRB != null)
+                {
+                    magRB.AddForce(Vector3.up * 50f);
+                }
+
+                logger.LogInfo($"Spawned magazine {magazineObj.ItemID} for weapon {firearm.name}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnMagazineForWeapon failed: {ex.Message}");
+            }
+        }
+        #endregion
+
+        /// <summary>
+        /// Spawn a random weapon with enhanced functionality using optional dependencies
+        /// </summary>
+        public void SpawnRandomWeapon(Vector3 position, Quaternion rotation, bool forceRandomMagazine = false)
+        {
+            try
+            {
+                if (IM.OD == null || IM.OD.Count == 0)
+                {
+                    logger.LogError("ItemManager not ready for weapon spawning");
+                    return;
+                }
+
+                FVRObject weaponObj = GetRandomWeapon();
+                if (weaponObj?.GetGameObject() == null)
+                {
+                    logger.LogError("Failed to get valid weapon object");
+                    return;
+                }
+
+                // Spawn the weapon
+                GameObject weaponGO = UnityEngine.Object.Instantiate(weaponObj.GetGameObject(), position, rotation);
+                if (weaponGO == null)
+                {
+                    logger.LogError("Failed to instantiate weapon");
+                    return;
+                }
+
+                logger.LogInfo($"[WeaponManager] Spawned weapon: {weaponObj.ItemID}");
+
+                var firearm = weaponGO.GetComponent<FVRFireArm>();
+                if (firearm != null)
+                {
+                    // STOVEPIPE INTEGRATION: Check if weapon can jam
+                    if (OptionalDependencyManager.IsStovepipeAvailable && OptionalDependencyManager.CanFirearmJam(firearm))
+                    {
+                        logger.LogInfo($"[WeaponManager] Weapon {weaponObj.ItemID} is compatible with Stovepipe jamming");
+                        
+                        // Randomly apply jamming (10% chance)
+                        if (UnityEngine.Random.value < 0.1f)
+                        {
+                            if (OptionalDependencyManager.TryTriggerStovepipeJam(firearm))
+                            {
+                                logger.LogInfo($"[WeaponManager] Applied Stovepipe jam to {weaponObj.ItemID}");
+                            }
+                        }
+                    }
+
+                    // MEATYCEIVER 2 INTEGRATION: Enhanced transformation system
+                    if (MeatyceiverIntegrationManager.IsIntegrationEnabled())
+                    {
+                        logger.LogInfo($"[WeaponManager] Weapon {weaponObj.ItemID} is compatible with Meatyceiver 2");
+                        
+                        // Apply transformation with player context and 5% chance
+                        if (MeatyceiverIntegrationManager.TryTransformWeapon(firearm, "Player"))
+                        {
+                            logger.LogInfo($"[WeaponManager] Applied Meatyceiver 2 transformation to {weaponObj.ItemID}");
+                        }
+                    }
+
+                    // MAGAZINE PATCHER INTEGRATION: Spawn compatible magazine
+                    if (firearm.MagazineEjectPos != null)
+                    {
+                        FVRObject magazineObj = FindBestMagazineMatchAdvanced(weaponObj);
+                        if (magazineObj != null)
+                        {
+                            SpawnMagazineForWeapon(firearm, magazineObj);
+                        }
+                        else if (OptionalDependencyManager.IsMagazinePatcherAvailable)
+                        {
+                            logger.LogWarning($"[WeaponManager] Magazine Patcher available but no compatible magazine found for {weaponObj.ItemID}");
+                        }
+                    }
+                }
+
+                // Play spawn sound effect
+                audioManager?.PlayWeaponSpawnSound("spawn", position, true);
+
+                weaponSpawnCount++;
+                lastWeaponSpawnTime = Time.time;
+
+                logger.LogInfo($"[WeaponManager] Successfully spawned weapon with enhanced features: {weaponObj.ItemID}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"[WeaponManager] Error in enhanced weapon spawning: {ex.Message}");
+                logger.LogError($"Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        #region Stovepipe Integration
+        /// <summary>
+        /// Try to jam a held weapon using Stovepipe
+        /// </summary>
+        public void JamHeldWeapon(string context = "Player", StovepipeIntegrationManager.MalfunctionType jamType = StovepipeIntegrationManager.MalfunctionType.None)
+        {
+            try
+            {
+                FVRFireArm firearm = GetHeldFirearm();
+                if (firearm == null)
+                {
+                    logger.LogWarning("JamHeldWeapon: No firearm found in hands");
+                    audioManager?.PlayUISound("error");
+                    return;
+                }
+
+                if (!OptionalDependencyManager.IsStovepipeAvailable)
+                {
+                    logger.LogWarning("JamHeldWeapon: Stovepipe not available");
+                    audioManager?.PlayUISound("error");
+                    return;
+                }
+
+                bool success;
+                if (jamType != StovepipeIntegrationManager.MalfunctionType.None)
+                {
+                    // Force specific jam type
+                    success = OptionalDependencyManager.ForceStovepipeMalfunction(firearm, jamType, context);
+                }
+                else
+                {
+                    // Let Stovepipe determine jam type
+                    success = OptionalDependencyManager.TryTriggerStovepipeJam(firearm, context, 1.0f); // 100% chance
+                }
+
+                if (success)
+                {
+                    logger.LogInfo($"JamHeldWeapon: Successfully jammed {firearm.name} with {jamType} malfunction");
+                    audioManager?.PlayUISound("confirm");
+                }
+                else
+                {
+                    logger.LogWarning($"JamHeldWeapon: Failed to jam {firearm.name}");
+                    audioManager?.PlayUISound("error");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"JamHeldWeapon failed: {ex.Message}");
+                audioManager?.PlayUISound("error");
+            }
+        }
+
+        /// <summary>
+        /// Clear jam from held weapon
+        /// </summary>
+        public void ClearHeldWeaponJam()
+        {
+            try
+            {
+                FVRFireArm firearm = GetHeldFirearm();
+                if (firearm == null)
+                {
+                    logger.LogWarning("ClearHeldWeaponJam: No firearm found in hands");
+                    audioManager?.PlayUISound("error");
+                    return;
+                }
+
+                if (!OptionalDependencyManager.IsStovepipeAvailable)
+                {
+                    logger.LogWarning("ClearHeldWeaponJam: Stovepipe not available");
+                    audioManager?.PlayUISound("error");
+                    return;
+                }
+
+                if (!OptionalDependencyManager.IsFirearmJammed(firearm))
+                {
+                    logger.LogInfo("ClearHeldWeaponJam: Weapon is not jammed");
+                    audioManager?.PlayUISound("confirm");
+                    return;
+                }
+
+                bool success = OptionalDependencyManager.ClearFirearmJam(firearm);
+                if (success)
+                {
+                    logger.LogInfo($"ClearHeldWeaponJam: Successfully cleared jam from {firearm.name}");
+                    audioManager?.PlayUISound("confirm");
+                }
+                else
+                {
+                    logger.LogWarning($"ClearHeldWeaponJam: Failed to clear jam from {firearm.name}");
+                    audioManager?.PlayUISound("error");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"ClearHeldWeaponJam failed: {ex.Message}");
+                audioManager?.PlayUISound("error");
+            }
+        }
+
+        /// <summary>
+        /// Check if held weapon is jammed
+        /// </summary>
+        public bool IsHeldWeaponJammed()
+        {
+            try
+            {
+                FVRFireArm firearm = GetHeldFirearm();
+                if (firearm == null || !OptionalDependencyManager.IsStovepipeAvailable)
+                    return false;
+
+                return OptionalDependencyManager.IsFirearmJammed(firearm);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"IsHeldWeaponJammed failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Apply random malfunction to held weapon (for testing/fun)
+        /// </summary>
+        public void ApplyRandomMalfunction()
+        {
+            try
+            {
+                var malfunctionTypes = Enum.GetValues(typeof(StovepipeIntegrationManager.MalfunctionType))
+                    .Cast<StovepipeIntegrationManager.MalfunctionType>()
+                    .Where(t => t != StovepipeIntegrationManager.MalfunctionType.None)
+                    .ToArray();
+
+                if (malfunctionTypes.Length > 0)
+                {
+                    var randomType = malfunctionTypes[UnityEngine.Random.Range(0, malfunctionTypes.Length)];
+                    JamHeldWeapon("Random", randomType);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"ApplyRandomMalfunction failed: {ex.Message}");
+            }
         }
         #endregion
     }

@@ -15,12 +15,22 @@ namespace H3TVR
         private H3TVRImproved plugin;
         private SlomoMovementController slomoController;
         private ManualLogSource logger;
+        private static EffectsManager instance;
 
         public void Initialize(H3TVRImproved pluginInstance, SlomoMovementController controller, ManualLogSource logSource)
         {
             plugin = pluginInstance;
             slomoController = controller;
             logger = logSource;
+            instance = this;
+        }
+
+        /// <summary>
+        /// Check if EffectsManager is initialized
+        /// </summary>
+        public static bool IsInitialized()
+        {
+            return instance != null;
         }
 
         #region Slomo Effects
@@ -223,5 +233,165 @@ namespace H3TVR
             }
         }
         #endregion
+
+        /// <summary>
+        /// Play Stovepipe malfunction particle effects
+        /// </summary>
+        public static void PlayStovepipeParticles(Vector3 position, StovepipeIntegrationManager.MalfunctionType malfunctionType)
+        {
+            try
+            {
+                if (instance == null)
+                {
+                    instance?.logger?.LogWarning("EffectsManager not initialized for Stovepipe particles");
+                    return;
+                }
+
+                // Create appropriate particle effect based on malfunction type
+                GameObject particleEffect = CreateStovepipeParticleEffect(position, malfunctionType);
+                
+                if (particleEffect != null)
+                {
+                    instance.logger?.LogDebug($"Playing Stovepipe particle effect for {malfunctionType} at {position}");
+                    
+                    // Auto-destroy particle effect after a short time
+                    MonoBehaviour.Destroy(particleEffect, 3.0f);
+                }
+            }
+            catch (Exception ex)
+            {
+                instance?.logger?.LogError($"PlayStovepipeParticles failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Create particle effect for specific malfunction type
+        /// </summary>
+        private static GameObject CreateStovepipeParticleEffect(Vector3 position, StovepipeIntegrationManager.MalfunctionType malfunctionType)
+        {
+            try
+            {
+                GameObject effectObject = new GameObject($"StovepipeEffect_{malfunctionType}");
+                effectObject.transform.position = position;
+
+                // Add particle system
+                var particles = effectObject.AddComponent<ParticleSystem>();
+                var main = particles.main;
+                var emission = particles.emission;
+                var shape = particles.shape;
+                var velocityOverLifetime = particles.velocityOverLifetime;
+
+                // Configure based on malfunction type
+                switch (malfunctionType)
+                {
+                    case StovepipeIntegrationManager.MalfunctionType.Stovepipe:
+                        // Brass casing stuck in ejection port
+                        main.startColor = new Color(0.8f, 0.6f, 0.2f, 0.8f); // Brass color
+                        main.startSize = 0.02f;
+                        main.startLifetime = 2.0f;
+                        emission.rateOverTime = 20;
+                        break;
+
+                    case StovepipeIntegrationManager.MalfunctionType.DoubleFeed:
+                        // Two rounds jamming
+                        main.startColor = new Color(0.7f, 0.7f, 0.2f, 0.9f); // Brass/steel mix
+                        main.startSize = 0.015f;
+                        main.startLifetime = 1.5f;
+                        emission.rateOverTime = 30;
+                        break;
+
+                    case StovepipeIntegrationManager.MalfunctionType.FailureToEject:
+                        // Spent casing stuck
+                        main.startColor = new Color(0.6f, 0.4f, 0.2f, 0.7f); // Dirty brass
+                        main.startSize = 0.018f;
+                        main.startLifetime = 2.5f;
+                        emission.rateOverTime = 15;
+                        break;
+
+                    case StovepipeIntegrationManager.MalfunctionType.FailureToFeed:
+                        // Round not chambering properly
+                        main.startColor = new Color(0.8f, 0.8f, 0.3f, 0.6f); // Fresh brass
+                        main.startSize = 0.012f;
+                        main.startLifetime = 1.0f;
+                        emission.rateOverTime = 25;
+                        break;
+
+                    case StovepipeIntegrationManager.MalfunctionType.DirtyGun:
+                        // Fouling/dirt particles
+                        main.startColor = new Color(0.3f, 0.3f, 0.3f, 0.8f); // Dark/dirty
+                        main.startSize = 0.008f;
+                        main.startLifetime = 3.0f;
+                        emission.rateOverTime = 40;
+                        break;
+
+                    default:
+                        // Generic malfunction effect
+                        main.startColor = new Color(0.5f, 0.5f, 0.5f, 0.6f); // Neutral gray
+                        main.startSize = 0.01f;
+                        main.startLifetime = 1.5f;
+                        emission.rateOverTime = 20;
+                        break;
+                }
+
+                // Common settings
+                main.startSpeed = 0.5f;
+                main.maxParticles = 50;
+                shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle = 15f;
+                shape.radius = 0.05f;
+
+                // Add some movement
+                velocityOverLifetime.enabled = true;
+                velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
+                // Remove the .radial property access that doesn't exist in older Unity versions
+                // velocityOverLifetime.radial = new ParticleSystem.MinMaxCurve(0.1f);
+
+                return effectObject;
+            }
+            catch (Exception ex)
+            {
+                instance?.logger?.LogError($"CreateStovepipeParticleEffect failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Create smoke effect for weapon malfunction
+        /// </summary>
+        public static void CreateMalfunctionSmokeEffect(Vector3 position, float intensity = 1.0f)
+        {
+            try
+            {
+                if (instance == null) return;
+
+                GameObject smokeEffect = new GameObject("MalfunctionSmoke");
+                smokeEffect.transform.position = position;
+
+                var particles = smokeEffect.AddComponent<ParticleSystem>();
+                var main = particles.main;
+                var emission = particles.emission;
+                var shape = particles.shape;
+
+                // Smoke configuration
+                main.startColor = new Color(0.2f, 0.2f, 0.2f, 0.6f);
+                main.startSize = 0.1f * intensity;
+                main.startLifetime = 5.0f;
+                main.startSpeed = 0.2f;
+                main.maxParticles = (int)(30 * intensity);
+
+                emission.rateOverTime = 10 * intensity;
+                shape.shapeType = ParticleSystemShapeType.Circle;
+                shape.radius = 0.03f;
+
+                // Auto-destroy
+                MonoBehaviour.Destroy(smokeEffect, 6.0f);
+
+                instance.logger?.LogDebug($"Created malfunction smoke effect at {position} with intensity {intensity}");
+            }
+            catch (Exception ex)
+            {
+                instance?.logger?.LogError($"CreateMalfunctionSmokeEffect failed: {ex.Message}");
+            }
+        }
     }
 }

@@ -4,7 +4,7 @@ using BepInEx.Logging;
 
 namespace H3TVR
 {
-    public class SlomoMovementController
+    public class SlomoMovementController : MonoBehaviour
     {
         private static ManualLogSource Logger;
         
@@ -16,6 +16,12 @@ namespace H3TVR
         // Movement scaling parameters
         private float movementScale = 0.3f; // 30% of normal speed during slomo
         private bool affectsMovement = true;
+        
+        public void Initialize(ManualLogSource logger)
+        {
+            Logger = logger;
+            Logger.LogInfo($"SlomoMovementController initialized");
+        }
         
         public void Initialize(float movementScaleValue, bool affectsMovementValue, ManualLogSource logger)
         {

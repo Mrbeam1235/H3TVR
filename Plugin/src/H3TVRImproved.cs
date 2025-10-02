@@ -6,6 +6,7 @@ using System.Collections;
 using UnityEngine;
 using System.Collections.Generic;
 using HarmonyLib;
+using System;
 
 namespace H3TVR
 {
@@ -40,6 +41,11 @@ namespace H3TVR
         private ConfigEntry<string> slomoVRButton;
         private ConfigEntry<bool> slomoAffectsMovement;
         private ConfigEntry<float> slomoMovementScale;
+        
+        // Audio Configuration
+        private ConfigEntry<bool> slomoAffectsAudio;
+        private ConfigEntry<float> slomoAudioPitchScale;
+        private ConfigEntry<bool> slomoAudioPreservePitch;
         
         // Gun Randomization Configuration
         private ConfigEntry<bool> useItemManagerForGunRandomization;
@@ -85,7 +91,9 @@ namespace H3TVR
         private SpawnManager spawnManager;
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
-        private EnhancedChatSpawner enhancedChatSpawner; // Use standalone enhanced chat spawner
+        private AudioManager audioManager;
+        private EnhancedChatSpawner enhancedChatSpawner;
+        private SosigArmorWristMenuIntegration sosigArmorWristMenu;
         #endregion
 
         #region Initialization
@@ -93,7 +101,49 @@ namespace H3TVR
         {
             hooks.Hook();
             Logger.LogInfo("Loading H3TVR Enhanced Edition");
-            InitializeConfiguration();
+        }
+
+        private void Awake()
+        {
+            try
+            {
+                // Initialize optional dependency manager early
+                OptionalDependencyManager.Initialize(base.Logger);
+                
+                base.Logger.LogInfo("H3TVR Enhanced Edition is loading...");
+                
+                // Initialize configuration
+                InitializeConfiguration();
+                
+                // Initialize optional dependencies
+                InitializeOptionalDependencies();
+                
+                // Initialize components
+                InitializeComponents();
+                
+                // Initialize chat spawner
+                InitializeSosigSpawner();
+                
+                // Initialize wrist menu integration
+                InitializeSosigArmorWristMenuIntegration();
+                
+                base.Logger.LogInfo("H3TVR Enhanced Edition loaded successfully!");
+                
+                // Log dependency status
+                base.Logger.LogInfo(OptionalDependencyManager.GetDependencyStatusReport());
+                
+                // Log Meatyceiver 2 specific status
+                if (MeatyceiverIntegrationManager.IsIntegrationEnabled())
+                {
+                    base.Logger.LogInfo("Meatyceiver 2 Integration: ACTIVE");
+                    base.Logger.LogInfo(MeatyceiverIntegrationManager.GetTransformationStats());
+                }
+            }
+            catch (Exception ex)
+            {
+                base.Logger.LogError($"Error during H3TVR initialization: {ex.Message}");
+                base.Logger.LogError($"Stack trace: {ex.StackTrace}");
+            }
         }
 
         private void InitializeConfiguration()
@@ -107,6 +157,11 @@ namespace H3TVR
             slomoVRButton = Config.Bind("Slomo", "VRButton", "LeftX", "VR button to trigger slomo");
             slomoAffectsMovement = Config.Bind("Slomo", "AffectsMovement", true, "Whether slomo affects player movement speed");
             slomoMovementScale = Config.Bind("Slomo", "MovementScale", 0.3f, "Movement speed multiplier during slomo");
+            
+            // Audio configuration
+            slomoAffectsAudio = Config.Bind("Audio", "SlomoAffectsAudio", true, "Whether slomo affects audio pitch");
+            slomoAudioPitchScale = Config.Bind("Audio", "SlomoAudioPitchScale", 1f, "Audio pitch multiplier during slomo (1.0 = normal pitch, 0.5 = half pitch)");
+            slomoAudioPreservePitch = Config.Bind("Audio", "SlomoPreservePitch", false, "If true, audio pitch is preserved (no pitch change). If false, uses pitch scaling.");
             
             // Gun randomization
             useItemManagerForGunRandomization = Config.Bind("GunRandomization", "UseItemManager", true, 
@@ -195,49 +250,125 @@ namespace H3TVR
             }
         }
 
-        public void Awake()
+        /// <summary>
+        /// Initialize all optional dependency managers
+        /// </summary>
+        private void InitializeOptionalDependencies()
         {
-            Harmony.CreateAndPatchAll(this.GetType());
-            
-            // Initialize components
-            slomoMovementController = new SlomoMovementController();
-            slomoMovementController.Initialize(slomoMovementScale.Value, slomoAffectsMovement.Value, Logger);
-            
-            inputHandler = gameObject.AddComponent<InputHandler>();
-            spawnManager = gameObject.AddComponent<SpawnManager>();
-            effectsManager = gameObject.AddComponent<EffectsManager>();
-            weaponManager = gameObject.AddComponent<WeaponManager>();
-            
-            // Initialize components with dependencies
-            InitializeComponents();
-            
-            // Initialize sosig spawner integration
-            InitializeSosigSpawner();
-            
-            Logger.LogInfo("Successfully loaded H3TVR Enhanced Edition!");
+            try
+            {
+                // Initialize OptionalDependencyManager first
+                OptionalDependencyManager.Initialize(Logger);
+
+                // Initialize Meatyceiver 2 Integration
+                MeatyceiverIntegrationManager.Initialize(Logger, Config);
+
+                // Initialize Stovepipe Integration
+                StovepipeIntegrationManager.Initialize(Logger, Config);
+
+                // Log final status
+                if (OptionalDependencyManager.HasAnyDependencies())
+                {
+                    int availableCount = OptionalDependencyManager.GetAvailableDependencyCount();
+                    Logger.LogInfo($"[H3TVRImproved] Enhanced functionality active with {availableCount} optional dependencies");
+                    
+                    if (OptionalDependencyManager.IsStovepipeAvailable)
+                    {
+                        Logger.LogInfo("[H3TVRImproved] Stovepipe integration active - realistic weapon malfunctions enabled");
+                    }
+                    
+                    if (OptionalDependencyManager.IsMeatyceiver2Available)
+                    {
+                        Logger.LogInfo("[H3TVRImproved] Meatyceiver 2 integration active - weapon transformations enabled");
+                    }
+                }
+                else
+                {
+                    Logger.LogInfo("[H3TVRImproved] Running in standard mode - no optional dependencies found");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[H3TVRImproved] Error initializing optional dependencies: {ex.Message}");
+            }
         }
 
         private void InitializeComponents()
         {
-            inputHandler.Initialize(keyBindings, this);
-            spawnManager.Initialize(this, Logger);
-            effectsManager.Initialize(this, slomoMovementController, Logger);
-            weaponManager.Initialize(this, Logger);
+            try
+            {
+                // Initialize components in proper order
+                slomoMovementController = gameObject.AddComponent<SlomoMovementController>();
+                slomoMovementController.Initialize(slomoMovementScale.Value, slomoAffectsMovement.Value, Logger);
+
+                inputHandler = gameObject.AddComponent<InputHandler>();
+                spawnManager = gameObject.AddComponent<SpawnManager>();
+                effectsManager = gameObject.AddComponent<EffectsManager>();
+                weaponManager = gameObject.AddComponent<WeaponManager>();
+                audioManager = gameObject.AddComponent<AudioManager>();
+
+                // Initialize each component
+                audioManager.Initialize(this, Logger);
+                inputHandler.Initialize(keyBindings, this);
+                spawnManager.Initialize(this, Logger, enhancedChatSpawner, audioManager);
+                effectsManager.Initialize(this, slomoMovementController, Logger);
+                weaponManager.Initialize(this, Logger, audioManager);
+
+                Logger.LogInfo("All components initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Error initializing components: {ex.Message}");
+            }
         }
 
         private void InitializeSosigSpawner()
         {
-            // Initialize the standalone Enhanced Chat Spawner
-            GameObject enhancedSpawnerObject = new GameObject("EnhancedChatSpawner");
-            enhancedSpawnerObject.transform.SetParent(transform);
-            
-            enhancedChatSpawner = enhancedSpawnerObject.AddComponent<EnhancedChatSpawner>();
-            enhancedChatSpawner.Initialize(this, Logger);
-            
-            // Set the enhanced chat spawner reference in SpawnManager
-            spawnManager.SetEnhancedChatSpawner(enhancedChatSpawner);
-            
-            Logger.LogInfo("Enhanced Chat Spawner initialized (standalone mode)!");
+            try
+            {
+                // Initialize the standalone Enhanced Chat Spawner
+                GameObject enhancedSpawnerObject = new GameObject("EnhancedChatSpawner");
+                enhancedSpawnerObject.transform.SetParent(transform);
+                
+                enhancedChatSpawner = enhancedSpawnerObject.AddComponent<EnhancedChatSpawner>();
+                enhancedChatSpawner.Initialize(this, Logger);
+                
+                // Update spawn manager with chat spawner reference
+                if (spawnManager != null)
+                {
+                    spawnManager.Initialize(this, Logger, enhancedChatSpawner, audioManager);
+                }
+                
+                Logger.LogInfo("Enhanced Chat Spawner initialized (standalone mode)!");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Error initializing Sosig Spawner: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Initialize the Sosig Armor Wrist Menu Integration
+        /// </summary>
+        private void InitializeSosigArmorWristMenuIntegration()
+        {
+            try
+            {
+                // Create the integration component
+                var integrationObject = new GameObject("SosigArmorWristMenuIntegration");
+                integrationObject.transform.SetParent(transform);
+
+                sosigArmorWristMenu = integrationObject.AddComponent<SosigArmorWristMenuIntegration>();
+
+                // Initialize the integration with the plugin reference
+                sosigArmorWristMenu.Initialize(this, null);
+                
+                Logger.LogInfo("Sosig Armor Wrist Menu Integration initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Failed to initialize Sosig Armor Wrist Menu Integration: {ex.Message}");
+            }
         }
         #endregion
 
@@ -267,6 +398,7 @@ namespace H3TVR
                 case "Wait":
                     Logger.LogInfo("Waiting!");
                     slomoStatus = "Paused";
+                    audioManager?.PlaySlomoSound("active"); // Play slomo active sound
                     StartCoroutine(effectsManager.SlomoWait(() => slomoStatus = "Return"));
                     break;
                 case "Return":
@@ -277,9 +409,15 @@ namespace H3TVR
 
             if (Time.timeScale == 1)
             {
+                if (slomoStatus != "Off")
+                {
+                    audioManager?.PlaySlomoSound("end"); // Play slomo end sound
+                }
                 slomoStatus = "Off";
-                slomoMovementController?.UpdateMovementScale(Time.timeScale);
             }
+            
+            // Update movement scaling based on current time scale
+            slomoMovementController?.UpdateMovementScale(Time.timeScale);
         }
 
         private void HandleZeroGravityStateMachine()
@@ -319,14 +457,25 @@ namespace H3TVR
         #endregion
 
         #region Public API for Components
-        public void TriggerSlomo() => slomoStatus = "Slowing";
-        public void TriggerZeroGravity() => effectsManager.ZeroGravityBumpDown();
+        public void TriggerSlomo() 
+        { 
+            slomoStatus = "Slowing";
+            audioManager?.PlaySlomoSound("start"); // Play slomo start sound
+        }
+        
+        public void TriggerZeroGravity() 
+        { 
+            effectsManager.ZeroGravityBumpDown();
+            // Zero gravity doesn't have specific audio in the current setup
+        }
+        
         public void ActivateMalfunctionBoost() => weaponManager.ActivateMalfunctionBoost(ref malfunctionBoostActive, ref malfunctionBoostEndTime);
         
         // Component access methods
         public SpawnManager GetSpawnManager() => spawnManager;
         public WeaponManager GetWeaponManager() => weaponManager;
         public EffectsManager GetEffectsManager() => effectsManager;
+        public AudioManager GetAudioManager() => audioManager;
         
         // Spawn configuration access methods
         public void GetShurikenConfig(out int min, out int max)
@@ -395,6 +544,27 @@ namespace H3TVR
             vrButton = slomoVRButton.Value;
         }
         
+        // Audio config
+        public void GetSlomoAudioConfig(out bool affectsAudio, out float pitchScale, out bool preservePitch)
+        {
+            affectsAudio = slomoAffectsAudio.Value;
+            pitchScale = slomoAudioPitchScale.Value;
+            preservePitch = slomoAudioPreservePitch.Value;
+        }
+        
+        // Movement config
+        public void GetSlomoMovementConfig(out bool affectsMovement, out float movementScale)
+        {
+            affectsMovement = slomoAffectsMovement.Value;
+            movementScale = slomoMovementScale.Value;
+        }
+        
+        // Update movement settings at runtime
+        public void UpdateSlomoMovementSettings()
+        {
+            slomoMovementController?.UpdateSettings(slomoMovementScale.Value, slomoAffectsMovement.Value);
+        }
+
         // State setters
         public void SetSlomoStatus(string status) => slomoStatus = status;
 
@@ -418,6 +588,11 @@ namespace H3TVR
         {
             return maxChatSosigs?.Value ?? 10;
         }
+
+        public SosigArmorWristMenuIntegration GetSosigArmorWristMenu()
+        {
+            return sosigArmorWristMenu;
+        }
         #endregion
 
         #region Harmony Patches and Cleanup
@@ -425,9 +600,27 @@ namespace H3TVR
         [HarmonyPrefix]
         public static void FixPitch(ref float value)
         {
-            if (Time.timeScale != 1f)
+            // Get the current plugin instance to access configuration
+            var instance = FindObjectOfType<H3TVRImproved>();
+            if (instance == null) return;
+            
+            bool affectsAudio, preservePitch;
+            float pitchScale;
+            instance.GetSlomoAudioConfig(out affectsAudio, out pitchScale, out preservePitch);
+            
+            // Only modify pitch if slomo affects audio and we're not in normal time
+            if (affectsAudio && Time.timeScale != 1f)
             {
-                value *= Time.timeScale;
+                if (preservePitch)
+                {
+                    // Preserve original pitch by compensating for time scale
+                    value *= (1f / Time.timeScale);
+                }
+                else
+                {
+                    // Apply custom pitch scaling
+                    value *= (Time.timeScale * pitchScale);
+                }
             }
         }
 

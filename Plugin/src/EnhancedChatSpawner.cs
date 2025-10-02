@@ -706,7 +706,7 @@ namespace H3TVR
 
         #region Core Sosig Spawning Logic
         /// <summary>
-        /// Core sosig spawning method using H3VR systems
+        /// Core sosig spawning method using H3VR systems (Enhanced with TNH armor and optional dependencies)
         /// </summary>
         private Sosig SpawnSosigFromTemplate(SosigEnemyTemplate template, Vector3 position, Quaternion rotation, int IFF, string userName)
         {
@@ -759,8 +759,12 @@ namespace H3TVR
                 // Equip weapons
                 EquipSosigWeapons(sosig, template, position, rotation);
 
-                // Apply outfit
-                ApplyOutfitToSosig(sosig, template);
+                // Apply TNH armor instead of basic outfit
+                bool isFriendly = IFF == 0;
+                ApplyTNHArmorToSosig(sosig, isFriendly, isFriendly ? defaultAllyArmor?.Value : defaultEnemyArmor?.Value);
+
+                // ENHANCED: Apply optional dependency enhancements
+                ApplyOptionalDependencyEnhancements(sosig, userName, !isFriendly);
 
                 lastSpawnTime = Time.time;
                 return sosig;
@@ -769,6 +773,27 @@ namespace H3TVR
             {
                 logger?.LogError($"Exception in SpawnSosigFromTemplate: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Apply enhancements from optional dependencies
+        /// </summary>
+        private void ApplyOptionalDependencyEnhancements(Sosig sosig, string spawnerContext, bool isEnemy)
+        {
+            try
+            {
+                // Initialize sosig weapon enhancer if not done
+                SosigWeaponEnhancer.Initialize(logger);
+
+                // Apply contextual enhancements based on spawner and sosig type
+                SosigWeaponEnhancer.ApplyContextualEnhancements(sosig, spawnerContext);
+
+                logger?.LogDebug($"[EnhancedChatSpawner] Applied optional dependency enhancements to sosig for {spawnerContext}");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"[EnhancedChatSpawner] Error applying optional dependency enhancements: {ex.Message}");
             }
         }
 
@@ -1064,6 +1089,146 @@ namespace H3TVR
                 logger?.LogError($"Failed to create spawn effect for {chatSosig.UserName}: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Apply TNH armor to sosig using the integrated armor system
+        /// </summary>
+        private void ApplyTNHArmorToSosig(Sosig sosig, bool isFriendly, string armorPreset)
+        {
+            try
+            {
+                if (sosig?.Links == null || sosig.Links.Count == 0)
+                {
+                    logger?.LogWarning("Cannot apply TNH armor - sosig has no valid links");
+                    return;
+                }
+
+                // Try to get the armor integration from the plugin
+                var armorIntegration = plugin?.GetSosigArmorWristMenu();
+                if (armorIntegration != null && armorIntegration.IsFactionArmorEnabled())
+                {
+                    // Use the advanced armor system
+                    armorIntegration.ApplyArmorToSosig(sosig, isFriendly);
+                    logger?.LogDebug($"Applied advanced armor to sosig via wrist menu integration");
+                }
+                else
+                {
+                    // Fallback to basic TNH armor application
+                    logger?.LogDebug("Using fallback armor application");
+                    ApplyBasicTNHArmor(sosig, isFriendly, armorPreset);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to apply TNH armor to sosig: {ex.Message}");
+                // Fallback to basic armor
+                ApplyBasicTNHArmor(sosig, isFriendly, armorPreset);
+            }
+        }
+
+        /// <summary>
+        /// Apply basic TNH armor when advanced integration is not available
+        /// </summary>
+        private void ApplyBasicTNHArmor(Sosig sosig, bool isFriendly, string armorPreset)
+        {
+            try
+            {
+                // Define basic armor chances based on faction
+                var armorChances = isFriendly ? new Dictionary<string, float>
+                {
+                    {"Headwear", 0.9f}, {"Facewear", 0.3f}, {"Eyewear", 0.6f}, {"Torsowear", 1.0f},
+                    {"Pantswear", 0.8f}, {"PantswearLower", 0.7f}, {"Backpacks", 0.6f}, {"Decorations", 0.4f}
+                } : new Dictionary<string, float>
+                {
+                    {"Headwear", 0.7f}, {"Facewear", 0.8f}, {"Eyewear", 0.4f}, {"Torsowear", 0.8f},
+                    {"Pantswear", 0.7f}, {"PantswearLower", 0.5f}, {"Backpacks", 0.3f}, {"Decorations", 0.2f}
+                };
+
+                // Try to get armor from H3VR asset loader
+                if (H3VRAssetLoader.IsInitialized)
+                {
+                    var armorCategories = H3VRAssetLoader.GetAllArmorCategories();
+                    ApplyArmorFromCategories(sosig, armorCategories, armorChances);
+                }
+                else
+                {
+                    logger?.LogWarning("H3VR Asset Loader not initialized - skipping TNH armor application");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to apply basic TNH armor: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Apply armor from available categories with specified chances
+        /// </summary>
+        private void ApplyArmorFromCategories(Sosig sosig, Dictionary<string, List<FVRObject>> armorCategories, Dictionary<string, float> armorChances)
+        {
+            foreach (var kvp in armorChances)
+            {
+                if (UnityEngine.Random.value < kvp.Value && armorCategories.ContainsKey(kvp.Key))
+                {
+                    var armorList = armorCategories[kvp.Key];
+                    if (armorList.Count > 0)
+                    {
+                        var randomArmor = armorList[UnityEngine.Random.Range(0, armorList.Count)];
+                        ApplyArmorPieceToSosig(sosig, kvp.Key, randomArmor);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Apply a specific armor piece to a sosig
+        /// </summary>
+        private void ApplyArmorPieceToSosig(Sosig sosig, string category, FVRObject armorObject)
+        {
+            var link = GetLinkForArmorCategory(sosig, category);
+            if (link == null || armorObject?.GetGameObject() == null) return;
+
+            try
+            {
+                var armorInstance = Instantiate(armorObject.GetGameObject(), link.transform);
+                var wearable = armorInstance.GetComponent<SosigWearable>();
+                if (wearable != null)
+                {
+                    wearable.RegisterWearable(link);
+                }
+                
+                logger?.LogDebug($"Applied {category} armor piece to sosig");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to apply armor piece {category}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get the appropriate sosig link for an armor category
+        /// </summary>
+        private SosigLink GetLinkForArmorCategory(Sosig sosig, string category)
+        {
+            if (sosig?.Links == null || sosig.Links.Count == 0) return null;
+
+            switch (category)
+            {
+                case "Headwear":
+                case "Facewear":
+                case "Eyewear":
+                    return sosig.Links[0]; // Head
+                case "Torsowear":
+                case "Backpacks":
+                case "Decorations":
+                    return sosig.Links.Count > 1 ? sosig.Links[1] : null; // Torso
+                case "Pantswear":
+                case "PantswearLower":
+                    return sosig.Links.Count > 2 ? sosig.Links[2] : null; // Legs
+                default:
+                    return sosig.Links[0];
+            }
+        }
         #endregion
 
         #region Queue Processing and Coroutines
@@ -1303,6 +1468,41 @@ namespace H3TVR
             {
                 logger?.LogError($"Error in cleanup: {ex.Message}");
             }
+        }
+        #endregion
+
+        #region Enhanced Stats Reporting
+        /// <summary>
+        /// Get comprehensive status report including dependencies
+        /// </summary>
+        public ChatSosigStats GetStatsWithDependencies()
+        {
+            var stats = GetStats();
+            
+            // Add dependency information
+            var enhancedStats = new EnhancedChatSosigStats
+            {
+                ActiveAllies = stats.ActiveAllies,
+                ActiveEnemies = stats.ActiveEnemies,
+                QueueLength = stats.QueueLength,
+                TotalSpawned = stats.TotalSpawned,
+                PerformanceMode = stats.PerformanceMode,
+                DependencyStatus = OptionalDependencyManager.GetDependencyStatusReport(),
+                WeaponEnhancementStatus = SosigWeaponEnhancer.GetEnhancementStats(),
+                EnhancementsActive = OptionalDependencyManager.GetAvailableDependencyCount()
+            };
+
+            return enhancedStats;
+        }
+
+        /// <summary>
+        /// Enhanced stats class with dependency information
+        /// </summary>
+        public class EnhancedChatSosigStats : ChatSosigStats
+        {
+            public string DependencyStatus { get; set; }
+            public string WeaponEnhancementStatus { get; set; }
+            public int EnhancementsActive { get; set; }
         }
         #endregion
     }
