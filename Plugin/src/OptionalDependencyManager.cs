@@ -21,6 +21,7 @@ namespace H3TVR
         public static bool IsMagazinePatcherAvailable { get; private set; } = false;
         public static bool IsMeatyceiver2Available { get; private set; } = false;
         public static bool IsStovepipeAvailable { get; private set; } = false;
+        public static bool IsJeditTippyToyAvailable { get; private set; } = false;
         public static bool IsOtherToolsAvailable { get; private set; } = false;
 
         // Integration instances
@@ -38,6 +39,7 @@ namespace H3TVR
         private const string MAGAZINE_PATCHER_GUID = "h3vr.magazinepatcher";
         private const string STOVEPIPE_GUID = "dll.stovepipe";
         private const string MEATYCEIVER_GUID = "Potatoes.Meatyceiver_2";
+        private const string JEDIT_TIPPY_TOY_GUID = "PutterMyBancakes.Jeditippytoy";
 
         public static void Initialize(ManualLogSource logSource)
         {
@@ -66,6 +68,10 @@ namespace H3TVR
                 CheckStovepipeAvailability();
                 availableDependencies["Stovepipe"] = IsStovepipeAvailable;
 
+                // Detect Jedit Tippy Toy
+                IsJeditTippyToyAvailable = DetectJeditTippyToy();
+                availableDependencies["JeditTippyToy"] = IsJeditTippyToyAvailable;
+
                 // Detect other tools (placeholder for future integrations)
                 IsOtherToolsAvailable = DetectOtherTools();
                 availableDependencies["OtherTools"] = IsOtherToolsAvailable;
@@ -84,10 +90,11 @@ namespace H3TVR
             logger.LogInfo($"  • Magazine Patcher: {(IsMagazinePatcherAvailable ? "? Available" : "? Not Found")}");
             logger.LogInfo($"  • Meatyceiver 2: {(IsMeatyceiver2Available ? "? Available" : "? Not Found")}");
             logger.LogInfo($"  • Stovepipe: {(IsStovepipeAvailable ? "? Available" : "? Not Found")}");
+            logger.LogInfo($"  • Jedit Tippy Toy: {(IsJeditTippyToyAvailable ? "? Available" : "? Not Found")}");
             logger.LogInfo($"  • Other Tools: {(IsOtherToolsAvailable ? "? Available" : "? Not Found")}");
             
             int availableCount = GetAvailableDependencyCount();
-            logger.LogInfo($"[OptionalDependencies] {availableCount}/4 optional dependencies detected");
+            logger.LogInfo($"[OptionalDependencies] {availableCount}/5 optional dependencies detected");
         }
 
         #region Magazine Patcher Integration
@@ -201,6 +208,110 @@ namespace H3TVR
             }
 
             return compatibleMagazines;
+        }
+        #endregion
+
+        #region Jedit Tippy Toy Integration
+        /// <summary>
+        /// Check if Jedit Tippy Toy mod is available
+        /// </summary>
+        private static bool DetectJeditTippyToy()
+        {
+            try
+            {
+                // Method 1: Check via BepInEx plugin manager
+                var pluginInfos = BepInEx.Bootstrap.Chainloader.PluginInfos;
+                if (pluginInfos.ContainsKey(JEDIT_TIPPY_TOY_GUID))
+                {
+                    logger.LogInfo("[OptionalDependencies] Jedit Tippy Toy detected via BepInEx");
+                    return true;
+                }
+
+                // Method 2: Check if TippyToy_Set2 exists in ItemManager
+                if (IM.OD != null && IM.OD.ContainsKey("TippyToy_Set2"))
+                {
+                    logger.LogInfo("[OptionalDependencies] Jedit Tippy Toy detected via ItemManager (TippyToy_Set2 found)");
+                    return true;
+                }
+
+                // Method 3: Try to find Jedit Tippy Toy types via reflection
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var assembly in assemblies)
+                {
+                    try
+                    {
+                        var types = assembly.GetTypes();
+                        foreach (var type in types)
+                        {
+                            if (type.Name.Contains("JeditTippyToy") || 
+                                type.Name.Contains("TippyToy") ||
+                                type.Namespace?.Contains("JeditTippyToy") == true)
+                            {
+                                logger.LogInfo($"[OptionalDependencies] Jedit Tippy Toy detected via reflection: {type.FullName}");
+                                return true;
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Skip assemblies that can't be reflected
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"[OptionalDependencies] Error checking Jedit Tippy Toy availability: {ex.Message}");
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if Jedit Tippy Toy object is available for spawning
+        /// </summary>
+        public static bool IsJeditToySpawnable()
+        {
+            if (!IsJeditTippyToyAvailable)
+                return false;
+
+            try
+            {
+                return IM.OD != null && IM.OD.ContainsKey("TippyToy_Set2");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"[OptionalDependencies] Error checking Jedit Toy spawnability: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Get Jedit Tippy Toy object ID for spawning
+        /// </summary>
+        public static string GetJeditToyObjectID()
+        {
+            return "TippyToy_Set2";
+        }
+
+        /// <summary>
+        /// Validate Jedit Tippy Toy is properly installed and functional
+        /// </summary>
+        public static bool ValidateJeditTippyToy()
+        {
+            if (!IsJeditTippyToyAvailable)
+            {
+                logger.LogWarning("[OptionalDependencies] Jedit Tippy Toy not detected. Install from: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/");
+                return false;
+            }
+
+            if (!IsJeditToySpawnable())
+            {
+                logger.LogWarning("[OptionalDependencies] Jedit Tippy Toy detected but TippyToy_Set2 not found in ItemManager");
+                return false;
+            }
+
+            logger.LogInfo("[OptionalDependencies] Jedit Tippy Toy validated and ready");
+            return true;
         }
         #endregion
 
@@ -507,7 +618,7 @@ namespace H3TVR
 
         public static bool HasAnyDependencies()
         {
-            return IsMagazinePatcherAvailable || IsMeatyceiver2Available || IsStovepipeAvailable || IsOtherToolsAvailable;
+            return IsMagazinePatcherAvailable || IsMeatyceiver2Available || IsStovepipeAvailable || IsJeditTippyToyAvailable || IsOtherToolsAvailable;
         }
 
         public static int GetAvailableDependencyCount()
@@ -516,6 +627,7 @@ namespace H3TVR
             if (IsMagazinePatcherAvailable) count++;
             if (IsMeatyceiver2Available) count++;
             if (IsStovepipeAvailable) count++;
+            if (IsJeditTippyToyAvailable) count++;
             if (IsOtherToolsAvailable) count++;
             return count;
         }
@@ -534,8 +646,9 @@ namespace H3TVR
             info += $"• Magazine Patcher: {(IsMagazinePatcherAvailable ? "? Active" : "? Not Found")}\n";
             info += $"• Meatyceiver 2: {(IsMeatyceiver2Available ? "? Active" : "? Not Found")}\n";
             info += $"• Stovepipe: {(IsStovepipeAvailable ? "? Active" : "? Not Found")}\n";
+            info += $"• Jedit Tippy Toy: {(IsJeditTippyToyAvailable ? "? Active" : "? Not Found")}\n";
             info += $"• Other Tools: {(IsOtherToolsAvailable ? "? Active" : "? Not Found")}\n";
-            info += $"Total: {GetAvailableDependencyCount()}/4 dependencies available";
+            info += $"Total: {GetAvailableDependencyCount()}/5 dependencies available";
             
             return info;
         }
@@ -549,8 +662,9 @@ namespace H3TVR
             report += $"• Stovepipe: {(IsStovepipeAvailable ? "? Available" : "? Not Installed")}\n";
             report += $"• Meatyceiver 2: {(IsMeatyceiver2Available ? "? Available" : "? Not Installed")}\n";
             report += $"• Magazine Patcher: {(IsMagazinePatcherAvailable ? "? Available" : "? Not Installed")}\n";
+            report += $"• Jedit Tippy Toy: {(IsJeditTippyToyAvailable ? "? Available" : "? Not Installed")}\n";
             
-            if (!IsStovepipeAvailable || !IsMeatyceiver2Available || !IsMagazinePatcherAvailable)
+            if (!IsStovepipeAvailable || !IsMeatyceiver2Available || !IsMagazinePatcherAvailable || !IsJeditTippyToyAvailable)
             {
                 report += "\nInstall missing dependencies for enhanced functionality:\n";
                 if (!IsStovepipeAvailable)
@@ -559,6 +673,8 @@ namespace H3TVR
                     report += "  Meatyceiver 2: https://github.com/potatoes1286/Meatyceiver2-Redux\n";
                 if (!IsMagazinePatcherAvailable)
                     report += "  Magazine Patcher: https://github.com/O-Deka-K/MagazinePatcher\n";
+                if (!IsJeditTippyToyAvailable)
+                    report += "  Jedit Tippy Toy: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/\n";
             }
 
             return report;

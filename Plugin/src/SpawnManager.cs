@@ -64,20 +64,37 @@ namespace H3TVR
         {
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
             
-            // Play before-action sound
             audioManager?.PlayWondertoySound("before_activate", spawnPos, true, "wondertoy/jedi_ignite.wav");
-            // Get the object you want to spawn
-            FVRObject obj = IM.OD["TippyToy_Set2"];
+            
+            try
+            {
+                if (!ValidateSpawnConditions()) return;
+
+                // Check Jedit Tippy Toy availability
+                if (!OptionalDependencyManager.IsJeditToySpawnable())
+                {
+                    logger.LogWarning("Jedit Tippy Toy not available. Install: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/");
+                    return;
+                }
+
+                string objectID = OptionalDependencyManager.GetJeditToyObjectID();
+                FVRObject obj = IM.OD[objectID];
            
-            // Instantiate (spawn) the object above the player's right hand
-            GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
+                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
 
-            //add some speeeeen
-            go.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
+                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25);
+                }
 
-
-            //add force
-            go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 25);
+                logger.LogInfo("Successfully spawned Jedit Toy");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnJeditToy failed: {ex.Message}");
+            }
         }
 
 
