@@ -66,12 +66,20 @@ namespace H3TVR
             
             // Play before-action sound
             audioManager?.PlayWondertoySound("before_activate", spawnPos, true, "wondertoy/jedi_ignite.wav");
-            
-            SpawnObject("JediTippyToy", "JeditToy");
-            
-            // Play after-action sound
-            audioManager?.PlayWondertoySound("after_activate", spawnPos, true, "wondertoy/jedi_hum.wav");
+            // Get the object you want to spawn
+            FVRObject obj = IM.OD["TippyToy_Set2"];
+           
+            // Instantiate (spawn) the object above the player's right hand
+            GameObject go = Instantiate(obj.GetGameObject(), new Vector3(0f, .25f, 0f) + GM.CurrentPlayerBody.Head.position, GM.CurrentPlayerBody.Head.rotation);
+
+            //add some speeeeen
+            go.GetComponent<Rigidbody>().AddTorque(new Vector3(.25f, .25f, .25f));
+
+
+            //add force
+            go.GetComponent<Rigidbody>().AddForce(GM.CurrentPlayerBody.Head.forward * 25);
         }
+
 
         public void SpawnHydration()
         {
@@ -287,30 +295,41 @@ namespace H3TVR
                     return;
                 }
 
-                int droppedCount = 0;
+                int destroyedCount = 0;
                 foreach (var slot in allSlots)
                 {
                     var obj = slot?.CurObject;
                     if (obj == null) continue;
 
-                    // Detach from slot
+                    // Skip if the object is a magazine - preserve magazines
+                    if (obj is FVRFireArmMagazine)
+                    {
+                        continue;
+                    }
+
+                    // Detach from slot first
                     obj.SetQuickBeltSlot(null);
 
-                    // Enable / adjust physics so it actually drops
-                    var rb = obj.GetComponent<Rigidbody>();
-                    if (rb != null)
-                    {
-                        rb.isKinematic = false; // ensure physics
-                        rb.velocity = GM.CurrentPlayerBody.Head.forward * 1.5f + UnityEngine.Random.insideUnitSphere * 0.25f;
-                        rb.angularVelocity = UnityEngine.Random.insideUnitSphere * 2f;
-                    }
-                    droppedCount++;
+                    // Destroy the object completely
+                    Destroy(obj.gameObject);
+                    
+                    destroyedCount++;
                 }
 
-                // Play after-action sound
-                audioManager?.PlayDestructionSound("after_destroy", playerPos, false, "destruction/quickbelt_cleared.wav", 0.6f);
-
-                logger.LogInfo($"Dropped {droppedCount} quickbelt object(s).");
+                // Spawn celebratory shell if items were destroyed
+                if (destroyedCount > 0)
+                {
+                    SpawnCelebratoryShell();
+                    
+                    // Play after-action sound
+                    audioManager?.PlayDestructionSound("after_destroy", playerPos, false, "destruction/quickbelt_cleared.wav", 0.6f);
+                    
+                    logger.LogInfo($"Destroyed {destroyedCount} quickbelt object(s) (magazines preserved).");
+                }
+                else
+                {
+                    logger.LogInfo("No items in quickbelt to destroy (magazines excluded).");
+                }
             }
             catch (Exception ex)
             {
@@ -318,12 +337,13 @@ namespace H3TVR
             }
         }
 
-        // Chat Sosig methods - using EnhancedChatSpawner
+        // Chat Sosig methods - using simplified EnhancedChatSpawner
         public void SpawnChatSosigFriendly()
         {
             if (enhancedChatSpawner != null)
             {
-                enhancedChatSpawner.SpawningSequence("FriendlyUser");
+                enhancedChatSpawner.SpawningSequence("ChatFriend");
+                logger?.LogInfo("Spawned friendly chat sosig");
             }
             else
             {
@@ -335,7 +355,8 @@ namespace H3TVR
         {
             if (enhancedChatSpawner != null)
             {
-                enhancedChatSpawner.SpawningSequenceEnemy(1, "EnemyUser");
+                enhancedChatSpawner.SpawningSequenceEnemy(1, "ChatEnemy");
+                logger?.LogInfo("Spawned enemy chat sosig");
             }
             else
             {
@@ -348,6 +369,7 @@ namespace H3TVR
             if (enhancedChatSpawner != null)
             {
                 enhancedChatSpawner.ClearSosigs(true, true);
+                logger?.LogInfo("Cleared all chat sosigs");
             }
             else
             {
@@ -574,7 +596,11 @@ namespace H3TVR
                 audioManager?.PlayDestructionSound("before_destroy_held", handPos, true, "destruction/item_dissolving.wav", 0.8f);
 
                 var hands = GM.CurrentMovementManager?.Hands;
-                if (hands == null || hands.Length < 2) return;
+                if (hands == null || hands.Length < 2)
+                {
+                    logger.LogInfo("No hands found or hand system not available.");
+                    return;
+                }
 
                 var rightHand = hands[1];
                 if (rightHand?.CurrentInteractable != null && rightHand.CurrentInteractable is FVRPhysicalObject)
@@ -586,6 +612,12 @@ namespace H3TVR
                     
                     // Play after-action sound
                     audioManager?.PlayDestructionSound("after_destroy_held", handPos, true, "destruction/item_destroyed.wav", 0.7f);
+                    
+                    logger.LogInfo("Destroyed held item in right hand.");
+                }
+                else
+                {
+                    logger.LogInfo("No item held in right hand to destroy.");
                 }
             }
             catch (Exception ex)

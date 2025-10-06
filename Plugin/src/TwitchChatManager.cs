@@ -282,17 +282,19 @@ namespace H3TVR
         {
             loginInProgress = true;
 
+            logger?.LogInfo("Starting Twitch OAuth flow...");
+            
+            // For .NET 3.5 compatibility, we'll require manual token input
+            logger?.LogInfo("Please visit https://twitchapps.com/tmi/ to generate an OAuth token");
+            logger?.LogInfo("Enter the token (including 'oauth:' prefix) in the GUI");
+            
+            // Wait for manual token input - moved outside try/catch
+            yield return new WaitUntil(() => !string.IsNullOrEmpty(tokenInput) && tokenInput.StartsWith("oauth:"));
+            
+            // Process authentication
+            bool success = false;
             try
             {
-                logger?.LogInfo("Starting Twitch OAuth flow...");
-                
-                // For .NET 3.5 compatibility, we'll require manual token input
-                logger?.LogInfo("Please visit https://twitchapps.com/tmi/ to generate an OAuth token");
-                logger?.LogInfo("Enter the token (including 'oauth:' prefix) in the GUI");
-                
-                // Wait for manual token input
-                yield return new WaitUntil(() => !string.IsNullOrEmpty(tokenInput) && tokenInput.StartsWith("oauth:"));
-                
                 // Validate and store the token
                 var newAuthData = new TwitchAuthData
                 {
@@ -313,9 +315,7 @@ namespace H3TVR
                     twitchOAuthToken.Value = authData.AccessToken;
                     
                     logger?.LogInfo($"Successfully authenticated as {authData.Username}");
-                    
-                    // Auto-connect
-                    ConnectToTwitch();
+                    success = true;
                 }
                 else
                 {
@@ -330,6 +330,12 @@ namespace H3TVR
             {
                 loginInProgress = false;
                 tokenInput = "";
+            }
+
+            // Auto-connect after coroutine completes
+            if (success)
+            {
+                ConnectToTwitch();
             }
         }
 
@@ -1032,10 +1038,10 @@ namespace H3TVR
             try
             {
                 var stats = chatSpawner?.GetStats();
-                if (stats != null)
+                if (stats.HasValue)
                 {
-                    var message = $"@{displayName} Sosigs: {stats.ActiveAllies} allies, {stats.ActiveEnemies} enemies, " +
-                                 $"{stats.QueueLength} queued. Your sosigs: {GetUserSosigCount(username)}/{maxSosigsPerUser.Value}";
+                    var message = $"@{displayName} Sosigs: {stats.Value.ActiveAllies} allies, {stats.Value.ActiveEnemies} enemies, " +
+                                 $"{stats.Value.QueueLength} queued. Your sosigs: {GetUserSosigCount(username)}/{maxSosigsPerUser.Value}";
                     SendChatMessage(message);
                 }
             }
@@ -1413,13 +1419,13 @@ namespace H3TVR
                 if (queued)
                 {
                     // Set reduced cooldown for Channel Points
-                    float cooldownTime = spawnCooldown.Value * channelPointsCooldownMultiplier.Value;
+                    float cooldownTime = commandCooldownSeconds.Value * channelPointsCooldownMultiplier.Value;
                     userCooldowns[redemption.Username] = DateTime.Now.AddSeconds(cooldownTime);
                     
                     IncrementUserSosigCount(redemption.Username);
                     
                     string costText = redemption.RewardCost.HasValue ? $" (Cost: {redemption.RewardCost} points)" : "";
-                    SendChatMessage($"?? @{redemption.DisplayName} Channel Points ally sosig queued for spawn!{costText}");
+                    SendChatMessage($"⭐ @{redemption.DisplayName} Channel Points ally sosig queued for spawn!{costText}");
                     OnSosigSpawnRequest?.Invoke(redemption.Username, true);
                 }
                 else
@@ -1456,13 +1462,13 @@ namespace H3TVR
                 if (queued)
                 {
                     // Set reduced cooldown for Channel Points
-                    float cooldownTime = spawnCooldown.Value * channelPointsCooldownMultiplier.Value;
+                    float cooldownTime = commandCooldownSeconds.Value * channelPointsCooldownMultiplier.Value;
                     userCooldowns[redemption.Username] = DateTime.Now.AddSeconds(cooldownTime);
                     
                     IncrementUserSosigCount(redemption.Username);
                     
                     string costText = redemption.RewardCost.HasValue ? $" (Cost: {redemption.RewardCost} points)" : "";
-                    SendChatMessage($"?? @{redemption.DisplayName} Channel Points enemy sosig queued for spawn!{costText}");
+                    SendChatMessage($"⭐ @{redemption.DisplayName} Channel Points enemy sosig queued for spawn!{costText}");
                     OnSosigSpawnRequest?.Invoke(redemption.Username, false);
                 }
                 else

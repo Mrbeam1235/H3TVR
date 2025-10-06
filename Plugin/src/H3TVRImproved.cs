@@ -46,6 +46,9 @@ namespace H3TVR
         private ConfigEntry<bool> slomoAffectsAudio;
         private ConfigEntry<float> slomoAudioPitchScale;
         private ConfigEntry<bool> slomoAudioPreservePitch;
+        private ConfigEntry<bool> slomoAffectsAudioSpeed;
+        private ConfigEntry<float> slomoAudioSpeedScale;
+        private ConfigEntry<string> slomoAudioMode; // "PitchOnly", "SpeedOnly", "Both", "Independent"
         
         // Gun Randomization Configuration
         private ConfigEntry<bool> useItemManagerForGunRandomization;
@@ -206,6 +209,9 @@ namespace H3TVR
             slomoAffectsAudio = Config.Bind("Audio", "SlomoAffectsAudio", true, "Whether slomo affects audio pitch");
             slomoAudioPitchScale = Config.Bind("Audio", "SlomoAudioPitchScale", 1f, "Audio pitch multiplier during slomo (1.0 = normal pitch, 0.5 = half pitch)");
             slomoAudioPreservePitch = Config.Bind("Audio", "SlomoPreservePitch", false, "If true, audio pitch is preserved (no pitch change). If false, uses pitch scaling.");
+            slomoAffectsAudioSpeed = Config.Bind("Audio", "SlomoAffectsAudioSpeed", false, "Whether slomo affects audio speed (time stretching)");
+            slomoAudioSpeedScale = Config.Bind("Audio", "SlomoAudioSpeedScale", 1f, "Audio speed multiplier during slomo (1.0 = normal speed, 0.5 = half speed)");
+            slomoAudioMode = Config.Bind("Audio", "SlomoAudioMode", "Both", "Audio adjustment mode during slomo: 'PitchOnly', 'SpeedOnly', 'Both', 'Independent'");
             
             // Gun randomization
             useItemManagerForGunRandomization = Config.Bind("GunRandomization", "UseItemManager", true, 
@@ -698,6 +704,18 @@ namespace H3TVR
             preservePitch = slomoAudioPreservePitch.Value;
         }
         
+        // Complete slomo audio config for enhanced Harmony patch
+        public void GetSlomoAudioConfigComplete(out bool affectsAudio, out float pitchScale, out bool preservePitch, 
+            out bool affectsSpeed, out float speedScale, out string mode)
+        {
+            affectsAudio = slomoAffectsAudio.Value;
+            pitchScale = slomoAudioPitchScale.Value;
+            preservePitch = slomoAudioPreservePitch.Value;
+            affectsSpeed = slomoAffectsAudioSpeed.Value;
+            speedScale = slomoAudioSpeedScale.Value;
+            mode = slomoAudioMode.Value;
+        }
+        
         // Movement config
         public void GetSlomoMovementConfig(out bool affectsMovement, out float movementScale)
         {
@@ -725,43 +743,174 @@ namespace H3TVR
         #endregion
 
         #region Harmony Patches and Cleanup
+        // Dictionary to store original speeds for audio sources during slomo
+        private static Dictionary<AudioSource, float> originalAudioSpeeds = new Dictionary<AudioSource, float>();
+        
         [HarmonyPatch(typeof(AudioSource), "pitch", MethodType.Setter)]
         [HarmonyPrefix]
-        public static void FixPitch(ref float value)
+        public static void FixPitch(AudioSource __instance, ref float value)
         {
             // Get the current plugin instance to access configuration
             var instance = FindObjectOfType<H3TVRImproved>();
             if (instance == null) return;
             
-            bool affectsAudio, preservePitch;
-            float pitchScale;
-            instance.GetSlomoAudioConfig(out affectsAudio, out pitchScale, out preservePitch);
-            
-            // Only modify pitch if slomo affects audio and we're not in normal time
-            if (affectsAudio && Time.timeScale != 1f)
+            // Only process if not in normal time scale
+            if (Time.timeScale >= 0.99f && Time.timeScale <= 1.01f)
             {
-                if (preservePitch)
+                // Normal time - clean up any stored state
+                if (originalAudioSpeeds.ContainsKey(__instance))
                 {
-                    // Preserve original pitch by compensating for time scale
-                    value *= (1f / Time.timeScale);
+                    originalAudioSpeeds.Remove(__instance);
                 }
-                else
-                {
-                    // Apply custom pitch scaling with proper clamping
-                    float newPitch = value * (Time.timeScale * pitchScale);
-                    // Clamp to reasonable audio range (0.1 to 3.0)
-                    value = Mathf.Clamp(newPitch, 0.1f, 3.0f);
-                }
+                return;
+            }
+            
+            // Get complete audio configuration
+            bool affectsAudio, preservePitch, affectsSpeed;
+            float pitchScale, speedScale;
+            string mode;
+            instance.GetSlomoAudioConfigComplete(out affectsAudio, out pitchScale, out preservePitch, 
+                out affectsSpeed, out speedScale, out mode);
+            
+            if (!affectsAudio)
+            {
+                return;
+            }
+            
+            // Store original speed if not already stored
+            if (!originalAudioSpeeds.ContainsKey(__instance))
+            {
+                originalAudioSpeeds[__instance] = 1.0f; // Default unity speed
+            }
+            
+            // Apply audio adjustments based on mode
+            switch (mode.ToLower())
+            {
+                case "pitchonly":
+                    // Only adjust pitch, preserve speed
+                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+                    break;
+                    
+                case "speedonly":
+                    // Only adjust speed (via pitch manipulation), preserve pitch perception
+                    // This is a simulation since Unity doesn't have direct speed control without pitch
+                    ApplySpeedAdjustment(__instance, speedScale);
+                    value = 1.0f; // Keep pitch normal
+                    break;
+                    
+                case "both":
+                    // Both pitch and speed scale with time (classic slomo effect)
+                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+                    if (affectsSpeed)
+                    {
+                        ApplySpeedAdjustment(__instance, speedScale);
+                    }
+                    break;
+                    
+                case "independent":
+                    // Independent control of pitch and speed
+                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+                    if (affectsSpeed)
+                    {
+                        ApplySpeedAdjustment(__instance, speedScale);
+                    }
+                    break;
+                    
+                default:
+                    // Default to "Both" mode
+                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+                    if (affectsSpeed)
+                    {
+                        ApplySpeedAdjustment(__instance, speedScale);
+                    }
+                    break;
             }
             
             // Always ensure pitch is within reasonable bounds
             value = Mathf.Clamp(value, 0.1f, 3.0f);
+        }
+        
+        /// <summary>
+        /// Apply pitch adjustment based on configuration
+        /// </summary>
+        private static void ApplyPitchAdjustment(ref float pitch, bool preservePitch, float pitchScale)
+        {
+            if (preservePitch)
+            {
+                // Preserve original pitch by compensating for time scale
+                pitch *= (1f / Time.timeScale);
+            }
+            else
+            {
+                // Apply custom pitch scaling
+                float newPitch = pitch * (Time.timeScale * pitchScale);
+                pitch = Mathf.Clamp(newPitch, 0.1f, 3.0f);
+            }
+        }
+        
+        /// <summary>
+        /// Apply speed adjustment to audio source
+        /// Note: Unity doesn't support true time-stretching, so we simulate it
+        /// </summary>
+        private static void ApplySpeedAdjustment(AudioSource source, float speedScale)
+        {
+            if (source == null || source.clip == null) return;
+            
+            try
+            {
+                // Calculate target playback speed
+                float targetSpeed = Time.timeScale * speedScale;
+                
+                // Clamp to reasonable values
+                targetSpeed = Mathf.Clamp(targetSpeed, 0.1f, 3.0f);
+                
+                // Since Unity doesn't have direct speed control independent of pitch,
+                // we adjust the playback position to simulate slower playback
+                // This is a best-effort simulation
+                if (source.isPlaying && targetSpeed < 0.95f)
+                {
+                    // Store current normalized time
+                    float normalizedTime = source.time / source.clip.length;
+                    
+                    // Slow down by adjusting sample position
+                    // This creates a time-stretching effect
+                    int targetSample = Mathf.RoundToInt(source.timeSamples * targetSpeed);
+                    
+                    // Only adjust if significantly different
+                    if (Mathf.Abs(targetSample - source.timeSamples) > 100)
+                    {
+                        source.timeSamples = Mathf.Clamp(targetSample, 0, source.clip.samples - 1);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Safely handle any errors in audio manipulation
+                UnityEngine.Debug.LogWarning($"[H3TVR Audio] Speed adjustment failed: {ex.Message}");
+            }
+        }
+        
+        [HarmonyPatch(typeof(AudioSource), "Stop")]
+        [HarmonyPrefix]
+        public static void OnAudioSourceStop(AudioSource __instance)
+        {
+            // Clean up stored speed data when audio stops
+            if (originalAudioSpeeds.ContainsKey(__instance))
+            {
+                originalAudioSpeeds.Remove(__instance);
+            }
         }
 
         private void OnDestroy()
         {
             hooks.Unhook();
             slomoMovementController?.Reset();
+            
+            // Clean up audio speed tracking
+            if (originalAudioSpeeds != null)
+            {
+                originalAudioSpeeds.Clear();
+            }
         }
         #endregion
     }
