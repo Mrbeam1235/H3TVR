@@ -227,10 +227,10 @@ namespace H3TVR
                     return true;
                 }
 
-                // Method 2: Check if TippyToy_Set2 exists in ItemManager
-                if (IM.OD != null && IM.OD.ContainsKey("TippyToy_Set2"))
+                // Method 2: Check if ftw.JediTippyToy exists in ItemManager (CORRECT ID)
+                if (IM.OD != null && IM.OD.ContainsKey("ftw.JediTippyToy"))
                 {
-                    logger.LogInfo("[OptionalDependencies] Jedit Tippy Toy detected via ItemManager (TippyToy_Set2 found)");
+                    logger.LogInfo("[OptionalDependencies] Jedit Tippy Toy detected via ItemManager (ftw.JediTippyToy found)");
                     return true;
                 }
 
@@ -276,7 +276,7 @@ namespace H3TVR
 
             try
             {
-                return IM.OD != null && IM.OD.ContainsKey("TippyToy_Set2");
+                return IM.OD != null && IM.OD.ContainsKey("ftw.JediTippyToy");
             }
             catch (Exception ex)
             {
@@ -290,7 +290,7 @@ namespace H3TVR
         /// </summary>
         public static string GetJeditToyObjectID()
         {
-            return "TippyToy_Set2";
+            return "ftw.JediTippyToy";
         }
 
         /// <summary>
@@ -306,7 +306,7 @@ namespace H3TVR
 
             if (!IsJeditToySpawnable())
             {
-                logger.LogWarning("[OptionalDependencies] Jedit Tippy Toy detected but TippyToy_Set2 not found in ItemManager");
+                logger.LogWarning("[OptionalDependencies] Jedit Tippy Toy detected but ftw.JediTippyToy not found in ItemManager");
                 return false;
             }
 
@@ -668,11 +668,11 @@ namespace H3TVR
             {
                 report += "\nInstall missing dependencies for enhanced functionality:\n";
                 if (!IsStovepipeAvailable)
-                    report += "  Stovepipe: https://github.com/SmidgeonE/Stovepipe\n";
+                    report += "  Stovepipe: https://thunderstore.io/c/h3vr/p/Smidge204/Stovepipe/\n";
                 if (!IsMeatyceiver2Available)
-                    report += "  Meatyceiver 2: https://github.com/potatoes1286/Meatyceiver2-Redux\n";
+                    report += "  Meatyceiver 2: https://thunderstore.io/c/h3vr/p/Potatoes/Meatyceiver_2/\n";
                 if (!IsMagazinePatcherAvailable)
-                    report += "  Magazine Patcher: https://github.com/O-Deka-K/MagazinePatcher\n";
+                    report += "  Magazine Patcher: https://thunderstore.io/c/h3vr/p/O_Deka_K/MagazinePatcher/\n";
                 if (!IsJeditTippyToyAvailable)
                     report += "  Jedit Tippy Toy: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/\n";
             }

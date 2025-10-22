@@ -102,9 +102,9 @@ namespace H3TVR
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
         private AudioManager audioManager;
-        private EnhancedChatSpawner enhancedChatSpawner;
+        private AdvancedChatSosigSpawner advancedChatSpawner; // Advanced Chat Sosig Spawner with Update 120 TNH
         private SosigArmorWristMenuIntegration sosigArmorWristMenu;
-        private TwitchChatManager twitchChatManager; // New Twitch integration
+        private TwitchChatManager twitchChatManager;
         #endregion
 
         #region Initialization
@@ -367,7 +367,7 @@ namespace H3TVR
                 // Initialize each component
                 audioManager.Initialize(this, Logger);
                 inputHandler.Initialize(keyBindings, this);
-                spawnManager.Initialize(this, Logger, enhancedChatSpawner, audioManager);
+                spawnManager.Initialize(this, Logger, null, audioManager); // Removed old enhancedChatSpawner reference
                 effectsManager.Initialize(this, slomoMovementController, Logger);
                 weaponManager.Initialize(this, Logger, audioManager);
 
@@ -383,20 +383,23 @@ namespace H3TVR
         {
             try
             {
-                // Initialize the standalone Enhanced Chat Spawner
-                GameObject enhancedSpawnerObject = new GameObject("EnhancedChatSpawner");
-                enhancedSpawnerObject.transform.SetParent(transform);
-                
-                enhancedChatSpawner = enhancedSpawnerObject.AddComponent<EnhancedChatSpawner>();
-                enhancedChatSpawner.Initialize(this, Logger);
-                
-                // Update spawn manager with chat spawner reference
-                if (spawnManager != null)
+                // Initialize TwitchChatManager first if needed
+                if (enableTwitchChatSosigs.Value && !enableLegacyFileMode.Value)
                 {
-                    spawnManager.Initialize(this, Logger, enhancedChatSpawner, audioManager);
+                    GameObject twitchManagerObject = new GameObject("TwitchChatManager");
+                    twitchManagerObject.transform.SetParent(transform);
+                    twitchChatManager = twitchManagerObject.AddComponent<TwitchChatManager>();
+                    twitchChatManager.Initialize(this, Logger, null); // Will be linked to spawner
                 }
+
+                // Initialize the Advanced Chat Sosig Spawner (Update 120 TNH System)
+                GameObject advancedSpawnerObject = new GameObject("AdvancedChatSosigSpawner");
+                advancedSpawnerObject.transform.SetParent(transform);
                 
-                Logger.LogInfo("Enhanced Chat Spawner initialized (standalone mode)!");
+                advancedChatSpawner = advancedSpawnerObject.AddComponent<AdvancedChatSosigSpawner>();
+                advancedChatSpawner.Initialize(this, Logger, twitchChatManager);
+                
+                Logger.LogInfo("Advanced Chat Sosig Spawner initialized with Update 120 TNH system and full features!");
             }
             catch (Exception ex)
             {
@@ -423,21 +426,7 @@ namespace H3TVR
                     return;
                 }
 
-                Logger.LogInfo("Initializing TwitchLib integration...");
-
-                // TwitchChatManager is already created within EnhancedChatSpawner
-                // Just log that it's being handled there
-                Logger.LogInfo("TwitchLib integration will be initialized by EnhancedChatSpawner");
-
-                // Log integration status
-                if (enhancedChatSpawner != null)
-                {
-                    Logger.LogInfo("Enhanced Chat Spawner will handle TwitchLib integration");
-                }
-                else
-                {
-                    Logger.LogWarning("Enhanced Chat Spawner not available for TwitchLib integration");
-                }
+                Logger.LogInfo("TwitchLib integration initialized via AdvancedChatSosigSpawner");
             }
             catch (Exception ex)
             {
@@ -740,6 +729,12 @@ namespace H3TVR
         {
             return sosigArmorWristMenu;
         }
+
+        // Add access method for Advanced Chat Spawner
+        public AdvancedChatSosigSpawner GetAdvancedChatSpawner() => advancedChatSpawner;
+        
+        // Add access method for TwitchChatManager
+        public TwitchChatManager GetTwitchChatManager() => twitchChatManager;
         #endregion
 
         #region Harmony Patches and Cleanup

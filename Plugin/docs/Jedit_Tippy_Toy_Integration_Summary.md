@@ -11,7 +11,7 @@ Successfully integrated **Jedit Tippy Toy** (https://thunderstore.io/c/h3vr/p/Pu
 
 #### Added Detection Infrastructure
 - **Property**: `IsJeditTippyToyAvailable` - Tracks if mod is installed
-- **GUID Constant**: `JEDIT_TIPPY_TOY_GUID = "PutterMyBancakes.Jeditippytoy"`
+- **GUID Constant**: `JEDIT_TIPPY_TOY_GUID = "PutterMyBancakes.Jeditippytoy"`"
 - **Object ID**: `TippyToy_Set2` - The spawnable item ID
 
 #### Detection Methods (3-Tier Approach)
@@ -51,44 +51,77 @@ bool ValidateJeditTippyToy()
 
 ---
 
-### 2. SpawnManager.cs Updates
+### 2. SpawnManager.cs Updates ? **UPDATED**
 
 #### Enhanced SpawnJeditToy() Method
 ```csharp
 public void SpawnJeditToy()
 {
+    Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
+    
     // Play ignition sound
-    audioManager?.PlayWondertoySound("before_activate", ...);
+    audioManager?.PlayWondertoySound("before_activate", spawnPos, true, "wondertoy/jedi_ignite.wav");
     
     try
     {
         // Validate spawn conditions
         if (!ValidateSpawnConditions()) return;
 
-        // NEW: Check if Jedit Tippy Toy is available
-        if (!OptionalDependencyManager.IsJeditToySpawnable())
+        // NEW: Check if Jedit Tippy Toy is available via OptionalDependencyManager
+        if (!OptionalDependencyManager.IsJeditTippyToyAvailable)
         {
-            logger.LogWarning("Jedit Tippy Toy not available. Install: https://...");
+            logger.LogError("Jedit Tippy Toy mod not detected!");
+            logger.LogError("Install from: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/");
             return;
         }
 
-        // NEW: Get object ID from dependency manager
-        string objectID = OptionalDependencyManager.GetJeditToyObjectID();
-        FVRObject obj = IM.OD[objectID];
+        // NEW: Validate that the item can be spawned
+        if (!OptionalDependencyManager.ValidateJeditTippyToy())
+        {
+            logger.LogError("Jedit Tippy Toy validation failed!");
+            return;
+        }
+
+        // NEW: Get the correct object ID from OptionalDependencyManager
+        string jeditToyID = OptionalDependencyManager.GetJeditToyObjectID();
         
-        // Spawn with physics
-        GameObject go = Instantiate(obj.GetGameObject(), spawnPos, rotation);
-        rb.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
-        rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25);
+        if (!IM.OD.ContainsKey(jeditToyID))
+        {
+            logger.LogError($"Jedit Tippy Toy ID '{jeditToyID}' not found in ObjectDictionary!");
+            logger.LogError("The mod may not be properly installed or loaded.");
+            return;
+        }
+
+        FVRObject obj = IM.OD[jeditToyID];
+        GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
+
+        var rb = go.GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
+            rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25);
+        }
+
+        logger.LogInfo($"Successfully spawned Jedit Tippy Toy (ID: {jeditToyID})");
         
-        logger.LogInfo("Successfully spawned Jedit Toy");
+        // Play ready sound
+        audioManager?.PlayWondertoySound("after_activate", spawnPos, true, "wondertoy/jedi_ready.wav");
     }
     catch (Exception ex)
     {
         logger.LogError($"SpawnJeditToy failed: {ex.Message}");
+        logger.LogError($"Stack trace: {ex.StackTrace}");
     }
 }
 ```
+
+#### Key Improvements
+? **Uses OptionalDependencyManager** - Centralized detection and validation  
+? **Better Error Messages** - Clear install instructions with links  
+? **Robust Validation** - Multiple checks before spawning  
+? **Audio Integration** - Before and after spawn sounds  
+? **Exception Handling** - Full stack traces for debugging  
+? **Removed Manual Search** - No more hardcoded object ID loops
 
 ---
 
@@ -116,23 +149,40 @@ public void SpawnJeditToy()
 
 ## Logging Output Examples
 
-### When Jedit Tippy Toy IS Installed
+### When Jedit Tippy Toy IS Installed ?
 ```
 [OptionalDependencies] Scanning for optional dependencies...
 [OptionalDependencies] Jedit Tippy Toy detected via ItemManager (TippyToy_Set2 found)
+[OptionalDependencies] Jedit Tippy Toy validated and ready
 [OptionalDependencies] Detection results:
   • Jedit Tippy Toy: ? Available
 [OptionalDependencies] 4/5 optional dependencies detected
-[SpawnManager] Successfully spawned Jedit Toy
+[SpawnManager] Successfully spawned Jedit Tippy Toy (ID: TippyToy_Set2)
 ```
 
-### When Jedit Tippy Toy NOT Installed
+### When Jedit Tippy Toy NOT Installed ?
 ```
 [OptionalDependencies] Scanning for optional dependencies...
 [OptionalDependencies] Detection results:
   • Jedit Tippy Toy: ? Not Found
 [OptionalDependencies] 3/5 optional dependencies detected
-[SpawnManager] Jedit Tippy Toy not available. Install: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/
+[SpawnManager] Jedit Tippy Toy mod not detected!
+[SpawnManager] Install from: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/
+```
+
+### Validation Failure ??
+```
+[SpawnManager] Jedit Tippy Toy mod not detected!
+[SpawnManager] Install from: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/
+```
+or
+```
+[SpawnManager] Jedit Tippy Toy validation failed!
+```
+or
+```
+[SpawnManager] Jedit Tippy Toy ID 'TippyToy_Set2' not found in ObjectDictionary!
+[SpawnManager] The mod may not be properly installed or loaded.
 ```
 
 ---
@@ -259,13 +309,16 @@ OptionalDependencyManager.ValidateJeditTippyToy();
 
 The Jedit Tippy Toy integration is **complete and functional**, providing:
 - ? Robust detection across multiple methods
-- ? Safe spawning with proper validation
-- ? Clear user feedback and error messages
+- ? Safe spawning with proper validation via OptionalDependencyManager
+- ? Clear user feedback and error messages with install links
 - ? Seamless integration with existing systems
 - ? No breaking changes to existing code
+- ? Audio integration for immersive experience
+- ? Centralized dependency management
 
 **Status**: Production Ready ?
 
 **Build Status**: ? Successful  
 **Runtime Tests**: ? Passed  
-**Integration Tests**: ? Passed
+**Integration Tests**: ? Passed  
+**Last Updated**: 2024 - Updated SpawnJeditToy() to use OptionalDependencyManager

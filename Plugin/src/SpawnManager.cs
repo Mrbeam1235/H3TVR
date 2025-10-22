@@ -23,14 +23,14 @@ namespace H3TVR
     {
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private EnhancedChatSpawner enhancedChatSpawner;
+        private AdvancedChatSosigSpawner advancedChatSpawner;
         private AudioManager audioManager;
 
-        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, EnhancedChatSpawner chatSpawnerInstance, AudioManager audioManagerInstance)
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AdvancedChatSosigSpawner chatSpawnerInstance, AudioManager audioManagerInstance)
         {
             plugin = pluginInstance;
             logger = logSource;
-            enhancedChatSpawner = chatSpawnerInstance;
+            advancedChatSpawner = chatSpawnerInstance;
             audioManager = audioManagerInstance;
 
             // Initialize dependency-aware systems
@@ -70,16 +70,25 @@ namespace H3TVR
             {
                 if (!ValidateSpawnConditions()) return;
 
-                // Check Jedit Tippy Toy availability
-                if (!OptionalDependencyManager.IsJeditToySpawnable())
+                // Correct Item ID for Jedit Tippy Toy mod
+                string jeditToyID = "ftw.JediTippyToy";
+                
+                if (!IM.OD.ContainsKey(jeditToyID))
                 {
                     logger.LogWarning("Jedit Tippy Toy not available. Install: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/");
+                    logger.LogInfo($"Expected Item ID: {jeditToyID}");
+                    
+                    // List all tippy toy items for debugging
+                    logger.LogInfo("Available Tippy Toy items:");
+                    foreach (var kvp in IM.OD)
+                    {
+                        if (kvp.Key.ToLower().Contains("tippy") || kvp.Key.ToLower().Contains("jedi"))
+                            logger.LogInfo($"  - {kvp.Key}");
+                    }
                     return;
                 }
 
-                string objectID = OptionalDependencyManager.GetJeditToyObjectID();
-                FVRObject obj = IM.OD[objectID];
-           
+                FVRObject obj = IM.OD[jeditToyID];
                 GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
 
                 var rb = go.GetComponent<Rigidbody>();
@@ -89,7 +98,8 @@ namespace H3TVR
                     rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25);
                 }
 
-                logger.LogInfo("Successfully spawned Jedit Toy");
+                logger.LogInfo($"Successfully spawned Jedit Tippy Toy (ID: {jeditToyID})");
+                audioManager?.PlayWondertoySound("after_activate", spawnPos, true, "wondertoy/jedi_ready.wav");
             }
             catch (Exception ex)
             {
@@ -215,8 +225,7 @@ namespace H3TVR
             // Play before-action sound
             audioManager?.PlayWeaponSpawnSound("before_spawn", spawnPos, true, "weapons/weapon_materializing.wav", 0.8f);
             
-            var weaponManager = plugin.GetWeaponManager();
-            weaponManager?.SpawnRandomGun(false);
+            SpawnObject("SkittySubGun", "SkittySubGun");
 
             // Play after-action sound
             audioManager?.PlayWeaponSpawnSound("after_spawn", spawnPos, true, "weapons/weapon_ready.wav", 0.7f);
@@ -230,7 +239,10 @@ namespace H3TVR
             audioManager?.PlayWeaponSpawnSound("before_big_spawn", spawnPos, true, "weapons/big_gun_materializing.wav", 0.9f);
             
             var weaponManager = plugin.GetWeaponManager();
-            weaponManager?.SpawnRandomGun(true);
+            if (weaponManager != null)
+            {
+                weaponManager.SpawnRandomGun(true);
+            }
 
             // Play after-action sound
             audioManager?.PlayWeaponSpawnSound("after_big_spawn", spawnPos, true, "weapons/big_gun_ready.wav", 0.8f);
@@ -354,71 +366,61 @@ namespace H3TVR
             }
         }
 
-        // Chat Sosig methods - using simplified EnhancedChatSpawner
+        // Chat Sosig methods - using Advanced Chat Spawner
         public void SpawnChatSosigFriendly()
         {
-            if (enhancedChatSpawner != null)
+            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+            if (advancedSpawner != null)
             {
-                enhancedChatSpawner.SpawningSequence("ChatFriend");
-                logger?.LogInfo("Spawned friendly chat sosig");
+                advancedSpawner.QueueSpawn("Player", "Test Ally", true);
+                logger?.LogInfo("Queued friendly chat sosig spawn");
             }
             else
             {
-                logger?.LogWarning("Enhanced chat spawner not initialized");
+                logger?.LogWarning("Advanced Chat Spawner not available");
             }
         }
 
         public void SpawnChatSosigEnemy()
         {
-            if (enhancedChatSpawner != null)
+            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+            if (advancedSpawner != null)
             {
-                enhancedChatSpawner.SpawningSequenceEnemy(1, "ChatEnemy");
-                logger?.LogInfo("Spawned enemy chat sosig");
+                advancedSpawner.QueueSpawn("Player", "Test Enemy", false);
+                logger?.LogInfo("Queued enemy chat sosig spawn");
             }
             else
             {
-                logger?.LogWarning("Enhanced chat spawner not initialized");
+                logger?.LogWarning("Advanced Chat Spawner not available");
             }
         }
 
         public void ClearAllChatSosigs()
         {
-            if (enhancedChatSpawner != null)
+            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+            if (advancedSpawner != null)
             {
-                enhancedChatSpawner.ClearSosigs(true, true);
+                advancedSpawner.ClearAllSosigs();
                 logger?.LogInfo("Cleared all chat sosigs");
             }
             else
             {
-                logger?.LogWarning("Enhanced chat spawner not initialized");
+                logger?.LogWarning("Advanced Chat Spawner not available");
             }
         }
 
         public ChatSosigStats GetChatSosigStats()
         {
-            if (enhancedChatSpawner != null)
+            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+            if (advancedSpawner != null)
             {
-                var stats = enhancedChatSpawner.GetStats();
+                var stats = advancedSpawner.GetStats();
                 return new ChatSosigStats
                 {
-                    activeSosigCount = stats.ActiveAllies + stats.ActiveEnemies,
-                    friendlyCount = stats.ActiveAllies,
-                    enemyCount = stats.ActiveEnemies,
-                    queuedSpawns = stats.QueueLength,
-                    totalSpawned = stats.TotalSpawned
+                    friendlyCount = stats.Allies
                 };
             }
-            else
-            {
-                return new ChatSosigStats
-                {
-                    activeSosigCount = 0,
-                    friendlyCount = 0,
-                    enemyCount = 0,
-                    queuedSpawns = 0,
-                    totalSpawned = 0
-                };
-            }
+            return new ChatSosigStats { friendlyCount = 0 };
         }
 
         // Helper methods

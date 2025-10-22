@@ -79,9 +79,9 @@ namespace H3TVR
         
         private void NotifySystemsReady()
         {
-            // Find and notify enhanced chat spawners that assets are ready
-            var enhancedSpawners = FindObjectsOfType<EnhancedChatSpawner>();
-            foreach (var spawner in enhancedSpawners)
+            // Find and notify advanced chat spawners that assets are ready
+            var advancedSpawners = FindObjectsOfType<AdvancedChatSosigSpawner>();
+            foreach (var spawner in advancedSpawners)
             {
                 Debug.Log("[H3VRDelayedInitializer] Notified EnhancedChatSpawner that H3VR assets are ready");
             }

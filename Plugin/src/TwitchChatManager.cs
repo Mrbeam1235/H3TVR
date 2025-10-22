@@ -28,7 +28,7 @@ namespace H3TVR
         #region Core Components
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private EnhancedChatSpawner chatSpawner;
+        private AdvancedChatSosigSpawner advancedChatSpawner; // Updated to use AdvancedChatSosigSpawner
         #endregion
 
         #region Twitch IRC Connection
@@ -116,7 +116,7 @@ namespace H3TVR
         #endregion
 
         #region Initialization
-        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, EnhancedChatSpawner spawner)
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AdvancedChatSosigSpawner spawner)
         {
             if (Instance != null)
             {
@@ -127,7 +127,7 @@ namespace H3TVR
             Instance = this;
             plugin = pluginInstance;
             logger = logSource;
-            chatSpawner = spawner;
+            advancedChatSpawner = spawner; // Can be null, we'll use AdvancedChatSosigSpawner.Instance
 
             InitializeConfiguration();
             SetupAuthDataPath();
@@ -933,11 +933,11 @@ namespace H3TVR
                 // Get armor preset if specified
                 string armorPreset = commandParts.Length > 1 ? commandParts[1] : null;
 
-                // Queue spawn request
-                bool queued = chatSpawner?.QueueTwitchSpawnRequest(username, displayName, true, armorPreset) ?? false;
-                
-                if (queued)
+                // Queue spawn request using AdvancedChatSosigSpawner
+                var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+                if (advancedSpawner != null)
                 {
+                    advancedSpawner.QueueSpawn(username, displayName, true, armorPreset);
                     SetUserCooldown(username);
                     IncrementUserSosigCount(username);
                     SendChatMessage($"@{displayName} Ally sosig queued for spawn!");
@@ -945,7 +945,7 @@ namespace H3TVR
                 }
                 else
                 {
-                    SendChatMessage($"@{displayName} Unable to spawn ally sosig (server at capacity).");
+                    SendChatMessage($"@{displayName} Unable to spawn ally sosig (spawner not available).");
                 }
             }
             catch (Exception ex)
@@ -968,11 +968,11 @@ namespace H3TVR
                 // Get armor preset if specified
                 string armorPreset = commandParts.Length > 1 ? commandParts[1] : null;
 
-                // Queue spawn request
-                bool queued = chatSpawner?.QueueTwitchSpawnRequest(username, displayName, false, armorPreset) ?? false;
-                
-                if (queued)
+                // Queue spawn request using AdvancedChatSosigSpawner
+                var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+                if (advancedSpawner != null)
                 {
+                    advancedSpawner.QueueSpawn(username, displayName, false, armorPreset);
                     SetUserCooldown(username);
                     IncrementUserSosigCount(username);
                     SendChatMessage($"@{displayName} Enemy sosig queued for spawn!");
@@ -980,7 +980,7 @@ namespace H3TVR
                 }
                 else
                 {
-                    SendChatMessage($"@{displayName} Unable to spawn enemy sosig (server at capacity).");
+                    SendChatMessage($"@{displayName} Unable to spawn enemy sosig (spawner not available).");
                 }
             }
             catch (Exception ex)
@@ -1000,7 +1000,8 @@ namespace H3TVR
                     return;
                 }
 
-                chatSpawner?.ClearSosigs(true, true);
+                var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+                advancedSpawner?.ClearAllSosigs();
                 
                 // Reset all user sosig counts
                 userSpawnCounts.Clear();
@@ -1019,7 +1020,7 @@ namespace H3TVR
             {
                 var helpText = $"@{displayName} Commands: {sosigSpawnCommand.Value} (spawn ally), " +
                               $"{enemySosigSpawnCommand.Value} (spawn enemy), !stats (show stats)";
-                
+
                 if (enableCustomArmorCommands.Value)
                 {
                     helpText += ", !ally <armor> or !enemy <armor> for custom armor";
@@ -1037,11 +1038,12 @@ namespace H3TVR
         {
             try
             {
-                var stats = chatSpawner?.GetStats();
-                if (stats.HasValue)
+                var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+                if (advancedSpawner != null)
                 {
-                    var message = $"@{displayName} Sosigs: {stats.Value.ActiveAllies} allies, {stats.Value.ActiveEnemies} enemies, " +
-                                 $"{stats.Value.QueueLength} queued. Your sosigs: {GetUserSosigCount(username)}/{maxSosigsPerUser.Value}";
+                    var stats = advancedSpawner.GetStats();
+                    var message = $"@{displayName} Sosigs: {stats.Allies} allies, {stats.Enemies} enemies, " +
+                                 $"{stats.Queued} queued. Your sosigs: {GetUserSosigCount(username)}/{maxSosigsPerUser.Value}";
                     SendChatMessage(message);
                 }
             }
@@ -1320,10 +1322,10 @@ namespace H3TVR
                     return;
                 }
 
-                // Determine priority
+                // Determine priority - use SpawnPriority enum
                 var priority = enableChannelPointsPriority.Value ? 
-                    EnhancedChatSpawner.SpawnPriority.High : 
-                    EnhancedChatSpawner.SpawnPriority.Normal;
+                    SpawnPriority.High : 
+                    SpawnPriority.Normal;
 
                 // Process specific commands with Channel Points enhancements
                 switch (baseCommand)
@@ -1372,12 +1374,12 @@ namespace H3TVR
                 if (allyIds.Contains(redemption.RewardId))
                 {
                     // Spawn ally
-                    ProcessChannelPointsAllySpawn(redemption, new[] { "!ally" }, EnhancedChatSpawner.SpawnPriority.High);
+                    ProcessChannelPointsAllySpawn(redemption, new[] { "!ally" }, SpawnPriority.High);
                 }
                 else if (enemyIds.Contains(redemption.RewardId))
                 {
                     // Spawn enemy
-                    ProcessChannelPointsEnemySpawn(redemption, new[] { "!enemy" }, EnhancedChatSpawner.SpawnPriority.High);
+                    ProcessChannelPointsEnemySpawn(redemption, new[] { "!enemy" }, SpawnPriority.High);
                 }
                 else if (clearIds.Contains(redemption.RewardId))
                 {
@@ -1399,7 +1401,7 @@ namespace H3TVR
         /// <summary>
         /// Process Channel Points ally spawn with enhanced feedback
         /// </summary>
-        private void ProcessChannelPointsAllySpawn(ChannelPointsRedemption redemption, string[] commandParts, EnhancedChatSpawner.SpawnPriority priority)
+        private void ProcessChannelPointsAllySpawn(ChannelPointsRedemption redemption, string[] commandParts, SpawnPriority priority)
         {
             try
             {
@@ -1413,8 +1415,15 @@ namespace H3TVR
                 // Get armor preset if specified
                 string armorPreset = commandParts.Length > 1 ? commandParts[1] : null;
 
-                // Queue spawn request with high priority
-                bool queued = chatSpawner?.QueueTwitchSpawnRequest(redemption.Username, redemption.DisplayName, true, armorPreset, priority) ?? false;
+                // Queue spawn request with high priority using AdvancedChatSosigSpawner
+                var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+                bool queued = false;
+                
+                if (advancedSpawner != null)
+                {
+                    advancedSpawner.QueueSpawn(redemption.Username, redemption.DisplayName, true, armorPreset, priority);
+                    queued = true;
+                }
                 
                 if (queued)
                 {
@@ -1442,7 +1451,7 @@ namespace H3TVR
         /// <summary>
         /// Process Channel Points enemy spawn with enhanced feedback
         /// </summary>
-        private void ProcessChannelPointsEnemySpawn(ChannelPointsRedemption redemption, string[] commandParts, EnhancedChatSpawner.SpawnPriority priority)
+        private void ProcessChannelPointsEnemySpawn(ChannelPointsRedemption redemption, string[] commandParts, SpawnPriority priority)
         {
             try
             {
@@ -1456,8 +1465,15 @@ namespace H3TVR
                 // Get armor preset if specified
                 string armorPreset = commandParts.Length > 1 ? commandParts[1] : null;
 
-                // Queue spawn request with high priority
-                bool queued = chatSpawner?.QueueTwitchSpawnRequest(redemption.Username, redemption.DisplayName, false, armorPreset, priority) ?? false;
+                // Queue spawn request with high priority using AdvancedChatSosigSpawner
+                var advancedSpawner = AdvancedChatSosigSpawner.Instance;
+                bool queued = false;
+                
+                if (advancedSpawner != null)
+                {
+                    advancedSpawner.QueueSpawn(redemption.Username, redemption.DisplayName, false, armorPreset, priority);
+                    queued = true;
+                }
                 
                 if (queued)
                 {
