@@ -6,7 +6,8 @@ using FistVR;
 namespace H3TVR
 {
     /// <summary>
-    /// Handles delayed initialization of H3VR asset loading when systems aren't ready immediately
+    /// Handles delayed initialization when H3VR systems aren't ready immediately
+    /// Notifies spawners when game systems are available
     /// </summary>
     public class H3VRDelayedInitializer : MonoBehaviour
     {
@@ -14,6 +15,9 @@ namespace H3TVR
         private bool initializationAttempted = false;
         private int maxRetries = 10;
         private float retryDelay = 2.0f;
+        private bool systemsReady = false;
+        
+        public static bool AreSystemsReady => instance != null && instance.systemsReady;
         
         public static void EnsureInstance()
         {
@@ -46,25 +50,13 @@ namespace H3TVR
                 // Check if H3VR ItemManager is ready
                 if (IM.OD != null && IM.OD.Count > 0)
                 {
-                    Debug.Log($"[H3VRDelayedInitializer] H3VR systems ready, attempting asset loading (attempt {retryCount + 1})");
+                    Debug.Log($"[H3VRDelayedInitializer] H3VR systems ready (attempt {retryCount + 1})");
                     
-                    try
-                    {
-                        H3VRAssetLoader.Initialize();
-                        
-                        if (H3VRAssetLoader.IsInitialized)
-                        {
-                            Debug.Log("[H3VRDelayedInitializer] H3VR asset loading successful!");
-                            
-                            // Notify other systems that assets are ready
-                            NotifySystemsReady();
-                            yield break; // Success, exit
-                        }
-                    }
-                    catch (System.Exception ex)
-                    {
-                        Debug.LogWarning($"[H3VRDelayedInitializer] Asset loading failed on attempt {retryCount + 1}: {ex.Message}");
-                    }
+                    systemsReady = true;
+                    
+                    // Notify other systems that H3VR is ready
+                    NotifySystemsReady();
+                    yield break; // Success, exit
                 }
                 else
                 {
@@ -74,19 +66,19 @@ namespace H3TVR
                 retryCount++;
             }
             
-            Debug.LogWarning($"[H3VRDelayedInitializer] Failed to initialize H3VR assets after {maxRetries} attempts");
+            Debug.LogWarning($"[H3VRDelayedInitializer] H3VR systems not ready after {maxRetries} attempts");
         }
         
         private void NotifySystemsReady()
         {
-            // Find and notify advanced chat spawners that assets are ready
+            // Find and notify advanced chat spawners that systems are ready
             var advancedSpawners = FindObjectsOfType<AdvancedChatSosigSpawner>();
             foreach (var spawner in advancedSpawners)
             {
-                Debug.Log("[H3VRDelayedInitializer] Notified EnhancedChatSpawner that H3VR assets are ready");
+                Debug.Log("[H3VRDelayedInitializer] Notified AdvancedChatSosigSpawner that H3VR systems are ready");
             }
             
-            Debug.Log("[H3VRDelayedInitializer] Asset loading notification complete");
+            Debug.Log("[H3VRDelayedInitializer] System ready notification complete");
         }
         
         /// <summary>
@@ -95,8 +87,10 @@ namespace H3TVR
         public static void ForceRetry()
         {
             EnsureInstance();
-            if (instance != null && !H3VRAssetLoader.IsInitialized)
+            if (instance != null && !instance.systemsReady)
             {
+                instance.StopAllCoroutines();
+                instance.initializationAttempted = false;
                 instance.StartCoroutine(instance.DelayedInitialization());
             }
         }

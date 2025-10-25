@@ -146,23 +146,7 @@ namespace H3TVR
         {
             try
             {
-                // Use H3VR Asset Loader if available and initialized
-                if (H3VRAssetLoader.IsInitialized)
-                {
-                    try
-                    {
-                        availableArmor = H3VRAssetLoader.GetAllArmorCategories();
-                        Debug.Log($"[SosigArmorWristMenuComplete] Loaded {availableArmor.Values.Sum(list => list.Count)} armor pieces from H3VR Asset Loader");
-                        return; // Success!
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.LogWarning($"[SosigArmorWristMenuComplete] H3VR Asset Loader failed: {ex.Message}");
-                        // Continue to fallback
-                    }
-                }
-                
-                // Fallback to manual ItemManager scanning
+                // Scan ItemManager for armor pieces
                 ScanItemManagerForArmor();
             }
             catch (Exception ex)

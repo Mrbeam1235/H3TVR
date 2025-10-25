@@ -26,6 +26,7 @@ namespace H3TVR
     /// <summary>
     /// Advanced Chat Sosig Spawner - Updated for Anton Update 120 TNH System
     /// Full-featured system with Twitch integration, armor customization, and modern TNH spawning
+    /// COMPATIBLE WITH CHATWATCHER.CS for file-based Twitch chat integration
     /// </summary>
     public class AdvancedChatSosigSpawner : MonoBehaviour
     {
@@ -39,6 +40,10 @@ namespace H3TVR
         private H3TVRImproved plugin;
         private ManualLogSource logger;
         private SteamFriendsIntegration steamFriends; // Optional Steam Friends integration
+        
+        // ChatWatcher integration
+        private ChatWatcher chatWatcher;
+        private bool chatWatcherEnabled = false;
         #endregion
 
         #region Sosig Templates - Updated for U120
@@ -75,9 +80,12 @@ namespace H3TVR
         private ConfigEntry<float> sosigLifetime;
         private ConfigEntry<bool> enableAutoCleanup;
         private ConfigEntry<float> enemyIFF;
-        private ConfigEntry<KeyCode> spawnAllyKey;
-        private ConfigEntry<KeyCode> spawnEnemyKey;
-        private ConfigEntry<KeyCode> clearSosigsKey;
+        
+        // REMOVED: Duplicate key bindings (ChatWatcher handles these)
+        // private ConfigEntry<KeyCode> spawnAllyKey;
+        // private ConfigEntry<KeyCode> spawnEnemyKey;
+        // private ConfigEntry<KeyCode> clearSosigsKey;
+        
         private ConfigEntry<float> followDistance;
         private ConfigEntry<float> enemyAggressionDistance;
         
@@ -94,6 +102,9 @@ namespace H3TVR
         private ConfigEntry<int> maxSosigsPerUser;
         private ConfigEntry<bool> enableCoverAI;
         private ConfigEntry<float> sosigUpdateInterval;
+        
+        // ChatWatcher integration config
+        private ConfigEntry<bool> enableChatWatcherIntegration;
         #endregion
 
         #region Spawn Management
@@ -120,9 +131,8 @@ namespace H3TVR
 
             InitializeConfiguration();
             InitializeSosigTemplates();
-            LoadNameLists();
 
-            logger?.LogInfo("Advanced Chat Sosig Spawner initialized (Update 120 TNH System, standalone mode)");
+            logger?.LogInfo("Advanced Chat Sosig Spawner initialized (Update 120 TNH System, ChatWatcher compatible)");
 
             // Start coroutines
             StartCoroutine(DelayedInitialization());
@@ -131,6 +141,48 @@ namespace H3TVR
             
             // Wait a frame then try to link with Steam Friends integration
             StartCoroutine(LinkSteamFriendsIntegration());
+            
+            // Initialize ChatWatcher if enabled
+            if (enableChatWatcherIntegration.Value)
+            {
+                StartCoroutine(InitializeChatWatcher());
+            }
+        }
+        
+        /// <summary>
+        /// Initialize ChatWatcher integration
+        /// </summary>
+        private IEnumerator InitializeChatWatcher()
+        {
+            yield return new WaitForSeconds(0.5f); // Wait for systems to be ready
+            
+            try
+            {
+                // Check if ChatWatcher is already created
+                chatWatcher = FindObjectOfType<ChatWatcher>();
+                
+                if (chatWatcher == null)
+                {
+                    // Create ChatWatcher component
+                    GameObject chatWatcherGO = new GameObject("H3TVR_ChatWatcher");
+                    chatWatcher = chatWatcherGO.AddComponent<ChatWatcher>();
+                    chatWatcher.Initialize(plugin, logger, this);
+                    DontDestroyOnLoad(chatWatcherGO);
+                    
+                    chatWatcherEnabled = true;
+                    logger?.LogInfo("ChatWatcher integration enabled - file-based chat spawning active");
+                }
+                else
+                {
+                    chatWatcherEnabled = true;
+                    logger?.LogInfo("ChatWatcher already exists - using existing instance");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to initialize ChatWatcher: {ex.Message}");
+                chatWatcherEnabled = false;
+            }
         }
         
         /// <summary>
@@ -212,12 +264,13 @@ namespace H3TVR
                 enemyAggressionDistance = plugin.Config.Bind("Chat Spawner", "EnemyAggressionDistance", 20.0f, 
                     "Distance at which enemies become aggressive");
                 
-                spawnAllyKey = plugin.Config.Bind("Chat Spawner Keys", "SpawnAllyKey", KeyCode.P, 
-                    "Spawn ally key");
-                spawnEnemyKey = plugin.Config.Bind("Chat Spawner Keys", "SpawnEnemyKey", KeyCode.O, 
-                    "Spawn enemy key");
-                clearSosigsKey = plugin.Config.Bind("Chat Spawner Keys", "ClearSosigsKey", KeyCode.Delete, 
-                    "Clear sosigs key");
+                // REMOVED: Duplicate key bindings - ChatWatcher handles these now
+                // spawnAllyKey = plugin.Config.Bind("Chat Spawner Keys", "SpawnAllyKey", KeyCode.P, 
+                //     "Spawn ally key");
+                // spawnEnemyKey = plugin.Config.Bind("Chat Spawner Keys", "SpawnEnemyKey", KeyCode.O, 
+                //     "Spawn enemy key");
+                // clearSosigsKey = plugin.Config.Bind("Chat Spawner Keys", "ClearSosigsKey", KeyCode.Delete, 
+                //     "Clear sosigs key");
                 
                 // New U120 configuration
                 useModernSpawnSystem = plugin.Config.Bind("Chat Spawner", "UseModernSpawnSystem", true,
@@ -239,12 +292,14 @@ namespace H3TVR
                 // Advanced features
                 enableArmorCustomization = plugin.Config.Bind("Chat Spawner Advanced", "EnableArmorCustomization", true,
                     "Enable armor customization system");
-                allyNamesFilePath = plugin.Config.Bind("Chat Spawner Advanced", "AllyNamesFile", 
-                    "BepInEx/config/H3TVR_AllyNames.ini",
-                    "Path to ally names file");
-                enemyNamesFilePath = plugin.Config.Bind("Chat Spawner Advanced", "EnemyNamesFile",
-                    "BepInEx/config/H3TVR_EnemyNames.ini",
-                    "Path to enemy names file");
+                allyNamesFilePath = plugin.Config.Bind("Chat Spawner Advanced", "AllyNamesFilePath", 
+                    "Plugins/H3TwitchTools/AllyNames.ini",
+                    "File path for ally names list (INI file)");
+
+                enemyNamesFilePath = plugin.Config.Bind("Chat Spawner Advanced", "EnemyNamesFilePath", 
+                    "Plugins/H3TwitchTools/EnemyNames.ini",
+                    "File path for enemy names list (INI file)");
+                
                 useRandomNames = plugin.Config.Bind("Chat Spawner Advanced", "UseRandomNames", true,
                     "Use random names from name lists");
                 maxSosigsPerUser = plugin.Config.Bind("Chat Spawner Advanced", "MaxSosigsPerUser", 2,
@@ -253,8 +308,13 @@ namespace H3TVR
                     "Enable advanced cover-taking AI behavior");
                 sosigUpdateInterval = plugin.Config.Bind("Chat Spawner Advanced", "UpdateInterval", 1.0f,
                     "Interval between sosig AI updates (seconds)");
+                
+                // ChatWatcher integration
+                enableChatWatcherIntegration = plugin.Config.Bind("Chat Spawner Integration", "EnableChatWatcher", true,
+                    "Enable ChatWatcher integration for file-based Twitch chat spawning\n" +
+                    "When enabled, sosigs will spawn automatically from chat files (H3TwitchTools compatible)");
 
-                logger?.LogInfo("Configuration initialized successfully");
+                logger?.LogInfo("Configuration initialized successfully (ChatWatcher integration ready)");
             }
             catch (Exception ex)
             {
@@ -467,6 +527,7 @@ namespace H3TVR
         #region Core Spawning Logic - Updated for U120
         /// <summary>
         /// Spawn friendly sosig - Updated for U120 TNH System
+        /// CHATWATCHER COMPATIBLE - Can be called from file-based chat triggers
         /// </summary>
         public void SpawningSequence(string username)
         {
@@ -474,13 +535,13 @@ namespace H3TVR
             {
                 if (spawnedChatters.Count >= maxAllySosigs.Value)
                 {
-                    logger?.LogWarning("Max ally sosigs reached");
+                    logger?.LogWarning($"Max ally sosigs reached ({maxAllySosigs.Value}) - cannot spawn for {username}");
                     return;
                 }
 
                 if (Time.time - lastSpawnTime < spawnCooldown.Value)
                 {
-                    logger?.LogWarning("Spawn cooldown active");
+                    logger?.LogWarning($"Spawn cooldown active ({spawnCooldown.Value}s) - skipping {username}");
                     return;
                 }
 
@@ -489,7 +550,7 @@ namespace H3TVR
                 {
                     if (userSosigCounts[username] >= maxSosigsPerUser.Value)
                     {
-                        logger?.LogWarning($"User {username} has reached max sosigs limit");
+                        logger?.LogWarning($"User {username} has reached max sosigs limit ({maxSosigsPerUser.Value})");
                         return;
                     }
                 }
@@ -549,21 +610,22 @@ namespace H3TVR
                         userSosigCounts.Add(username, 1);
                     }
                     
-                    logger?.LogInfo($"Spawned ally sosig '{displayName}' for {username}");
+                    logger?.LogInfo($"✓ Spawned ally sosig '{displayName}' for {username} ({spawnedChatters.Count}/{maxAllySosigs.Value})");
                 }
                 else
                 {
-                    logger?.LogError("Failed to spawn ally sosig");
+                    logger?.LogError($"Failed to spawn ally sosig for {username}");
                 }
             }
             catch (Exception ex)
             {
-                logger?.LogError($"Ally spawn failed: {ex.Message}");
+                logger?.LogError($"Ally spawn failed for {username}: {ex.Message}");
             }
         }
 
         /// <summary>
         /// Spawn enemy sosig - Updated for U120 TNH System
+        /// CHATWATCHER COMPATIBLE - Can be called from file-based chat triggers
         /// </summary>
         public void SpawningSequenceEnemy(int IFF, string username)
         {
@@ -571,13 +633,13 @@ namespace H3TVR
             {
                 if (spawnedEnemyChatters.Count >= maxEnemySosigs.Value)
                 {
-                    logger?.LogWarning("Max enemy sosigs reached");
+                    logger?.LogWarning($"Max enemy sosigs reached ({maxEnemySosigs.Value}) - cannot spawn for {username}");
                     return;
                 }
 
                 if (Time.time - lastSpawnTime < spawnCooldown.Value)
                 {
-                    logger?.LogWarning("Spawn cooldown active");
+                    logger?.LogWarning($"Spawn cooldown active ({spawnCooldown.Value}s) - skipping {username}");
                     return;
                 }
 
@@ -629,16 +691,16 @@ namespace H3TVR
                     spawnedEnemyChatters.Add(sosig);
                     lastSpawnTime = Time.time;
                     
-                    logger?.LogInfo($"Spawned enemy sosig '{displayName}' for {username}");
+                    logger?.LogInfo($"✓ Spawned enemy sosig '{displayName}' for {username} ({spawnedEnemyChatters.Count}/{maxEnemySosigs.Value})");
                 }
                 else
                 {
-                    logger?.LogError("Failed to spawn enemy sosig");
+                    logger?.LogError($"Failed to spawn enemy sosig for {username}");
                 }
             }
             catch (Exception ex)
             {
-                logger?.LogError($"Enemy spawn failed: {ex.Message}");
+                logger?.LogError($"Enemy spawn failed for {username}: {ex.Message}");
             }
         }
 
@@ -1204,8 +1266,12 @@ namespace H3TVR
                     }
                     spawnedEnemyChatters.Clear();
                 }
+                
+                // Clear user tracking when clearing sosigs
+                userSosigCounts.Clear();
+                userLastSpawnTime.Clear();
 
-                logger?.LogInfo($"Cleared {cleared} sosigs");
+                logger?.LogInfo($"Cleared {cleared} sosigs (ChatWatcher compatible)");
             }
             catch (Exception ex)
             {
@@ -1215,14 +1281,174 @@ namespace H3TVR
 
         /// <summary>
         /// Clear all sosigs (both allies and enemies)
+        /// CHATWATCHER COMPATIBLE - Can be called from ChatWatcher
         /// </summary>
         public void ClearAllSosigs()
         {
             ClearSosigs(true, true);
+            
+            // Also clear any active bosses
+            BossSosigSystem.ClearAllBosses();
+            
+            // Notify ChatWatcher if available
+            if (chatWatcherEnabled && chatWatcher != null)
+            {
+                try
+                {
+                    chatWatcher.ClearCache();
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning($"Failed to clear ChatWatcher cache: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get ChatWatcher instance (if available)
+        /// </summary>
+        public ChatWatcher GetChatWatcher()
+        {
+            return chatWatcher;
+        }
+        
+        /// <summary>
+        /// Check if ChatWatcher integration is active
+        /// </summary>
+        public bool IsChatWatcherEnabled()
+        {
+            return chatWatcherEnabled && chatWatcher != null;
+        }
+
+        /// <summary>
+        /// Spawn a boss sosig - Enhanced enemy with special abilities
+        /// </summary>
+        public Sosig SpawningSequenceBoss(BossSosigSystem.BossType bossType, string username = null)
+        {
+            try
+            {
+                if (spawnedEnemyChatters.Count >= maxEnemySosigs.Value)
+                {
+                    logger?.LogWarning("Max enemy sosigs reached - cannot spawn boss");
+                    return null;
+                }
+
+                if (Time.time - lastSpawnTime < spawnCooldown.Value)
+                {
+                    logger?.LogWarning("Spawn cooldown active");
+                    return null;
+                }
+
+                // Calculate spawn position for boss - further from player
+                Vector3 spawnPos = CalculateBossSpawnPoint();
+                Quaternion spawnRot = Quaternion.identity;
+
+                // Determine IFF
+                int finalIFF = Mathf.Max(1, (int)enemyIFF.Value);
+
+                Sosig sosig = null;
+                
+                // Spawn using modern or legacy system
+                if (useModernSpawnSystem.Value)
+                {
+                    var enemyID = GetBossTemplate(bossType);
+                    sosig = SpawnSosigModern(enemyID, spawnPos, spawnRot, finalIFF);
+                }
+                
+                if (sosig == null)
+                {
+                    var template = GetRandomTemplate(false);
+                    if (template != null)
+                    {
+                        sosig = SpawnSosigLegacy(template, spawnPos, spawnRot, finalIFF);
+                    }
+                }
+                
+                if (sosig != null)
+                {
+                    // Setup enemy behavior
+                    SetupEnemyBehavior(sosig);
+                    
+                    // Add boss component
+                    BossSosig boss = sosig.gameObject.AddComponent<BossSosig>();
+                    boss.Initialize(bossType, logger);
+                    
+                    // Determine display name
+                    string displayName = username ?? $"BOSS_{bossType}";
+                    
+                    // Add special boss nameplate
+                    if (enableNameplates.Value && nameplateEnemy != null)
+                    {
+                        AttachNameplate(sosig, $"★ {displayName} ★", nameplateEnemy, true);
+                    }
+                
+                    // Track sosig
+                    spawnedEnemyChatters.Add(sosig);
+                    lastSpawnTime = Time.time;
+                    
+                    logger?.LogInfo($"Spawned {bossType} BOSS '{displayName}' (IFF: {finalIFF})");
+                    
+                    return sosig;
+                }
+                else
+                {
+                    logger?.LogError("Failed to spawn boss sosig");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Boss spawn failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Calculate boss spawn point - further from player than regular enemies
+        /// </summary>
+        private Vector3 CalculateBossSpawnPoint()
+        {
+            if (GM.CurrentPlayerBody?.Head?.transform == null)
+                return Vector3.zero;
+
+            var playerPos = GM.CurrentPlayerBody.Head.transform.position;
+            float angle = UnityEngine.Random.Range(0f, 360f) * Mathf.Deg2Rad;
+            float distance = UnityEngine.Random.Range(20f, 30f); // Bosses spawn further away
+            
+            return new Vector3(
+                playerPos.x + Mathf.Cos(angle) * distance,
+                playerPos.y,
+                playerPos.z + Mathf.Sin(angle) * distance
+            );
+        }
+
+        /// <summary>
+        /// Get appropriate sosig template for boss type
+        /// </summary>
+        private SosigEnemyID GetBossTemplate(BossSosigSystem.BossType bossType)
+        {
+            // Select appropriate enemy template based on boss type
+            switch (bossType)
+            {
+                case BossSosigSystem.BossType.Tank:
+                case BossSosigSystem.BossType.Juggernaut:
+                    return SosigEnemyID.M_Swat_Heavy;
+                
+                case BossSosigSystem.BossType.Sniper:
+                    return SosigEnemyID.M_Swat_Sniper;
+                
+                case BossSosigSystem.BossType.Berserker:
+                case BossSosigSystem.BossType.Assassin:
+                    return SosigEnemyID.M_Swat_Breacher;
+                
+                default:
+                    return GetRandomEnemyID();
+            }
         }
 
         /// <summary>
         /// Queue a spawn request - Advanced version with priority and armor
+        /// CHATWATCHER COMPATIBLE - Can be called from file-based chat triggers
         /// </summary>
         public void QueueSpawn(string username, string displayName, bool isFriendly, string armorPreset = null, SpawnPriority priority = SpawnPriority.Normal, string behavior = null)
         {
@@ -1254,6 +1480,7 @@ namespace H3TVR
 
         /// <summary>
         /// Get detailed statistics about spawned sosigs
+        /// CHATWATCHER COMPATIBLE - Used by ChatWatcher.GetStats()
         /// </summary>
         public struct SosigStats
         {
@@ -1261,6 +1488,7 @@ namespace H3TVR
             public int Enemies;
             public int Queued;
             public int TotalActive;
+            public bool ChatWatcherActive;
         }
 
         public SosigStats GetStats()
@@ -1270,15 +1498,23 @@ namespace H3TVR
                 Allies = spawnedChatters.Count,
                 Enemies = spawnedEnemyChatters.Count,
                 Queued = 0, // No queue in immediate spawn system
-                TotalActive = spawnedChatters.Count + spawnedEnemyChatters.Count
+                TotalActive = spawnedChatters.Count + spawnedEnemyChatters.Count,
+                ChatWatcherActive = chatWatcherEnabled && chatWatcher != null
             };
         }
 
-        // Twitch-compatible spawn request method
+        /// <summary>
+        /// Twitch-compatible spawn request method
+        /// CHATWATCHER COMPATIBLE - Primary method for file-based chat spawning
+        /// </summary>
         public bool QueueTwitchSpawnRequest(string username, string displayName, bool isFriendly, string armorPreset = null, SpawnPriority priority = SpawnPriority.Normal, string requestedBehavior = null)
         {
             try
             {
+                // Log source of spawn request
+                string source = chatWatcherEnabled ? "ChatWatcher" : "Direct";
+                logger?.LogDebug($"Twitch spawn request from {source}: {username} (friendly: {isFriendly})");
+                
                 // Simple immediate spawn for compatibility
                 if (isFriendly)
                 {
@@ -1290,13 +1526,14 @@ namespace H3TVR
                 }
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                logger?.LogError($"Twitch spawn request failed for {username}: {ex.Message}");
                 return false;
             }
         }
         #endregion
-
+        
         /// <summary>
         /// Apply outfit using modern Update 120 system
         /// </summary>
@@ -1343,6 +1580,12 @@ namespace H3TVR
             
             // Fall back to INI name lists
             var nameList = isAlly ? allyNames : enemyNames;
+            
+            // Load name lists if not already loaded
+            if (nameList.Count == 0)
+            {
+                LoadNameLists();
+            }
             
             if (nameList.Count == 0)
                 return isAlly ? "Ally" : "Enemy";
@@ -1448,6 +1691,92 @@ namespace H3TVR
             {
                 logger?.LogWarning($"Failed to build template cache: {ex.Message}");
                 logger?.LogDebug($"Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// Receive and set name lists from ChatWatcher
+        /// CHATWATCHER COMPATIBLE - Called by ChatWatcher when new name lists are available
+        /// </summary>
+        public void OnReceiveNameLists(List<string> allyList, List<string> enemyList)
+        {
+            try
+            {
+                allyNames = allyList;
+                enemyNames = enemyList;
+                
+                logger?.LogInfo($"Received {allyNames.Count} ally names and {enemyNames.Count} enemy names from ChatWatcher");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to process received name lists: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Get comprehensive system status for debugging and monitoring
+        /// </summary>
+        public string GetSystemStatus()
+        {
+            try
+            {
+                var status = new System.Text.StringBuilder();
+                status.AppendLine("=== Advanced Chat Sosig Spawner Status ===");
+                status.AppendLine($"Active Allies: {spawnedChatters.Count}/{maxAllySosigs.Value}");
+                status.AppendLine($"Active Enemies: {spawnedEnemyChatters.Count}/{maxEnemySosigs.Value}");
+                status.AppendLine($"ChatWatcher: {(chatWatcherEnabled ? "ACTIVE" : "INACTIVE")}");
+                status.AppendLine($"Steam Friends: {(steamFriends != null && steamFriends.IsAvailable() ? "AVAILABLE" : "N/A")}");
+                status.AppendLine($"Template Cache: {templateCache.Count} templates");
+                status.AppendLine($"Ally Pool: {allyPoolIDs.Count} types");
+                status.AppendLine($"Enemy Pool: {enemyPoolIDs.Count} types");
+                status.AppendLine($"Ally Names: {allyNames.Count} loaded");
+                status.AppendLine($"Enemy Names: {enemyNames.Count} loaded");
+                status.AppendLine($"Modern Spawn System: {(useModernSpawnSystem.Value ? "ENABLED" : "DISABLED")}");
+                status.AppendLine($"Nameplates: {(enableNameplates.Value ? "ENABLED" : "DISABLED")}");
+                status.AppendLine($"User Tracking: {userSosigCounts.Count} users");
+                status.AppendLine("==========================================");
+                
+                return status.ToString();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to get system status: {ex.Message}");
+                return "ERROR: Could not get status";
+            }
+        }
+        
+        /// <summary>
+        /// Force reload name lists from disk
+        /// </summary>
+        public void ReloadNameLists()
+        {
+            try
+            {
+                allyNames.Clear();
+                enemyNames.Clear();
+                LoadNameLists();
+                logger?.LogInfo($"Reloaded name lists: {allyNames.Count} allies, {enemyNames.Count} enemies");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to reload name lists: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Force rebuild the template cache
+        /// </summary>
+        public void RebuildTemplateCache()
+        {
+            try
+            {
+                templateCache.Clear();
+                BuildTemplateCache();
+                logger?.LogInfo($"Rebuilt template cache: {templateCache.Count} templates");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to rebuild template cache: {ex.Message}");
             }
         }
     }

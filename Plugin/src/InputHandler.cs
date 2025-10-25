@@ -37,6 +37,7 @@ namespace H3TVR
             ProcessWeaponInputs();
             ProcessUtilityInputs();
             ProcessChatSosigInputs();
+            ProcessBossInputs();
             ProcessSteamFriendsInputs();
         }
 
@@ -233,6 +234,70 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"Steam Friends input handling error: {ex.Message}");
+            }
+        }
+
+        private void ProcessBossInputs()
+        {
+            try
+            {
+                // Random boss spawn
+                if (Input.GetKeyDown(keyBindings["SpawnBossRandom"].Value))
+                {
+                    spawnManager?.SpawnBossSosig();
+                }
+                
+                // Specific boss types
+                if (Input.GetKeyDown(keyBindings["SpawnBossTank"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Tank);
+                }
+                
+                if (Input.GetKeyDown(keyBindings["SpawnBossBerserker"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Berserker);
+                }
+                
+                if (Input.GetKeyDown(keyBindings["SpawnBossSniper"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Sniper);
+                }
+                
+                if (Input.GetKeyDown(keyBindings["SpawnBossSummoner"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Summoner);
+                }
+                
+                if (Input.GetKeyDown(keyBindings["SpawnBossElite"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Elite);
+                }
+                
+                if (Input.GetKeyDown(keyBindings["SpawnBossJuggernaut"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Juggernaut);
+                }
+                
+                if (Input.GetKeyDown(keyBindings["SpawnBossAssassin"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Assassin);
+                }
+                
+                if (Input.GetKeyDown(keyBindings["SpawnBossCommander"].Value))
+                {
+                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Commander);
+                }
+                
+                // Clear all bosses
+                if (Input.GetKeyDown(keyBindings["ClearBosses"].Value))
+                {
+                    BossSosigSystem.ClearAllBosses();
+                    logger.LogInfo("Cleared all boss sosigs");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Boss input handling error: {ex.Message}");
             }
         }
     }

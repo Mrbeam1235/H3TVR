@@ -317,6 +317,18 @@ namespace H3TVR
                 { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") },
                 { "ArmorGUI", new KeyValuePair<KeyCode, string>(KeyCode.F6, "Open Armor Configuration GUI") },
                 
+                // Boss Sosig Key Bindings
+                { "SpawnBossRandom", new KeyValuePair<KeyCode, string>(KeyCode.B, "Spawn Random Boss") },
+                { "SpawnBossTank", new KeyValuePair<KeyCode, string>(KeyCode.Alpha1, "Spawn Tank Boss") },
+                { "SpawnBossBerserker", new KeyValuePair<KeyCode, string>(KeyCode.Alpha2, "Spawn Berserker Boss") },
+                { "SpawnBossSniper", new KeyValuePair<KeyCode, string>(KeyCode.Alpha3, "Spawn Sniper Boss") },
+                { "SpawnBossSummoner", new KeyValuePair<KeyCode, string>(KeyCode.Alpha4, "Spawn Summoner Boss") },
+                { "SpawnBossElite", new KeyValuePair<KeyCode, string>(KeyCode.Alpha5, "Spawn Elite Boss") },
+                { "SpawnBossJuggernaut", new KeyValuePair<KeyCode, string>(KeyCode.Alpha6, "Spawn Juggernaut Boss") },
+                { "SpawnBossAssassin", new KeyValuePair<KeyCode, string>(KeyCode.Alpha7, "Spawn Assassin Boss") },
+                { "SpawnBossCommander", new KeyValuePair<KeyCode, string>(KeyCode.Alpha8, "Spawn Commander Boss") },
+                { "ClearBosses", new KeyValuePair<KeyCode, string>(KeyCode.Backspace, "Clear All Bosses") },
+                
                 // Steam Friends Key Bindings
                 { "SpawnSteamFriendAlly", new KeyValuePair<KeyCode, string>(KeyCode.LeftBracket, "Spawn Steam Friend as Ally") },
                 { "SpawnSteamFriendEnemy", new KeyValuePair<KeyCode, string>(KeyCode.RightBracket, "Spawn Steam Friend as Enemy") },
@@ -325,7 +337,7 @@ namespace H3TVR
                 { "RefreshSteamFriends", new KeyValuePair<KeyCode, string>(KeyCode.F9, "Refresh Steam Friends List") },
                 { "SteamFriendsStats", new KeyValuePair<KeyCode, string>(KeyCode.Home, "Show Steam Friends Stats") },
                 
-                // New JerryAr mod keybindings
+                // JerryAr mod keybindings
                 { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
                 { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") }
             };
@@ -353,6 +365,12 @@ namespace H3TVR
                 // Initialize Stovepipe Integration
                 StovepipeIntegrationManager.Initialize(Logger, Config);
 
+                // Initialize Advanced AI Config
+                AdvancedAIConfig.ApplyConfig(Config);
+
+                // Initialize Boss Sosig Config
+                BossConfig.ApplyConfig(Config);
+
                 // Log final status
                 if (OptionalDependencyManager.HasAnyDependencies())
                 {
@@ -372,6 +390,18 @@ namespace H3TVR
                 else
                 {
                     Logger.LogInfo("[H3TVRImproved] Running in standard mode - no optional dependencies found");
+                }
+
+                // Log Advanced AI status
+                if (AdvancedSosigAI.EnableAdvancedAI)
+                {
+                    Logger.LogInfo("[H3TVRImproved] Advanced AI system enabled");
+                }
+
+                // Log Boss System status
+                if (BossSosigSystem.EnableBossSosigs)
+                {
+                    Logger.LogInfo($"[H3TVRImproved] Boss Sosig system enabled (Max: {BossSosigSystem.MaxBossesPerSession})");
                 }
             }
             catch (Exception ex)
@@ -514,18 +544,6 @@ namespace H3TVR
             // Wait a few seconds for H3VR systems to be fully loaded
             yield return new WaitForSeconds(3f);
             
-            // Try to initialize H3VR Asset Loader (no try-catch with yield)
-            H3VRAssetLoader.TryInitializeWithDelay();
-            
-            // Wait a bit more for asset loading
-            yield return new WaitForSeconds(1f);
-            
-            // Force reload armor in the wrist menu
-            if (sosigArmorWristMenu?.GetArmorMenu() != null)
-            {
-                sosigArmorWristMenu.GetArmorMenu().ShowMessage("Reloading armor assets after H3VR initialization...");
-            }
-            
             Logger.LogInfo("Delayed armor system initialization completed");
             
             // Retry template cache build for chat spawner after H3VR is ready
@@ -614,7 +632,7 @@ namespace H3TVR
                     slomoStatus = "Off";
                 }
                 
-                // Update movement scaling based on current time scale
+                // Change to just update the controller - it handles its own scaling now
                 slomoMovementController?.UpdateMovementScale(Time.timeScale);
             }
             catch (Exception ex)

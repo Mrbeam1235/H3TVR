@@ -489,31 +489,84 @@ namespace H3TVR
         }
 
         // Chat Sosig methods - using Advanced Chat Spawner
+        /// <summary>
+        /// Spawn friendly Chat Sosig (wrapper for H3TwitchTools compatibility)
+        /// </summary>
         public void SpawnChatSosigFriendly()
         {
-            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
-            if (advancedSpawner != null)
+            try
             {
-                advancedSpawner.QueueSpawn("Player", "Test Ally", true);
-                logger?.LogInfo("Queued friendly chat sosig spawn");
+                string username = "Player_" + UnityEngine.Random.Range(1000, 9999);
+                advancedChatSpawner?.SpawningSequence(username);
+                logger?.LogInfo($"Spawned friendly chat sosig: {username}");
             }
-            else
+            catch (Exception ex)
             {
-                logger?.LogWarning("Advanced Chat Spawner not available");
+                logger?.LogError($"Failed to spawn friendly chat sosig: {ex.Message}");
             }
         }
 
+        /// <summary>
+        /// Spawn enemy Chat Sosig (wrapper for H3TwitchTools compatibility)
+        /// </summary>
         public void SpawnChatSosigEnemy()
         {
-            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
-            if (advancedSpawner != null)
+            try
             {
-                advancedSpawner.QueueSpawn("Player", "Test Enemy", false);
-                logger?.LogInfo("Queued enemy chat sosig spawn");
+                string username = "Enemy_" + UnityEngine.Random.Range(1000, 9999);
+                advancedChatSpawner?.SpawningSequenceEnemy(1, username);
+                logger?.LogInfo($"Spawned enemy chat sosig: {username}");
             }
-            else
+            catch (Exception ex)
             {
-                logger?.LogWarning("Advanced Chat Spawner not available");
+                logger?.LogError($"Failed to spawn enemy chat sosig: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Spawn a boss sosig with random type
+        /// </summary>
+        public void SpawnBossSosig()
+        {
+            try
+            {
+                var bossType = BossSosigSystem.GetRandomBossType();
+                string bossName = $"Boss_{bossType}_{UnityEngine.Random.Range(100, 999)}";
+                
+                advancedChatSpawner?.SpawningSequenceBoss(bossType, bossName);
+                logger?.LogInfo($"Spawned {bossType} boss: {bossName}");
+                
+                // Play dramatic boss spawn sound
+                audioManager?.PlayDangerCloseSound("boss_spawn", 
+                    GM.CurrentPlayerBody?.Head?.position ?? Vector3.zero, 
+                    false, "boss/boss_appears.wav", 1.0f);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to spawn boss sosig: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Spawn specific boss type
+        /// </summary>
+        public void SpawnBossSosig(BossSosigSystem.BossType bossType)
+        {
+            try
+            {
+                string bossName = $"Boss_{bossType}_{UnityEngine.Random.Range(100, 999)}";
+                
+                advancedChatSpawner?.SpawningSequenceBoss(bossType, bossName);
+                logger?.LogInfo($"Spawned specific {bossType} boss: {bossName}");
+                
+                // Play boss-specific sound
+                audioManager?.PlayDangerCloseSound($"boss_{bossType.ToString().ToLower()}", 
+                    GM.CurrentPlayerBody?.Head?.position ?? Vector3.zero, 
+                    false, $"boss/{bossType.ToString().ToLower()}_appears.wav", 1.0f);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to spawn {bossType} boss: {ex.Message}");
             }
         }
 
@@ -523,7 +576,7 @@ namespace H3TVR
             if (advancedSpawner != null)
             {
                 advancedSpawner.ClearAllSosigs();
-                logger?.LogInfo("Cleared all chat sosigs");
+                logger?.LogInfo("Cleared all chat sosigs and bosses");
             }
             else
             {
@@ -539,10 +592,12 @@ namespace H3TVR
                 var stats = advancedSpawner.GetStats();
                 return new ChatSosigStats
                 {
-                    friendlyCount = stats.Allies
+                    friendlyCount = stats.Allies,
+                    enemyCount = stats.Enemies,
+                    activeSosigCount = stats.TotalActive
                 };
             }
-            return new ChatSosigStats { friendlyCount = 0 };
+            return new ChatSosigStats { friendlyCount = 0, enemyCount = 0, activeSosigCount = 0 };
         }
 
         // Helper methods
