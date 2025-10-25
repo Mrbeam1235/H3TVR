@@ -37,6 +37,7 @@ namespace H3TVR
             ProcessWeaponInputs();
             ProcessUtilityInputs();
             ProcessChatSosigInputs();
+            ProcessSteamFriendsInputs();
         }
 
         private void ProcessSpawnInputs()
@@ -175,6 +176,63 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"Failed to show chat sosig stats: {ex.Message}");
+            }
+        }
+        
+        private void ProcessSteamFriendsInputs()
+        {
+            try
+            {
+                var steamFriends = plugin?.GetSteamFriendsIntegration();
+                if (steamFriends == null || !plugin.IsSteamFriendsEnabled())
+                {
+                    return; // Steam Friends integration not available
+                }
+                
+                // Spawn random Steam friend as ally
+                if (Input.GetKeyDown(keyBindings["SpawnSteamFriendAlly"].Value))
+                {
+                    steamFriends.SpawnSosigWithFriendName(true);
+                    logger.LogInfo("Spawning Steam friend as ally");
+                }
+                
+                // Spawn random Steam friend as enemy
+                if (Input.GetKeyDown(keyBindings["SpawnSteamFriendEnemy"].Value))
+                {
+                    steamFriends.SpawnSosigWithFriendName(false);
+                    logger.LogInfo("Spawning Steam friend as enemy");
+                }
+                
+                // Spawn all Steam friends as allies
+                if (Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsAlly"].Value))
+                {
+                    steamFriends.SpawnAllFriendsAsSosigs(true);
+                    logger.LogInfo("Spawning all Steam friends as allies");
+                }
+                
+                // Spawn all Steam friends as enemies
+                if (Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsEnemy"].Value))
+                {
+                    steamFriends.SpawnAllFriendsAsSosigs(false);
+                    logger.LogInfo("Spawning all Steam friends as enemies");
+                }
+                
+                // Refresh Steam friends list
+                if (Input.GetKeyDown(keyBindings["RefreshSteamFriends"].Value))
+                {
+                    steamFriends.RefreshFriendsList();
+                    logger.LogInfo("Refreshing Steam friends list");
+                }
+                
+                // Show Steam friends stats
+                if (Input.GetKeyDown(keyBindings["SteamFriendsStats"].Value))
+                {
+                    logger.LogInfo(steamFriends.GetStatsInfo());
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Steam Friends input handling error: {ex.Message}");
             }
         }
     }

@@ -38,6 +38,7 @@ namespace H3TVR
         #region Core Components
         private H3TVRImproved plugin;
         private ManualLogSource logger;
+        private SteamFriendsIntegration steamFriends; // Optional Steam Friends integration
         #endregion
 
         #region Sosig Templates - Updated for U120
@@ -127,11 +128,37 @@ namespace H3TVR
             StartCoroutine(DelayedInitialization());
             StartCoroutine(UpdateSosigsCoroutine());
             StartCoroutine(CleanupCoroutine());
+            
+            // Wait a frame then try to link with Steam Friends integration
+            StartCoroutine(LinkSteamFriendsIntegration());
         }
         
         /// <summary>
-        /// Delayed initialization to ensure IM.Instance is fully loaded
+        /// Link with Steam Friends integration if available
         /// </summary>
+        private IEnumerator LinkSteamFriendsIntegration()
+        {
+            yield return new WaitForSeconds(1f); // Wait for all systems to initialize
+            
+            try
+            {
+                var steamIntegration = plugin?.GetSteamFriendsIntegration();
+                if (steamIntegration != null && steamIntegration.IsAvailable())
+                {
+                    steamFriends = steamIntegration;
+                    logger?.LogInfo("Steam Friends integration linked successfully");
+                }
+                else
+                {
+                    logger?.LogInfo("Steam Friends integration not available");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning($"Failed to link Steam Friends integration: {ex.Message}");
+            }
+        }
+
         private IEnumerator DelayedInitialization()
         {
             float timeout = 10f;
@@ -963,8 +990,11 @@ namespace H3TVR
 
                 SpawnerName = name;
                 
-                GameObject nameplate = Instantiate(nameplatePrefab, sosig.Links[1].transform, false);
-                nameplate.transform.localPosition = Vector3.zero;
+                // Attach to head (Links[0]) instead of torso (Links[1])
+                GameObject nameplate = Instantiate(nameplatePrefab, sosig.Links[0].transform, false);
+                
+                // Position above the head
+                nameplate.transform.localPosition = new Vector3(0f, 0.3f, 0f); // Raised 0.3 units above head
                 nameplate.transform.localRotation = Quaternion.identity;
                 
                 var textComponents = nameplate.GetComponentsInChildren<Text>();
@@ -1293,6 +1323,25 @@ namespace H3TVR
         /// </summary>
         private string GetRandomName(bool isAlly)
         {
+            // Try Steam Friends first if available and configured
+            if (steamFriends != null && steamFriends.IsAvailable() && plugin.UseSteamFriendsRandomNames())
+            {
+                try
+                {
+                    string friendName = steamFriends.GetRandomFriendName();
+                    if (!string.IsNullOrEmpty(friendName) && friendName != "Steam Friend")
+                    {
+                        logger?.LogDebug($"Using Steam friend name: {friendName}");
+                        return friendName;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning($"Failed to get Steam friend name: {ex.Message}");
+                }
+            }
+            
+            // Fall back to INI name lists
             var nameList = isAlly ? allyNames : enemyNames;
             
             if (nameList.Count == 0)

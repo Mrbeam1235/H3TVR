@@ -86,6 +86,11 @@ namespace H3TVR
         private ConfigEntry<string> twitchChatFilePath; // Legacy
         private ConfigEntry<string> twitchEnemyChatFilePath; // Legacy
         private ConfigEntry<int> maxChatSosigs;
+        
+        // Steam Friends Configuration
+        private ConfigEntry<bool> enableSteamFriends;
+        private ConfigEntry<bool> steamFriendsRandomNames;
+        private ConfigEntry<float> steamFriendsRefreshInterval;
         #endregion
 
         #region Components
@@ -98,6 +103,7 @@ namespace H3TVR
         private AudioManager audioManager;
         private AdvancedChatSosigSpawner advancedChatSpawner; // Advanced Chat Sosig Spawner with Update 120 TNH
         private SosigArmorWristMenuIntegration sosigArmorWristMenu;
+        private SteamFriendsIntegration steamFriendsIntegration; // Steam Friends Integration
         #endregion
 
         #region Initialization
@@ -147,6 +153,10 @@ namespace H3TVR
                 // Initialize TwitchLib integration (if enabled)
                 base.Logger.LogInfo("Step 6: Initializing Twitch integration...");
                 InitializeTwitchIntegration();
+                
+                // Initialize Steam Friends integration (if enabled)
+                base.Logger.LogInfo("Step 6.5: Initializing Steam Friends integration...");
+                InitializeSteamFriendsIntegration();
                 
                 // Initialize wrist menu integration with error handling
                 base.Logger.LogInfo("Step 7: Initializing wrist menu...");
@@ -269,6 +279,11 @@ namespace H3TVR
             twitchChatFilePath = Config.Bind("ChatSosigs", "ChatFilePath", "chat.txt", "Path to Twitch chat file (legacy)");
             twitchEnemyChatFilePath = Config.Bind("ChatSosigs", "EnemyChatFilePath", "enemy_chat.txt", "Path to enemy chat file (legacy)");
             maxChatSosigs = Config.Bind("ChatSosigs", "MaxChatSosigs", 10, "Maximum number of active chat sosigs");
+
+            // Steam Friends Configuration
+            enableSteamFriends = Config.Bind("SteamFriends", "Enabled", true, "Enable Steam Friends integration for sosig spawning");
+            steamFriendsRandomNames = Config.Bind("SteamFriends", "UseRandomNames", false, "Use random friend from list instead of specific name");
+            steamFriendsRefreshInterval = Config.Bind("SteamFriends", "RefreshInterval", 300f, "Auto-refresh Steam friends list interval (seconds)");
         }
 
         private void InitializeKeyBindings()
@@ -301,6 +316,14 @@ namespace H3TVR
                 { "ClearChatSosigs", new KeyValuePair<KeyCode, string>(KeyCode.Delete, "Clear All Chat Sosigs") },
                 { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") },
                 { "ArmorGUI", new KeyValuePair<KeyCode, string>(KeyCode.F6, "Open Armor Configuration GUI") },
+                
+                // Steam Friends Key Bindings
+                { "SpawnSteamFriendAlly", new KeyValuePair<KeyCode, string>(KeyCode.LeftBracket, "Spawn Steam Friend as Ally") },
+                { "SpawnSteamFriendEnemy", new KeyValuePair<KeyCode, string>(KeyCode.RightBracket, "Spawn Steam Friend as Enemy") },
+                { "SpawnAllSteamFriendsAlly", new KeyValuePair<KeyCode, string>(KeyCode.F7, "Spawn All Steam Friends as Allies") },
+                { "SpawnAllSteamFriendsEnemy", new KeyValuePair<KeyCode, string>(KeyCode.F8, "Spawn All Steam Friends as Enemies") },
+                { "RefreshSteamFriends", new KeyValuePair<KeyCode, string>(KeyCode.F9, "Refresh Steam Friends List") },
+                { "SteamFriendsStats", new KeyValuePair<KeyCode, string>(KeyCode.Home, "Show Steam Friends Stats") },
                 
                 // New JerryAr mod keybindings
                 { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
@@ -416,6 +439,44 @@ namespace H3TVR
             // Twitch integration no longer available
             Logger.LogInfo("Twitch integration disabled - AdvancedChatSosigSpawner runs in standalone mode");
             Logger.LogInfo("Use keyboard controls: P = spawn ally, O = spawn enemy, Delete = clear all");
+        }
+        
+        /// <summary>
+        /// Initialize Steam Friends integration
+        /// </summary>
+        private void InitializeSteamFriendsIntegration()
+        {
+            if (!enableSteamFriends.Value)
+            {
+                Logger.LogInfo("Steam Friends integration disabled in config");
+                return;
+            }
+            
+            try
+            {
+                // Create the integration component
+                GameObject steamFriendsObject = new GameObject("SteamFriendsIntegration");
+                steamFriendsObject.transform.SetParent(transform);
+                
+                steamFriendsIntegration = steamFriendsObject.AddComponent<SteamFriendsIntegration>();
+                
+                // Wait for sosig spawner to be ready
+                if (advancedChatSpawner != null)
+                {
+                    steamFriendsIntegration.Initialize(this, advancedChatSpawner, Logger);
+                    Logger.LogInfo("Steam Friends integration initialized successfully");
+                    Logger.LogInfo("Steam Friends controls: [ = spawn ally, ] = spawn enemy, F7 = spawn all as allies, F8 = spawn all as enemies");
+                }
+                else
+                {
+                    Logger.LogWarning("Cannot initialize Steam Friends - Advanced Chat Spawner not ready");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Failed to initialize Steam Friends integration: {ex.Message}");
+                steamFriendsIntegration = null;
+            }
         }
 
         /// <summary>
@@ -734,6 +795,14 @@ namespace H3TVR
 
         // Add access method for Advanced Chat Spawner
         public AdvancedChatSosigSpawner GetAdvancedChatSpawner() => advancedChatSpawner;
+        
+        // Add access method for Steam Friends Integration
+        public SteamFriendsIntegration GetSteamFriendsIntegration() => steamFriendsIntegration;
+        
+        // Steam Friends configuration access
+        public bool IsSteamFriendsEnabled() => enableSteamFriends != null && enableSteamFriends.Value;
+        public bool UseSteamFriendsRandomNames() => steamFriendsRandomNames != null && steamFriendsRandomNames.Value;
+        public float GetSteamFriendsRefreshInterval() => steamFriendsRefreshInterval != null ? steamFriendsRefreshInterval.Value : 300f;
         #endregion
 
         #region Harmony Patches and Cleanup
