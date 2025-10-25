@@ -146,21 +146,28 @@ namespace H3TVR
         {
             try
             {
-                // Use H3VR Asset Loader if available
+                // Use H3VR Asset Loader if available and initialized
                 if (H3VRAssetLoader.IsInitialized)
                 {
-                    availableArmor = H3VRAssetLoader.GetAllArmorCategories();
-                    Debug.Log($"[SosigArmorWristMenuComplete] Loaded {availableArmor.Values.Sum(list => list.Count)} armor pieces from H3VR Asset Loader");
+                    try
+                    {
+                        availableArmor = H3VRAssetLoader.GetAllArmorCategories();
+                        Debug.Log($"[SosigArmorWristMenuComplete] Loaded {availableArmor.Values.Sum(list => list.Count)} armor pieces from H3VR Asset Loader");
+                        return; // Success!
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[SosigArmorWristMenuComplete] H3VR Asset Loader failed: {ex.Message}");
+                        // Continue to fallback
+                    }
                 }
-                else
-                {
-                    // Fallback to manual ItemManager scanning
-                    ScanItemManagerForArmor();
-                }
+                
+                // Fallback to manual ItemManager scanning
+                ScanItemManagerForArmor();
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[SosigArmorWristMenuComplete] Failed to load armor: {ex.Message}");
+                Debug.LogWarning($"[SosigArmorWristMenuComplete] Failed to load armor: {ex.Message}");
                 // Create empty categories as fallback
                 InitializeEmptyArmorCategories();
             }
@@ -170,44 +177,58 @@ namespace H3TVR
         {
             InitializeEmptyArmorCategories();
             
+            // Add comprehensive null checks
             if (IM.OD == null) 
             {
-                Debug.LogWarning("[SosigArmorWristMenuComplete] ItemManager ObjectDatabase is null");
+                Debug.LogWarning("[SosigArmorWristMenuComplete] ItemManager ObjectDatabase is null (H3VR not ready)");
+                return;
+            }
+            
+            if (IM.OD.Count == 0)
+            {
+                Debug.LogWarning("[SosigArmorWristMenuComplete] ItemManager ObjectDatabase is empty (H3VR not ready)");
                 return;
             }
 
             try
             {
+                int processedCount = 0;
+                int errorCount = 0;
+                
                 foreach (var kvp in IM.OD)
                 {
                     try
                     {
+                        if (kvp.Value == null || kvp.Key == null)
+                        {
+                            errorCount++;
+                            continue;
+                        }
+                        
                         FVRObject obj = kvp.Value;
-                        if (obj == null) continue;
-
-                        string objectId = kvp.Key?.ToLower();
-                        if (string.IsNullOrEmpty(objectId)) continue;
+                        string objectId = kvp.Key.ToLower();
                         
                         // Basic armor categorization
                         if (IsArmorPiece(objectId))
                         {
                             CategorizeArmorPiece(objectId, obj);
+                            processedCount++;
                         }
                     }
                     catch (Exception ex)
                     {
                         // Skip individual problematic items
-                        Debug.LogWarning($"[SosigArmorWristMenuComplete] Error processing item {kvp.Key}: {ex.Message}");
+                        errorCount++;
                         continue;
                     }
                 }
+                
+                Debug.Log($"[SosigArmorWristMenuComplete] Scanned ItemManager - processed {processedCount} items, {errorCount} errors, found {availableArmor.Values.Sum(list => list.Count)} armor pieces");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[SosigArmorWristMenuComplete] Error scanning ItemManager: {ex.Message}");
+                Debug.LogWarning($"[SosigArmorWristMenuComplete] Error scanning ItemManager: {ex.Message}");
             }
-            
-            Debug.Log($"[SosigArmorWristMenuComplete] Scanned ItemManager - found {availableArmor.Values.Sum(list => list.Count)} armor pieces");
         }
 
         private void InitializeEmptyArmorCategories()

@@ -70,6 +70,13 @@ namespace H3TVR
                 
             if (Input.GetKeyDown(keyBindings["SpawnSkittyBigGun"].Value))
                 spawnManager.SpawnSkittyBigGun();
+            
+            // JerryAr mod spawns
+            if (Input.GetKeyDown(keyBindings["SpawnAirStrike"].Value))
+                spawnManager.SpawnAirStrikeGrenade();
+            
+            if (Input.GetKeyDown(keyBindings["SpawnTitanMachine"].Value))
+                spawnManager.SpawnTitanMachine();
         }
 
         private void ProcessEffectInputs()

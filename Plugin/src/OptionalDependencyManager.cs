@@ -228,9 +228,9 @@ namespace H3TVR
                 }
 
                 // Method 2: Check if ftw.JediTippyToy exists in ItemManager (CORRECT ID)
-                if (IM.OD != null && IM.OD.ContainsKey("ftw.JediTippyToy"))
+                if (IM.OD != null && IM.OD.Count > 0 && IM.OD.ContainsKey("ftw.JediTippyToy"))
                 {
-                    logger.LogInfo("[OptionalDependencies] Jedit Tippy Toy detected via ItemManager (ftw.JediTippyToy found)");
+                    logger.LogInfo("[OptionalDependencies] Jedit Tippy Toy detected via ItemManager");
                     return true;
                 }
 
@@ -276,11 +276,11 @@ namespace H3TVR
 
             try
             {
-                return IM.OD != null && IM.OD.ContainsKey("ftw.JediTippyToy");
+                return IM.OD != null && IM.OD.Count > 0 && IM.OD.ContainsKey("ftw.JediTippyToy");
             }
             catch (Exception ex)
             {
-                logger.LogError($"[OptionalDependencies] Error checking Jedit Toy spawnability: {ex.Message}");
+                logger?.LogWarning($"[OptionalDependencies] Error checking Jedit Toy spawnability: {ex.Message}");
                 return false;
             }
         }

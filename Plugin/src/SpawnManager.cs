@@ -248,6 +248,128 @@ namespace H3TVR
             audioManager?.PlayWeaponSpawnSound("after_big_spawn", spawnPos, true, "weapons/big_gun_ready.wav", 0.8f);
         }
 
+        /// <summary>
+        /// Spawn Air Strike Smoke Grenade from JerryAr
+        /// Spawns from player head forward
+        /// Mod: https://thunderstore.io/c/h3vr/p/JerryAr/AirStrikeSmokeGrenade/
+        /// </summary>
+        public void SpawnAirStrikeGrenade()
+        {
+            try
+            {
+                if (!ValidateSpawnConditions()) return;
+
+                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
+                
+                // Play before-action sound
+                audioManager?.PlayDangerCloseSound("before_airstrike", spawnPos, true, "danger_close/airstrike_call.wav", 0.9f);
+
+                // Air Strike Smoke Grenade Item ID
+                string airStrikeID = "JerryAr_AirStrikeSmokeGrenade";
+                
+                if (!IM.OD.ContainsKey(airStrikeID))
+                {
+                    logger.LogWarning("Air Strike Smoke Grenade not available. Install: https://thunderstore.io/c/h3vr/p/JerryAr/AirStrikeSmokeGrenade/");
+                    logger.LogInfo($"Expected Item ID: {airStrikeID}");
+                    
+                    // List all grenade items for debugging
+                    logger.LogInfo("Available grenade items:");
+                    foreach (var kvp in IM.OD)
+                    {
+                        if (kvp.Key.ToLower().Contains("grenade") || kvp.Key.ToLower().Contains("smoke") || kvp.Key.ToLower().Contains("airstrike"))
+                            logger.LogInfo($"  - {kvp.Key}");
+                    }
+                    return;
+                }
+
+                FVRObject obj = IM.OD[airStrikeID];
+                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
+
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * 500f);
+                    rb.AddTorque(UnityEngine.Random.insideUnitSphere * 2f);
+                }
+
+                logger.LogInfo($"Successfully spawned Air Strike Smoke Grenade (ID: {airStrikeID})");
+                
+                // Play after-action sound
+                audioManager?.PlayDangerCloseSound("after_airstrike", spawnPos, true, "danger_close/airstrike_deployed.wav", 0.8f);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnAirStrikeGrenade failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Spawn Titan Machine as AI enemy
+        /// Spawns in front of player as hostile sosig-like entity
+        /// Mod: https://thunderstore.io/c/h3vr/p/JerryAr/TitanMachine/
+        /// </summary>
+        public void SpawnTitanMachine()
+        {
+            try
+            {
+                if (!ValidateSpawnConditions()) return;
+
+                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 5f);
+                
+                // Play before-action sound
+                audioManager?.PlayWeaponSpawnSound("before_titan", spawnPos, true, "weapons/titan_materializing.wav", 1.0f);
+
+                // Titan Machine Item ID
+                string titanID = "JerryAr_TitanMachine";
+                
+                if (!IM.OD.ContainsKey(titanID))
+                {
+                    logger.LogWarning("Titan Machine not available. Install: https://thunderstore.io/c/h3vr/p/JerryAr/TitanMachine/");
+                    logger.LogInfo($"Expected Item ID: {titanID}");
+                    
+                    // List all titan/machine items for debugging
+                    logger.LogInfo("Available machine/titan items:");
+                    foreach (var kvp in IM.OD)
+                    {
+                        if (kvp.Key.ToLower().Contains("titan") || kvp.Key.ToLower().Contains("machine") || kvp.Key.ToLower().Contains("robot"))
+                            logger.LogInfo($"  - {kvp.Key}");
+                    }
+                    return;
+                }
+
+                FVRObject obj = IM.OD[titanID];
+                
+                // Spawn at ground level in front of player
+                Quaternion spawnRot = Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward);
+                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, spawnRot);
+
+                // Try to configure as hostile AI if it has sosig-like components
+                var sosig = go.GetComponent<Sosig>();
+                if (sosig != null)
+                {
+                    // Set as enemy
+                    sosig.SetIFF(1); // Enemy team
+                    sosig.SetAssaultSpeed(Sosig.SosigMoveSpeed.Running);
+                    sosig.CommandAssaultPoint(GM.CurrentPlayerBody.Head.position);
+                    
+                    logger.LogInfo("Titan Machine configured as hostile AI");
+                }
+                else
+                {
+                    logger.LogInfo("Titan Machine spawned (no sosig component detected - may have custom AI)");
+                }
+
+                logger.LogInfo($"Successfully spawned Titan Machine (ID: {titanID})");
+                
+                // Play after-action sound
+                audioManager?.PlayWeaponSpawnSound("after_titan", spawnPos, true, "weapons/titan_active.wav", 0.9f);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnTitanMachine failed: {ex.Message}");
+            }
+        }
+
         public void DangerCloseBarrage()
         {
             try

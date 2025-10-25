@@ -38,7 +38,6 @@ namespace H3TVR
         #region Core Components
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private TwitchChatManager twitchManager;
         #endregion
 
         #region Sosig Templates - Updated for U120
@@ -106,7 +105,7 @@ namespace H3TVR
         #endregion
 
         #region Initialization
-        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, TwitchChatManager twitchMgr = null)
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
         {
             if (Instance != null)
             {
@@ -117,13 +116,12 @@ namespace H3TVR
             Instance = this;
             plugin = pluginInstance;
             logger = logSource;
-            twitchManager = twitchMgr;
 
             InitializeConfiguration();
             InitializeSosigTemplates();
             LoadNameLists();
 
-            logger?.LogInfo("Advanced Chat Sosig Spawner initialized (Update 120 TNH System with full features)");
+            logger?.LogInfo("Advanced Chat Sosig Spawner initialized (Update 120 TNH System, standalone mode)");
 
             // Start coroutines
             StartCoroutine(DelayedInitialization());
@@ -1352,40 +1350,45 @@ namespace H3TVR
         {
             try
             {
+                // Add comprehensive null checks
+                if (IM.Instance == null)
+                {
+                    logger?.LogWarning("Cannot build template cache - IM.Instance is null (H3VR not ready)");
+                    return;
+                }
+                
+                if (IM.Instance.odicSosigObjsByID == null)
+                {
+                    logger?.LogWarning("Cannot build template cache - odicSosigObjsByID is null (H3VR not ready)");
+                    return;
+                }
+                
                 int cacheCount = 0;
                 
-                // Try to access IM sosig templates
-                if (IM.Instance != null && IM.Instance.odicSosigObjsByID != null)
+                logger?.LogInfo("Building template cache from IM.Instance...");
+                
+                foreach (var id in allyPoolIDs.Concat(enemyPoolIDs).Distinct())
                 {
-                    logger?.LogInfo("Building template cache from IM.Instance...");
-                    
-                    foreach (var id in allyPoolIDs.Concat(enemyPoolIDs).Distinct())
+                    if (IM.Instance.odicSosigObjsByID.ContainsKey(id))
                     {
-                        if (IM.Instance.odicSosigObjsByID.ContainsKey(id))
+                        var template = IM.Instance.odicSosigObjsByID[id];
+                        if (template != null)
                         {
-                            var template = IM.Instance.odicSosigObjsByID[id];
-                            if (template != null)
-                            {
-                                templateCache[id] = template;
-                                cacheCount++;
-                                logger?.LogInfo($"  Cached: {id}");
-                            }
-                            else
-                            {
-                                logger?.LogWarning($"  Template null for {id}");
-                            }
+                            templateCache[id] = template;
+                            cacheCount++;
+                            logger?.LogDebug($"  Cached: {id}");
                         }
                         else
                         {
-                            logger?.LogWarning($"  ID not found in IM: {id}");
+                            logger?.LogWarning($"  Template null for {id}");
                         }
                     }
-                    logger?.LogInfo($"Template cache built: {cacheCount}/{allyPoolIDs.Count + enemyPoolIDs.Count} templates loaded");
+                    else
+                    {
+                        logger?.LogWarning($"  ID not found in IM: {id}");
+                    }
                 }
-                else
-                {
-                    logger?.LogError("Cannot build template cache - IM.Instance or odicSosigObjsByID is null");
-                }
+                logger?.LogInfo($"Template cache built: {cacheCount}/{allyPoolIDs.Count + enemyPoolIDs.Count} templates loaded");
                 
                 // Log cache status summary
                 logger?.LogInfo($"Template cache status: {templateCache.Count} total templates");
@@ -1394,8 +1397,8 @@ namespace H3TVR
             }
             catch (Exception ex)
             {
-                logger?.LogError($"Failed to build template cache: {ex.Message}");
-                logger?.LogError($"Stack trace: {ex.StackTrace}");
+                logger?.LogWarning($"Failed to build template cache: {ex.Message}");
+                logger?.LogDebug($"Stack trace: {ex.StackTrace}");
             }
         }
     }

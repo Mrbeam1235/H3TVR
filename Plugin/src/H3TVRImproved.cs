@@ -80,18 +80,12 @@ namespace H3TVR
         // Key Bindings - Organized
         private readonly Dictionary<string, ConfigEntry<KeyCode>> keyBindings = new Dictionary<string, ConfigEntry<KeyCode>>();
         
-        // Chat Sosig Configuration - Enhanced for TwitchLib
+        // Chat Sosig Configuration
         private ConfigEntry<bool> enableTwitchChatSosigs;
         private ConfigEntry<bool> enableLegacyFileMode; // For backwards compatibility
         private ConfigEntry<string> twitchChatFilePath; // Legacy
         private ConfigEntry<string> twitchEnemyChatFilePath; // Legacy
         private ConfigEntry<int> maxChatSosigs;
-        
-        // New TwitchLib Configuration
-        private ConfigEntry<string> twitchUsername;
-        private ConfigEntry<string> twitchChannel;
-        private ConfigEntry<bool> twitchAutoConnect;
-        private ConfigEntry<KeyCode> twitchGUIKey;
         #endregion
 
         #region Components
@@ -104,14 +98,13 @@ namespace H3TVR
         private AudioManager audioManager;
         private AdvancedChatSosigSpawner advancedChatSpawner; // Advanced Chat Sosig Spawner with Update 120 TNH
         private SosigArmorWristMenuIntegration sosigArmorWristMenu;
-        private TwitchChatManager twitchChatManager;
         #endregion
 
         #region Initialization
         public H3TVRImproved()
         {
             hooks.Hook();
-            Logger.LogInfo("Loading H3TVR Enhanced Edition with TwitchLib Integration");
+            Logger.LogInfo("Loading H3TVR Enhanced Edition (Standalone Mode)");
         }
 
         private void Awake()
@@ -121,24 +114,42 @@ namespace H3TVR
                 // Initialize optional dependency manager early
                 OptionalDependencyManager.Initialize(base.Logger);
                 
-                base.Logger.LogInfo("H3TVR Enhanced Edition with TwitchLib Integration is loading...");
+                base.Logger.LogInfo("H3TVR Enhanced Edition (Standalone Mode) is loading...");
                 
                 // Initialize configuration
+                base.Logger.LogInfo("Step 1: Initializing configuration...");
                 InitializeConfiguration();
                 
                 // Initialize optional dependencies
+                base.Logger.LogInfo("Step 2: Initializing optional dependencies...");
                 InitializeOptionalDependencies();
                 
                 // Initialize components
+                base.Logger.LogInfo("Step 3: Initializing components...");
                 InitializeComponents();
                 
-                // Initialize chat spawner
+                // Initialize chat spawner first - it's the core component
+                base.Logger.LogInfo("Step 4: Initializing Sosig Spawner...");
                 InitializeSosigSpawner();
                 
-                // Initialize TwitchLib integration
+                // Now initialize SpawnManager with the chat spawner reference
+                base.Logger.LogInfo("Step 5: Initializing SpawnManager...");
+                if (spawnManager != null && advancedChatSpawner != null)
+                {
+                    spawnManager.Initialize(this, Logger, advancedChatSpawner, audioManager);
+                    base.Logger.LogInfo("SpawnManager initialized successfully");
+                }
+                else
+                {
+                    Logger.LogWarning($"Cannot initialize SpawnManager - spawnManager: {spawnManager != null}, advancedChatSpawner: {advancedChatSpawner != null}");
+                }
+                
+                // Initialize TwitchLib integration (if enabled)
+                base.Logger.LogInfo("Step 6: Initializing Twitch integration...");
                 InitializeTwitchIntegration();
                 
                 // Initialize wrist menu integration with error handling
+                base.Logger.LogInfo("Step 7: Initializing wrist menu...");
                 try
                 {
                     InitializeSosigArmorWristMenuIntegration();
@@ -148,7 +159,7 @@ namespace H3TVR
                     base.Logger.LogWarning($"Non-critical error in wrist menu integration: {ex.Message}");
                 }
                 
-                base.Logger.LogInfo("H3TVR Enhanced Edition with TwitchLib loaded successfully!");
+                base.Logger.LogInfo("H3TVR Enhanced Edition loaded successfully!");
                 
                 // Log dependency status
                 base.Logger.LogInfo(OptionalDependencyManager.GetDependencyStatusReport());
@@ -161,18 +172,15 @@ namespace H3TVR
                 }
 
                 // Log TwitchLib status
-                if (enableTwitchChatSosigs.Value && !enableLegacyFileMode.Value)
+                if (enableTwitchChatSosigs != null && enableTwitchChatSosigs.Value)
                 {
-                    base.Logger.LogInfo("TwitchLib Integration: ACTIVE - Real-time chat enabled");
-                    base.Logger.LogInfo("Use F8 to open Twitch Integration GUI for setup");
-                }
-                else if (enableLegacyFileMode.Value)
-                {
-                    base.Logger.LogInfo("Legacy File Mode: ACTIVE - Using file-based chat monitoring");
+                    base.Logger.LogInfo("Chat Sosig System: ENABLED");
+                    base.Logger.LogInfo("  - Standalone mode (no Twitch integration)");
+                    base.Logger.LogInfo("  - Use keyboard: P (ally), O (enemy), Delete (clear)");
                 }
                 else
                 {
-                    base.Logger.LogInfo("Chat Integration: DISABLED");
+                    base.Logger.LogInfo("Chat Sosig System: DISABLED");
                 }
             }
             catch (Exception ex)
@@ -183,6 +191,7 @@ namespace H3TVR
                 // Try to continue with basic functionality
                 try
                 {
+                    base.Logger.LogInfo("Attempting fallback initialization...");
                     InitializeConfiguration();
                     Logger.LogInfo("H3TVR running in fallback mode with basic functionality");
                 }
@@ -253,19 +262,13 @@ namespace H3TVR
             // Danger Close Configuration
             dangerCloseMinCount = Config.Bind("DangerClose", "MinCount", 1, "Minimum danger close rounds");
             dangerCloseMaxCount = Config.Bind("DangerClose", "MaxCount", 5, "Maximum danger close rounds");
-
-            // Chat Sosig Configuration - Enhanced for TwitchLib
-            enableTwitchChatSosigs = Config.Bind("Chat Sosigs", "EnableTwitchChatSosigs", true, "Enable Twitch chat sosig spawning");
-            enableLegacyFileMode = Config.Bind("Chat Sosigs", "EnableLegacyFileMode", false, "Enable legacy file-based chat monitoring (for backwards compatibility)");
-            twitchChatFilePath = Config.Bind("Chat Sosigs", "TwitchChatFilePath", "ally_names.txt", "File path for ally sosig names (legacy mode only)");
-            twitchEnemyChatFilePath = Config.Bind("Chat Sosigs", "TwitchEnemyChatFilePath", "enemy_names.txt", "File path for enemy sosig names (legacy mode only)");
-            maxChatSosigs = Config.Bind("Chat Sosigs", "MaxChatSosigs", 10, "Maximum number of active chat sosigs");
             
-            // TwitchLib Integration
-            twitchUsername = Config.Bind("Twitch Integration", "TwitchUsername", "", "Twitch username (auto-filled after OAuth)");
-            twitchChannel = Config.Bind("Twitch Integration", "TwitchChannel", "", "Twitch channel to monitor");
-            twitchAutoConnect = Config.Bind("Twitch Integration", "AutoConnect", false, "Auto-connect to Twitch on startup");
-            twitchGUIKey = Config.Bind("Twitch Integration", "TwitchGUIKey", KeyCode.F8, "Key to open Twitch GUI");
+            // Chat Sosig Configuration
+            enableTwitchChatSosigs = Config.Bind("ChatSosigs", "Enabled", true, "Enable Chat Sosig spawning system");
+            enableLegacyFileMode = Config.Bind("ChatSosigs", "LegacyFileMode", false, "Enable legacy file-based chat watching (deprecated)");
+            twitchChatFilePath = Config.Bind("ChatSosigs", "ChatFilePath", "chat.txt", "Path to Twitch chat file (legacy)");
+            twitchEnemyChatFilePath = Config.Bind("ChatSosigs", "EnemyChatFilePath", "enemy_chat.txt", "Path to enemy chat file (legacy)");
+            maxChatSosigs = Config.Bind("ChatSosigs", "MaxChatSosigs", 10, "Maximum number of active chat sosigs");
         }
 
         private void InitializeKeyBindings()
@@ -297,7 +300,11 @@ namespace H3TVR
                 { "CycleChatSosigArmor", new KeyValuePair<KeyCode, string>(KeyCode.L, "Cycle Chat Sosig Armor") },
                 { "ClearChatSosigs", new KeyValuePair<KeyCode, string>(KeyCode.Delete, "Clear All Chat Sosigs") },
                 { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") },
-                { "ArmorGUI", new KeyValuePair<KeyCode, string>(KeyCode.F6, "Open Armor Configuration GUI") }
+                { "ArmorGUI", new KeyValuePair<KeyCode, string>(KeyCode.F6, "Open Armor Configuration GUI") },
+                
+                // New JerryAr mod keybindings
+                { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
+                { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") }
             };
 
             foreach (var kvp in keyBindingConfigs)
@@ -359,7 +366,7 @@ namespace H3TVR
                 slomoMovementController.Initialize(slomoMovementScale.Value, slomoAffectsMovement.Value, Logger);
 
                 inputHandler = gameObject.AddComponent<InputHandler>();
-                spawnManager = gameObject.AddComponent<SpawnManager>();
+                spawnManager = gameObject.AddComponent<SpawnManager>();  // Add SpawnManager component
                 effectsManager = gameObject.AddComponent<EffectsManager>();
                 weaponManager = gameObject.AddComponent<WeaponManager>();
                 audioManager = gameObject.AddComponent<AudioManager>();
@@ -367,7 +374,7 @@ namespace H3TVR
                 // Initialize each component
                 audioManager.Initialize(this, Logger);
                 inputHandler.Initialize(keyBindings, this);
-                spawnManager.Initialize(this, Logger, null, audioManager); // Removed old enhancedChatSpawner reference
+                // SpawnManager will be initialized after AdvancedChatSosigSpawner is created
                 effectsManager.Initialize(this, slomoMovementController, Logger);
                 weaponManager.Initialize(this, Logger, audioManager);
 
@@ -376,6 +383,7 @@ namespace H3TVR
             catch (Exception ex)
             {
                 Logger.LogError($"Error initializing components: {ex.Message}");
+                Logger.LogError($"Stack trace: {ex.StackTrace}");
             }
         }
 
@@ -383,23 +391,15 @@ namespace H3TVR
         {
             try
             {
-                // Initialize TwitchChatManager first if needed
-                if (enableTwitchChatSosigs.Value && !enableLegacyFileMode.Value)
-                {
-                    GameObject twitchManagerObject = new GameObject("TwitchChatManager");
-                    twitchManagerObject.transform.SetParent(transform);
-                    twitchChatManager = twitchManagerObject.AddComponent<TwitchChatManager>();
-                    twitchChatManager.Initialize(this, Logger, null); // Will be linked to spawner
-                }
-
                 // Initialize the Advanced Chat Sosig Spawner (Update 120 TNH System)
+                // Works standalone - no Twitch integration needed
                 GameObject advancedSpawnerObject = new GameObject("AdvancedChatSosigSpawner");
                 advancedSpawnerObject.transform.SetParent(transform);
                 
                 advancedChatSpawner = advancedSpawnerObject.AddComponent<AdvancedChatSosigSpawner>();
-                advancedChatSpawner.Initialize(this, Logger, twitchChatManager);
+                advancedChatSpawner.Initialize(this, Logger);
                 
-                Logger.LogInfo("Advanced Chat Sosig Spawner initialized with Update 120 TNH system and full features!");
+                Logger.LogInfo("Advanced Chat Sosig Spawner initialized with Update 120 TNH system (standalone mode)!");
             }
             catch (Exception ex)
             {
@@ -412,28 +412,10 @@ namespace H3TVR
         /// </summary>
         private void InitializeTwitchIntegration()
         {
-            try
-            {
-                if (!enableTwitchChatSosigs.Value)
-                {
-                    Logger.LogInfo("Twitch chat sosigs disabled - skipping TwitchLib initialization");
-                    return;
-                }
-
-                if (enableLegacyFileMode.Value)
-                {
-                    Logger.LogInfo("Legacy file mode enabled - TwitchLib integration disabled");
-                    return;
-                }
-
-                Logger.LogInfo("TwitchLib integration initialized via AdvancedChatSosigSpawner");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Error initializing TwitchLib integration: {ex.Message}");
-                Logger.LogInfo("Falling back to legacy file-based chat monitoring");
-                enableLegacyFileMode.Value = true;
-            }
+            // TwitchChatManager removed - AdvancedChatSosigSpawner works standalone
+            // Twitch integration no longer available
+            Logger.LogInfo("Twitch integration disabled - AdvancedChatSosigSpawner runs in standalone mode");
+            Logger.LogInfo("Use keyboard controls: P = spawn ally, O = spawn enemy, Delete = clear all");
         }
 
         /// <summary>
@@ -471,22 +453,42 @@ namespace H3TVR
             // Wait a few seconds for H3VR systems to be fully loaded
             yield return new WaitForSeconds(3f);
             
-            try
+            // Try to initialize H3VR Asset Loader (no try-catch with yield)
+            H3VRAssetLoader.TryInitializeWithDelay();
+            
+            // Wait a bit more for asset loading
+            yield return new WaitForSeconds(1f);
+            
+            // Force reload armor in the wrist menu
+            if (sosigArmorWristMenu?.GetArmorMenu() != null)
             {
-                // Try to initialize H3VR Asset Loader
-                H3VRAssetLoader.TryInitializeWithDelay();
-                
-                // Force reload armor in the wrist menu
-                if (sosigArmorWristMenu?.GetArmorMenu() != null)
-                {
-                    sosigArmorWristMenu.GetArmorMenu().ShowMessage("Reloading armor assets after H3VR initialization...");
-                }
-                
-                Logger.LogInfo("Delayed armor system initialization completed");
+                sosigArmorWristMenu.GetArmorMenu().ShowMessage("Reloading armor assets after H3VR initialization...");
             }
-            catch (Exception ex)
+            
+            Logger.LogInfo("Delayed armor system initialization completed");
+            
+            // Retry template cache build for chat spawner after H3VR is ready
+            yield return new WaitForSeconds(2f);
+            
+            // Retry template cache build
+            if (advancedChatSpawner != null)
             {
-                Logger.LogWarning($"Delayed armor initialization warning: {ex.Message}");
+                Logger.LogInfo("Retrying template cache build after H3VR initialization...");
+                // Use reflection to call BuildTemplateCache
+                var method = advancedChatSpawner.GetType().GetMethod("BuildTemplateCache", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (method != null)
+                {
+                    try
+                    {
+                        method.Invoke(advancedChatSpawner, null);
+                        Logger.LogInfo("Template cache rebuild completed");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning($"Template cache rebuild warning: {ex.Message}");
+                    }
+                }
             }
         }
         #endregion
@@ -732,9 +734,6 @@ namespace H3TVR
 
         // Add access method for Advanced Chat Spawner
         public AdvancedChatSosigSpawner GetAdvancedChatSpawner() => advancedChatSpawner;
-        
-        // Add access method for TwitchChatManager
-        public TwitchChatManager GetTwitchChatManager() => twitchChatManager;
         #endregion
 
         #region Harmony Patches and Cleanup
