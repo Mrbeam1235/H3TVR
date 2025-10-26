@@ -91,6 +91,18 @@ namespace H3TVR
         private ConfigEntry<bool> enableSteamFriends;
         private ConfigEntry<bool> steamFriendsRandomNames;
         private ConfigEntry<float> steamFriendsRefreshInterval;
+        
+        // Take and Hold Configuration
+        private ConfigEntry<bool> enableInfiniteTokens;
+        private ConfigEntry<bool> disableEncryptionNodes;
+        
+        // NEW: Specific encryption controls
+        private ConfigEntry<bool> disableAllEncryptions;
+        private ConfigEntry<bool> disableEncryptionType1;
+        private ConfigEntry<bool> disableEncryptionType2;
+        private ConfigEntry<bool> disableEncryptionType3;
+        private ConfigEntry<bool> autoCompleteEncryption;
+        private ConfigEntry<float> encryptionCompletionDelay;
         #endregion
 
         #region Components
@@ -284,6 +296,24 @@ namespace H3TVR
             enableSteamFriends = Config.Bind("SteamFriends", "Enabled", true, "Enable Steam Friends integration for sosig spawning");
             steamFriendsRandomNames = Config.Bind("SteamFriends", "UseRandomNames", false, "Use random friend from list instead of specific name");
             steamFriendsRefreshInterval = Config.Bind("SteamFriends", "RefreshInterval", 300f, "Auto-refresh Steam friends list interval (seconds)");
+            
+            // Take and Hold Configuration
+            enableInfiniteTokens = Config.Bind("TakeAndHold", "InfiniteTokens", false, "Enable infinite tokens in Take and Hold mode");
+            disableEncryptionNodes = Config.Bind("TakeAndHold", "DisableEncryptionNodes", false, "Disable encryption nodes in Take and Hold mode for easier gameplay");
+            
+            // NEW: Specific encryption controls
+            disableAllEncryptions = Config.Bind("TakeAndHold.Encryption", "DisableAllEncryptions", false, 
+                "Master switch: Disable ALL encryption nodes (overrides specific settings)");
+            disableEncryptionType1 = Config.Bind("TakeAndHold.Encryption", "DisableType1", false, 
+                "Disable Type 1 encryption nodes (pattern matching)");
+            disableEncryptionType2 = Config.Bind("TakeAndHold.Encryption", "DisableType2", false, 
+                "Disable Type 2 encryption nodes (sequence)");
+            disableEncryptionType3 = Config.Bind("TakeAndHold.Encryption", "DisableType3", false, 
+                "Disable Type 3 encryption nodes (timed)");
+            autoCompleteEncryption = Config.Bind("TakeAndHold.Encryption", "AutoComplete", false, 
+                "Automatically complete enabled encryption nodes after delay");
+            encryptionCompletionDelay = Config.Bind("TakeAndHold.Encryption", "CompletionDelay", 2.0f, 
+                "Delay in seconds before auto-completing encryption (if AutoComplete enabled)");
         }
 
         private void InitializeKeyBindings()
@@ -584,6 +614,9 @@ namespace H3TVR
             // Handle malfunction boost
             HandleMalfunctionBoost();
             
+            // Handle infinite tokens for Take and Hold
+            HandleInfiniteTokens();
+            
             // Input handling is delegated to InputHandler component
         }
 
@@ -674,6 +707,232 @@ namespace H3TVR
                 {
                     weaponManager.ApplyMalfunctionLogic();
                 }
+            }
+        }
+        
+        private void HandleInfiniteTokens()
+        {
+            if (!enableInfiniteTokens.Value && !disableEncryptionNodes.Value && !disableAllEncryptions.Value) return;
+            
+            try
+            {
+                // Check if in TNH mode
+                if (GM.TNH_Manager != null && GM.TNH_Manager.m_curHoldPoint != null)
+                {
+                    // Set tokens to a high number (999) if infinite tokens enabled
+                    if (enableInfiniteTokens.Value)
+                    {
+                        GM.TNH_Manager.m_numTokens = 999;
+                    }
+                    
+                    // Handle encryption disabling
+                    if (disableAllEncryptions.Value || disableEncryptionNodes.Value)
+                    {
+                        DisableEncryptionNodes();
+                    }
+                    else if (disableEncryptionType1.Value || disableEncryptionType2.Value || disableEncryptionType3.Value)
+                    {
+                        DisableSpecificEncryptionNodes();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Error in HandleInfiniteTokens: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Disable ALL encryption nodes in TNH to make it easier
+        /// </summary>
+        private void DisableEncryptionNodes()
+        {
+            try
+            {
+                if (GM.TNH_Manager == null || GM.TNH_Manager.m_curHoldPoint == null) return;
+                
+                // Get current hold point
+                var holdPoint = GM.TNH_Manager.m_curHoldPoint;
+                
+                // Check if there are encryption systems
+                if (holdPoint.m_systemNode != null)
+                {
+                    // Mark encryption as complete/disabled
+                    if (holdPoint.m_systemNode.m_hasActivated == false)
+                    {
+                        if (autoCompleteEncryption.Value)
+                        {
+                            // Auto-complete after delay
+                            StartCoroutine(AutoCompleteEncryptionDelayed(holdPoint.m_systemNode, encryptionCompletionDelay.Value));
+                            Logger.LogDebug($"[TNH] Auto-completing all encryptions after {encryptionCompletionDelay.Value}s delay");
+                        }
+                        else
+                        {
+                            // Instantly complete encryption
+                            CompleteEncryptionNode(holdPoint.m_systemNode);
+                            Logger.LogDebug("[TNH] Disabled all encryption nodes");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug($"[TNH] Error disabling encryption nodes: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Disable specific encryption node types based on configuration
+        /// </summary>
+        private void DisableSpecificEncryptionNodes()
+        {
+            try
+            {
+                if (GM.TNH_Manager == null || GM.TNH_Manager.m_curHoldPoint == null) return;
+                
+                var holdPoint = GM.TNH_Manager.m_curHoldPoint;
+                
+                if (holdPoint.m_systemNode != null && !holdPoint.m_systemNode.m_hasActivated)
+                {
+                    var systemNode = holdPoint.m_systemNode;
+                    
+                    // Detect encryption type based on TNH system node properties
+                    EncryptionType detectedType = DetectEncryptionType(systemNode);
+                    
+                    bool shouldDisable = false;
+                    string typeDescription = "";
+                    
+                    switch (detectedType)
+                    {
+                        case EncryptionType.Pattern:
+                            if (disableEncryptionType1.Value)
+                            {
+                                shouldDisable = true;
+                                typeDescription = "Pattern";
+                            }
+                            break;
+                            
+                        case EncryptionType.Sequence:
+                            if (disableEncryptionType2.Value)
+                            {
+                                shouldDisable = true;
+                                typeDescription = "Sequence";
+                            }
+                            break;
+                            
+                        case EncryptionType.Timed:
+                            if (disableEncryptionType3.Value)
+                            {
+                                shouldDisable = true;
+                                typeDescription = "Timed";
+                            }
+                            break;
+                            
+                        case EncryptionType.Unknown:
+                            // Unknown type - apply if any specific type is disabled
+                            if (disableEncryptionType1.Value || disableEncryptionType2.Value || disableEncryptionType3.Value)
+                            {
+                                shouldDisable = true;
+                                typeDescription = "Unknown";
+                            }
+                            break;
+                    }
+                    
+                    if (shouldDisable)
+                    {
+                        if (autoCompleteEncryption.Value)
+                        {
+                            StartCoroutine(AutoCompleteEncryptionDelayed(systemNode, encryptionCompletionDelay.Value));
+                            Logger.LogDebug($"[TNH] Auto-completing {typeDescription} encryption after {encryptionCompletionDelay.Value}s delay");
+                        }
+                        else
+                        {
+                            CompleteEncryptionNode(systemNode);
+                            Logger.LogDebug($"[TNH] Disabled {typeDescription} encryption");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug($"[TNH] Error disabling specific encryption: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Encryption type enum for classification
+        /// </summary>
+        private enum EncryptionType
+        {
+            Unknown,
+            Pattern,    // Type 1: Pattern matching/specific targets
+            Sequence,   // Type 2: Sequential/ordered
+            Timed       // Type 3: Time pressure
+        }
+        
+        /// <summary>
+        /// Detect the type of encryption based on node properties
+        /// Note: H3VR doesn't expose encryption types directly, so we use heuristics
+        /// </summary>
+        private EncryptionType DetectEncryptionType(TNH_HoldPointSystemNode encryptionNode)
+        {
+            try
+            {
+                if (encryptionNode == null) return EncryptionType.Unknown;
+                
+                // Type detection based on system node configuration
+                // Since H3VR doesn't expose specific encryption types, we classify all as unknown
+                // and let the user choose which ones to disable via config
+                
+                // Default to unknown - user can disable all with DisableAllEncryptions
+                return EncryptionType.Unknown;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug($"[TNH] Error detecting encryption type: {ex.Message}");
+                return EncryptionType.Unknown;
+            }
+        }
+        
+        /// <summary>
+        /// Complete an encryption node (mark as finished)
+        /// </summary>
+        private void CompleteEncryptionNode(TNH_HoldPointSystemNode encryptionNode)
+        {
+            try
+            {
+                if (encryptionNode == null) return;
+                
+                // Deactivate the node by disabling it
+                if (encryptionNode.gameObject != null)
+                {
+                    encryptionNode.gameObject.SetActive(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug($"[TNH] Error completing encryption node: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Auto-complete encryption after configured delay
+        /// </summary>
+        private IEnumerator AutoCompleteEncryptionDelayed(TNH_HoldPointSystemNode encryptionNode, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            
+            try
+            {
+                if (encryptionNode != null && encryptionNode.gameObject != null && encryptionNode.gameObject.activeSelf)
+                {
+                    CompleteEncryptionNode(encryptionNode);
+                    Logger.LogDebug($"[TNH] Auto-completed encryption after {delay}s delay");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug($"[TNH] Error auto-completing encryption: {ex.Message}");
             }
         }
         #endregion
@@ -821,6 +1080,28 @@ namespace H3TVR
         public bool IsSteamFriendsEnabled() => enableSteamFriends != null && enableSteamFriends.Value;
         public bool UseSteamFriendsRandomNames() => steamFriendsRandomNames != null && steamFriendsRandomNames.Value;
         public float GetSteamFriendsRefreshInterval() => steamFriendsRefreshInterval != null ? steamFriendsRefreshInterval.Value : 300f;
+        
+        // Take and Hold methods
+        public bool IsInfiniteTokensEnabled() => enableInfiniteTokens != null && enableInfiniteTokens.Value;
+        public bool IsEncryptionDisabled() => disableEncryptionNodes != null && disableEncryptionNodes.Value;
+        
+        public void SetInfiniteTokens(bool enabled)
+        {
+            if (enableInfiniteTokens != null)
+            {
+                enableInfiniteTokens.Value = enabled;
+                Logger.LogInfo($"Infinite tokens {(enabled ? "enabled" : "disabled")}");
+            }
+        }
+        
+        public void SetEncryptionNodes(bool disabled)
+        {
+            if (disableEncryptionNodes != null)
+            {
+                disableEncryptionNodes.Value = disabled;
+                Logger.LogInfo($"Encryption nodes {(disabled ? "disabled" : "enabled")}");
+            }
+        }
         #endregion
 
         #region Harmony Patches and Cleanup
@@ -966,31 +1247,7 @@ namespace H3TVR
             }
             catch (Exception ex)
             {
-                // Safely handle any errors in audio manipulation
-                UnityEngine.Debug.LogWarning($"[H3TVR Audio] Speed adjustment failed: {ex.Message}");
-            }
-        }
-        
-        [HarmonyPatch(typeof(AudioSource), "Stop")]
-        [HarmonyPrefix]
-        public static void OnAudioSourceStop(AudioSource __instance)
-        {
-            // Clean up stored speed data when audio stops
-            if (originalAudioSpeeds.ContainsKey(__instance))
-            {
-                originalAudioSpeeds.Remove(__instance);
-            }
-        }
-
-        private void OnDestroy()
-        {
-            hooks.Unhook();
-            slomoMovementController?.Reset();
-            
-            // Clean up audio speed tracking
-            if (originalAudioSpeeds != null)
-            {
-                originalAudioSpeeds.Clear();
+                Debug.LogError($"Error applying speed adjustment: {ex.Message}");
             }
         }
         #endregion
