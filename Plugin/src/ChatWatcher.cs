@@ -12,7 +12,12 @@ namespace H3TVR
     /// <summary>
     /// Chat Watcher - H3TwitchTools compatible file-based chat monitor
     /// Watches text files for Twitch chat usernames and spawns sosigs accordingly
-    /// Compatible with OBS, Streamlabs, and other streaming software integrations
+    /// Compatible with OBS, Streamlabs, Channel Points, and other streaming software integrations
+    /// 
+    /// SUPPORTED FILE FORMATS:
+    /// 1. Plain username per line: "ViewerName"
+    /// 2. Key=Value format: "username=ViewerName" or "user=ViewerName" or "redeemer=ViewerName"
+    /// 3. Multiple formats on same line: "ViewerName redeemed!" extracts "ViewerName"
     /// </summary>
     public class ChatWatcher : MonoBehaviour
     {
@@ -65,7 +70,7 @@ namespace H3TVR
                 InitializeFileWatching();
             }
 
-            logger?.LogInfo("Chat Watcher initialized (H3TwitchTools compatible file mode)");
+            logger?.LogInfo("Chat Watcher initialized (H3TwitchTools compatible file mode - Channel Points ready)");
         }
 
         private void InitializeConfiguration()
@@ -84,19 +89,27 @@ namespace H3TVR
                 allyChatFilePath = plugin.Config.Bind("Chat Watcher - File Mode", "AllyChatFilePath",
                     "BepInEx/config/H3TVR_AllyChat.txt",
                     "Path to ally chat file\n" +
-                    "Format: One username per line OR JSON format: {\"username\":\"ViewerName\"}\n" +
+                    "SUPPORTED FORMATS:\n" +
+                    "  - Plain username: ViewerName\n" +
+                    "  - Key=Value: username=ViewerName\n" +
+                    "  - Key=Value: user=ViewerName\n" +
+                    "  - Key=Value: redeemer=ViewerName\n" +
                     "SUPPORTS ABSOLUTE PATHS: C:\\StreamFiles\\ally_chat.txt\n" +
                     "Or relative: BepInEx/config/H3TVR_AllyChat.txt");
                 enemyChatFilePath = plugin.Config.Bind("Chat Watcher - File Mode", "EnemyChatFilePath",
                     "BepInEx/config/H3TVR_EnemyChat.txt",
                     "Path to enemy chat file\n" +
-                    "Format: One username per line OR JSON format: {\"username\":\"ViewerName\"}\n" +
+                    "SUPPORTED FORMATS:\n" +
+                    "  - Plain username: ViewerName\n" +
+                    "  - Key=Value: username=ViewerName\n" +
+                    "  - Key=Value: user=ViewerName\n" +
+                    "  - Key=Value: redeemer=ViewerName\n" +
                     "SUPPORTS ABSOLUTE PATHS: C:\\StreamFiles\\enemy_chat.txt\n" +
                     "Or relative: BepInEx/config/H3TVR_EnemyChat.txt");
                 fileCheckInterval = plugin.Config.Bind("Chat Watcher - File Mode", "FileCheckInterval", 0.5f,
                     "How often to check files for changes (seconds)");
                 clearFileAfterRead = plugin.Config.Bind("Chat Watcher - File Mode", "ClearFileAfterRead", true,
-                    "Clear chat file after reading usernames");
+                    "Clear chat file after reading usernames (recommended for channel points)");
 
                 // Manual spawn key bindings
                 manualAllySpawnKey = plugin.Config.Bind("Chat Watcher - Keys", "ManualAllySpawnKey", KeyCode.P,
@@ -106,7 +119,7 @@ namespace H3TVR
                 clearAllSosigsKey = plugin.Config.Bind("Chat Watcher - Keys", "ClearAllSosigsKey", KeyCode.Delete,
                     "Key to clear all chat sosigs");
 
-                logger?.LogInfo("Chat Watcher configuration initialized");
+                logger?.LogInfo("Chat Watcher configuration initialized (Channel Points format supported)");
             }
             catch (Exception ex)
             {
@@ -126,7 +139,7 @@ namespace H3TVR
                 string enemyPath = ResolveFilePath(enemyChatFilePath.Value);
                 CreateFileIfNotExists(enemyPath, false);
 
-                logger?.LogInfo("File watching initialized");
+                logger?.LogInfo("File watching initialized (Channel Points ready)");
                 logger?.LogInfo($"  Ally file: {allyPath}");
                 logger?.LogInfo($"  Enemy file: {enemyPath}");
             }
@@ -148,10 +161,14 @@ namespace H3TVR
                         Directory.CreateDirectory(directory);
                     }
                     
-                    string header = $"# H3TVR {(isAlly ? "Ally" : "Enemy")} Chat File\n" +
-                                  $"# Format: One username per line\n" +
-                                  $"# OR JSON format: {{\"username\":\"ViewerName\"}}\n" +
-                                  $"# File will be cleared after reading if ClearFileAfterRead is enabled\n";
+                    string header = $"# H3TVR {(isAlly ? "Ally" : "Enemy")} Chat File (Channel Points Compatible)\n" +
+                                  $"# SUPPORTED FORMATS:\n" +
+                                  $"#   Plain username: ViewerName\n" +
+                                  $"#   Key=Value: username=ViewerName\n" +
+                                  $"#   Key=Value: user=ViewerName\n" +
+                                  $"#   Key=Value: redeemer=ViewerName\n" +
+                                  $"# File will be cleared after reading if ClearFileAfterRead is enabled\n" +
+                                  $"# Perfect for Twitch Channel Points redemptions!\n";
                     
                     File.WriteAllText(filePath, header);
                     logger?.LogInfo($"Created chat file: {filePath}");
@@ -310,12 +327,12 @@ namespace H3TVR
                     if (isAlly)
                     {
                         sosigSpawner?.SpawningSequence(username);
-                        logger?.LogInfo($"File trigger: Spawned ally for {username}");
+                        logger?.LogInfo($"Channel Point Redemption: Spawned ally for {username}");
                     }
                     else
                     {
                         sosigSpawner?.SpawningSequenceEnemy(1, username);
-                        logger?.LogInfo($"File trigger: Spawned enemy for {username}");
+                        logger?.LogInfo($"Channel Point Redemption: Spawned enemy for {username}");
                     }
 
                     // Mark as processed
@@ -340,6 +357,14 @@ namespace H3TVR
             }
         }
 
+        /// <summary>
+        /// Parse usernames from file content - supports multiple formats for Channel Points compatibility
+        /// Formats supported:
+        /// 1. Plain username per line: "ViewerName"
+        /// 2. Key=Value format: "username=ViewerName", "user=ViewerName", "redeemer=ViewerName"
+        /// 3. INI format: "username=ViewerName"
+        /// 4. Simple text with username first: "ViewerName redeemed your channel points!"
+        /// </summary>
         private List<string> ParseUsernames(string content)
         {
             List<string> usernames = new List<string>();
@@ -359,40 +384,13 @@ namespace H3TVR
                         continue;
                     }
 
-                    // Try to parse as JSON first (H3TwitchTools compatibility)
-                    if (trimmed.StartsWith("{") && trimmed.Contains("username"))
+                    // Extract username from the line
+                    string username = ExtractUsername(trimmed);
+                    
+                    if (!string.IsNullOrEmpty(username))
                     {
-                        try
-                        {
-                            // Simple JSON parsing for {"username":"ViewerName"}
-                            int usernameStart = trimmed.IndexOf("\"username\"");
-                            if (usernameStart >= 0)
-                            {
-                                int valueStart = trimmed.IndexOf(":", usernameStart) + 1;
-                                int quoteStart = trimmed.IndexOf("\"", valueStart) + 1;
-                                int quoteEnd = trimmed.IndexOf("\"", quoteStart);
-
-                                if (quoteStart > 0 && quoteEnd > quoteStart)
-                                {
-                                    string username = trimmed.Substring(quoteStart, quoteEnd - quoteStart);
-                                    if (!string.IsNullOrEmpty(username))
-                                    {
-                                        usernames.Add(username);
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            // Fall through to plain text parsing
-                        }
-                    }
-
-                    // Plain text username (one per line)
-                    if (!string.IsNullOrEmpty(trimmed))
-                    {
-                        usernames.Add(trimmed);
+                        usernames.Add(username);
+                        logger?.LogDebug($"Extracted username: '{username}' from line: '{trimmed}'");
                     }
                 }
             }
@@ -404,13 +402,93 @@ namespace H3TVR
             return usernames;
         }
 
+        /// <summary>
+        /// Extract username from a single line - supports multiple formats
+        /// Priority order:
+        /// 1. Key=Value format (username=, user=, redeemer=, name=)
+        /// 2. First word before space (for "Username did something" format)
+        /// 3. Entire trimmed line (plain username)
+        /// </summary>
+        private string ExtractUsername(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+                return null;
+
+            string trimmed = line.Trim();
+
+            // Format 1: Key=Value format (INI style or channel points format)
+            // Examples: "username=ViewerName", "user=ViewerName", "redeemer=ViewerName"
+            if (trimmed.Contains("="))
+            {
+                string[] parts = trimmed.Split('=');
+                if (parts.Length >= 2)
+                {
+                    string key = parts[0].Trim().ToLower();
+                    string value = parts[1].Trim();
+
+                    // Check if key matches known username keys
+                    if (key == "username" || key == "user" || key == "redeemer" || 
+                        key == "name" || key == "viewer" || key == "chatter")
+                    {
+                        // Remove any trailing text after the username (e.g., "ViewerName # comment")
+                        int commentIndex = value.IndexOf('#');
+                        if (commentIndex > 0)
+                        {
+                            value = value.Substring(0, commentIndex).Trim();
+                        }
+
+                        // Remove any trailing text after spaces (e.g., "ViewerName extra stuff")
+                        int spaceIndex = value.IndexOf(' ');
+                        if (spaceIndex > 0)
+                        {
+                            value = value.Substring(0, spaceIndex).Trim();
+                        }
+
+                        if (!string.IsNullOrEmpty(value))
+                        {
+                            return value;
+                        }
+                    }
+                }
+            }
+
+            // Format 2: First word format (for "Username redeemed channel points!" style)
+            // Example: "ViewerName redeemed your channel points!"
+            if (trimmed.Contains(" "))
+            {
+                string[] words = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length > 0)
+                {
+                    string firstWord = words[0].Trim();
+                    // Make sure first word doesn't look like a system message
+                    if (!firstWord.StartsWith("[") && !firstWord.StartsWith("<") && 
+                        !firstWord.EndsWith(":") && firstWord.Length > 0)
+                    {
+                        return firstWord;
+                    }
+                }
+            }
+
+            // Format 3: Plain username (entire line is the username)
+            // Example: "ViewerName"
+            if (trimmed.Length > 0 && !trimmed.StartsWith("[") && !trimmed.StartsWith("<"))
+            {
+                return trimmed;
+            }
+
+            return null;
+        }
+
         private void ClearChatFile(string filePath, bool isAlly)
         {
             try
             {
-                string header = $"# H3TVR {(isAlly ? "Ally" : "Enemy")} Chat File\n" +
-                              $"# Format: One username per line\n" +
-                              $"# OR JSON format: {{\"username\":\"ViewerName\"}}\n";
+                string header = $"# H3TVR {(isAlly ? "Ally" : "Enemy")} Chat File (Channel Points Compatible)\n" +
+                              $"# SUPPORTED FORMATS:\n" +
+                              $"#   Plain username: ViewerName\n" +
+                              $"#   Key=Value: username=ViewerName\n" +
+                              $"#   Key=Value: user=ViewerName\n" +
+                              $"#   Key=Value: redeemer=ViewerName\n";
 
                 File.WriteAllText(filePath, header);
 
