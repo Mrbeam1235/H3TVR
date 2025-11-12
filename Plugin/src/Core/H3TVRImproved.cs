@@ -28,7 +28,12 @@ namespace H3TVR
         private string zeroGStatus = "Off";
         private bool malfunctionBoostActive;
         private float malfunctionBoostEndTime;
-        #endregion
+        
+        // NEW: Slomo Ramp State
+        private float slomoRampStartTime;
+        private float slomoRampStartValue;
+        private bool isRamping;
+    #endregion
 
         #region Configuration - Organized by Feature
         
@@ -41,6 +46,12 @@ namespace H3TVR
         private ConfigEntry<string> slomoVRButton;
         private ConfigEntry<bool> slomoAffectsMovement;
         private ConfigEntry<float> slomoMovementScale;
+        
+        // NEW: Slomo Ramp Configuration
+        private ConfigEntry<bool> slomoUseRampSpeed;
+        private ConfigEntry<string> slomoRampCurve; // "Linear", "EaseIn", "EaseOut", "EaseInOut", "Smooth"
+        private ConfigEntry<float> slomoRampDuration; // How long the ramp takes
+        private ConfigEntry<float> slomoReturnRampDuration; // Duration for return to normal
         
         // Audio Configuration
         private ConfigEntry<bool> slomoAffectsAudio;
@@ -236,6 +247,15 @@ namespace H3TVR
             slomoAffectsMovement = Config.Bind("Slomo", "AffectsMovement", true, "Whether slomo affects player movement speed");
             slomoMovementScale = Config.Bind("Slomo", "MovementScale", 0.3f, "Movement speed multiplier during slomo");
             
+            // NEW: Slomo Ramp Configuration
+            slomoUseRampSpeed = Config.Bind("Slomo.Ramp", "UseRampSpeed", true, "Enable smooth ramp speed transitions for slomo (more cinematic)");
+            slomoRampCurve = Config.Bind("Slomo.Ramp", "RampCurve", "EaseInOut", 
+       "Curve type for slomo ramp: Linear, EaseIn, EaseOut, EaseInOut, Smooth, Cinematic");
+            slomoRampDuration = Config.Bind("Slomo.Ramp", "RampDuration", 0.5f, 
+        "Duration in seconds for slomo to ramp down to max slow speed");
+            slomoReturnRampDuration = Config.Bind("Slomo.Ramp", "ReturnRampDuration", 0.8f, 
+       "Duration in seconds for slomo to ramp back to normal speed");
+        
             // Audio configuration
             slomoAffectsAudio = Config.Bind("Audio", "SlomoAffectsAudio", true, "Whether slomo affects audio pitch");
             slomoAudioPitchScale = Config.Bind("Audio", "SlomoAudioPitchScale", 1f, "Audio pitch multiplier during slomo (1.0 = normal pitch, 0.5 = half pitch)");
@@ -613,11 +633,14 @@ namespace H3TVR
             
             // Handle malfunction boost
             HandleMalfunctionBoost();
-            
+    
             // Handle infinite tokens for Take and Hold
             HandleInfiniteTokens();
             
-            // Input handling is delegated to InputHandler component
+            // Update weapon scale modifiers
+            weaponManager?.UpdateScaleModifiers();
+     
+     // Input handling is delegated to InputHandler component
         }
 
         private void HandleSlomoStateMachine()
@@ -941,6 +964,12 @@ namespace H3TVR
         public void TriggerSlomo() 
         { 
             slomoStatus = "Slowing";
+            
+            // Initialize ramp state
+            slomoRampStartTime = Time.unscaledTime;
+            slomoRampStartValue = Time.timeScale;
+            isRamping = true;
+            
             audioManager?.PlaySlomoSound("start"); // Play slomo start sound
         }
         
@@ -1019,12 +1048,15 @@ namespace H3TVR
             returnSpeed = slomoReturnSpeed.Value;
         }
         
-        public void GetSlomoVRConfig(out bool vrEnabled, out string vrButton)
+        // NEW: Slomo Ramp Config
+        public void GetSlomoRampConfig(out bool useRamp, out string curve, out float rampDuration, out float returnDuration)
         {
-            vrEnabled = slomoVRControllerEnabled.Value;
-            vrButton = slomoVRButton.Value;
-        }
-        
+         useRamp = slomoUseRampSpeed.Value;
+  curve = slomoRampCurve.Value;
+ rampDuration = slomoRampDuration.Value;
+    returnDuration = slomoReturnRampDuration.Value;
+  }
+
         // Audio config
         public void GetSlomoAudioConfig(out bool affectsAudio, out float pitchScale, out bool preservePitch)
         {
@@ -1086,169 +1118,176 @@ namespace H3TVR
         public bool IsEncryptionDisabled() => disableEncryptionNodes != null && disableEncryptionNodes.Value;
         
         public void SetInfiniteTokens(bool enabled)
+     {
+      if (enableInfiniteTokens != null)
         {
-            if (enableInfiniteTokens != null)
-            {
-                enableInfiniteTokens.Value = enabled;
-                Logger.LogInfo($"Infinite tokens {(enabled ? "enabled" : "disabled")}");
+       enableInfiniteTokens.Value = enabled;
+      Logger.LogInfo($"Infinite tokens {(enabled ? "enabled" : "disabled")}");
             }
         }
         
         public void SetEncryptionNodes(bool disabled)
         {
-            if (disableEncryptionNodes != null)
-            {
-                disableEncryptionNodes.Value = disabled;
-                Logger.LogInfo($"Encryption nodes {(disabled ? "disabled" : "enabled")}");
-            }
+      if (disableEncryptionNodes != null)
+  {
+       disableEncryptionNodes.Value = disabled;
+       Logger.LogInfo($"Encryption nodes {(disabled ? "disabled" : "enabled")}");
+   }
         }
-        #endregion
+        
+        public void GetSlomoVRConfig(out bool vrEnabled, out string vrButton)
+   {
+            vrEnabled = slomoVRControllerEnabled.Value;
+    vrButton = slomoVRButton.Value;
+   }
+      
+      #endregion
 
         #region Harmony Patches and Cleanup
         // Dictionary to store original speeds for audio sources during slomo
-        private static Dictionary<AudioSource, float> originalAudioSpeeds = new Dictionary<AudioSource, float>();
+  private static Dictionary<AudioSource, float> originalAudioSpeeds = new Dictionary<AudioSource, float>();
         
         [HarmonyPatch(typeof(AudioSource), "pitch", MethodType.Setter)]
         [HarmonyPrefix]
-        public static void FixPitch(AudioSource __instance, ref float value)
+     public static void FixPitch(AudioSource __instance, ref float value)
         {
-            // Get the current plugin instance to access configuration
-            var instance = FindObjectOfType<H3TVRImproved>();
-            if (instance == null) return;
-            
-            // Only process if not in normal time scale
+           // Get the current plugin instance to access configuration
+    var instance = FindObjectOfType<H3TVRImproved>();
+   if (instance == null) return;
+     
+     // Only process if not in normal time scale
             if (Time.timeScale >= 0.99f && Time.timeScale <= 1.01f)
-            {
-                // Normal time - clean up any stored state
-                if (originalAudioSpeeds.ContainsKey(__instance))
-                {
-                    originalAudioSpeeds.Remove(__instance);
-                }
-                return;
+  {
+       // Normal time - clean up any stored state
+      if (originalAudioSpeeds.ContainsKey(__instance))
+      {
+     originalAudioSpeeds.Remove(__instance);
+             }
+  return;
             }
-            
-            // Get complete audio configuration
+    
+      // Get complete audio configuration
             bool affectsAudio, preservePitch, affectsSpeed;
-            float pitchScale, speedScale;
-            string mode;
-            instance.GetSlomoAudioConfigComplete(out affectsAudio, out pitchScale, out preservePitch, 
-                out affectsSpeed, out speedScale, out mode);
-            
-            if (!affectsAudio)
-            {
-                return;
-            }
-            
-            // Store original speed if not already stored
-            if (!originalAudioSpeeds.ContainsKey(__instance))
-            {
-                originalAudioSpeeds[__instance] = 1.0f; // Default unity speed
-            }
-            
-            // Apply audio adjustments based on mode
-            switch (mode.ToLower())
-            {
-                case "pitchonly":
-                    // Only adjust pitch, preserve speed
-                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
-                    break;
-                    
-                case "speedonly":
-                    // Only adjust speed (via pitch manipulation), preserve pitch perception
-                    // This is a simulation since Unity doesn't have direct speed control without pitch
-                    ApplySpeedAdjustment(__instance, speedScale);
-                    value = 1.0f; // Keep pitch normal
-                    break;
-                    
-                case "both":
-                    // Both pitch and speed scale with time (classic slomo effect)
-                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
-                    if (affectsSpeed)
-                    {
-                        ApplySpeedAdjustment(__instance, speedScale);
-                    }
-                    break;
-                    
-                case "independent":
-                    // Independent control of pitch and speed
-                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
-                    if (affectsSpeed)
-                    {
-                        ApplySpeedAdjustment(__instance, speedScale);
-                    }
-                    break;
-                    
-                default:
-                    // Default to "Both" mode
-                    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
-                    if (affectsSpeed)
-                    {
-                        ApplySpeedAdjustment(__instance, speedScale);
-                    }
-                    break;
-            }
-            
-            // Always ensure pitch is within reasonable bounds
-            value = Mathf.Clamp(value, 0.1f, 3.0f);
-        }
+     float pitchScale, speedScale;
+   string mode;
+       instance.GetSlomoAudioConfigComplete(out affectsAudio, out pitchScale, out preservePitch, 
+ out affectsSpeed, out speedScale, out mode);
+      
+       if (!affectsAudio)
+    {
+     return;
+     }
+          
+       // Store original speed if not already stored
+       if (!originalAudioSpeeds.ContainsKey(__instance))
+   {
+      originalAudioSpeeds[__instance] = 1.0f; // Default unity speed
+     }
         
-        /// <summary>
+ // Apply audio adjustments based on mode
+     switch (mode.ToLower())
+            {
+      case "pitchonly":
+       // Only adjust pitch, preserve speed
+     ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+         break;
+          
+    case "speedonly":
+     // Only adjust speed (via pitch manipulation), preserve pitch perception
+    // This is a simulation since Unity doesn't have direct speed control without pitch
+      ApplySpeedAdjustment(__instance, speedScale);
+        value = 1.0f; // Keep pitch normal
+  break;
+    
+    case "both":
+      // Both pitch and speed scale with time (classic slomo effect)
+    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+           if (affectsSpeed)
+      {
+     ApplySpeedAdjustment(__instance, speedScale);
+        }
+  break;
+     
+   case "independent":
+       // Independent control of pitch and speed
+    ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+          if (affectsSpeed)
+    {
+    ApplySpeedAdjustment(__instance, speedScale);
+    }
+          break;
+            
+   default:
+      // Default to "Both" mode
+           ApplyPitchAdjustment(ref value, preservePitch, pitchScale);
+      if (affectsSpeed)
+ {
+      ApplySpeedAdjustment(__instance, speedScale);
+   }
+          break;
+            }
+        
+    // Always ensure pitch is within reasonable bounds
+     value = Mathf.Clamp(value, 0.1f, 3.0f);
+        }
+     
+    /// <summary>
         /// Apply pitch adjustment based on configuration
-        /// </summary>
-        private static void ApplyPitchAdjustment(ref float pitch, bool preservePitch, float pitchScale)
-        {
-            if (preservePitch)
-            {
-                // Preserve original pitch by compensating for time scale
-                pitch *= (1f / Time.timeScale);
-            }
+  /// </summary>
+    private static void ApplyPitchAdjustment(ref float pitch, bool preservePitch, float pitchScale)
+     {
+       if (preservePitch)
+       {
+      // Preserve original pitch by compensating for time scale
+              pitch *= (1f / Time.timeScale);
+          }
             else
-            {
-                // Apply custom pitch scaling
-                float newPitch = pitch * (Time.timeScale * pitchScale);
-                pitch = Mathf.Clamp(newPitch, 0.1f, 3.0f);
-            }
+       {
+         // Apply custom pitch scaling
+   float newPitch = pitch * (Time.timeScale * pitchScale);
+         pitch = Mathf.Clamp(newPitch, 0.1f, 3.0f);
+      }
         }
-        
-        /// <summary>
+ 
+    /// <summary>
         /// Apply speed adjustment to audio source
-        /// Note: Unity doesn't support true time-stretching, so we simulate it
+  /// Note: Unity doesn't support true time-stretching, so we simulate it
         /// </summary>
         private static void ApplySpeedAdjustment(AudioSource source, float speedScale)
-        {
-            if (source == null || source.clip == null) return;
-            
-            try
-            {
-                // Calculate target playback speed
-                float targetSpeed = Time.timeScale * speedScale;
-                
-                // Clamp to reasonable values
-                targetSpeed = Mathf.Clamp(targetSpeed, 0.1f, 3.0f);
-                
-                // Since Unity doesn't have direct speed control independent of pitch,
-                // we adjust the playback position to simulate slower playback
-                // This is a best-effort simulation
-                if (source.isPlaying && targetSpeed < 0.95f)
-                {
-                    // Store current normalized time
-                    float normalizedTime = source.time / source.clip.length;
-                    
-                    // Slow down by adjusting sample position
-                    // This creates a time-stretching effect
-                    int targetSample = Mathf.RoundToInt(source.timeSamples * targetSpeed);
-                    
-                    // Only adjust if significantly different
-                    if (Mathf.Abs(targetSample - source.timeSamples) > 100)
-                    {
-                        source.timeSamples = Mathf.Clamp(targetSample, 0, source.clip.samples - 1);
-                    }
-                }
+      {
+      if (source == null || source.clip == null) return;
+          
+        try
+     {
+     // Calculate target playback speed
+         float targetSpeed = Time.timeScale * speedScale;
+   
+           // Clamp to reasonable values
+     targetSpeed = Mathf.Clamp(targetSpeed, 0.1f, 3.0f);
+     
+   // Since Unity doesn't have direct speed control independent of pitch,
+          // we adjust the playback position to simulate slower playback
+       // This is a best-effort simulation
+    if (source.isPlaying && targetSpeed < 0.95f)
+      {
+  // Store current normalized time
+     float normalizedTime = source.time / source.clip.length;
+    
+  // Slow down by adjusting sample position
+         // This creates a time-stretching effect
+    int targetSample = Mathf.RoundToInt(source.timeSamples * targetSpeed);
+       
+         // Only adjust if significantly different
+      if (Mathf.Abs(targetSample - source.timeSamples) > 100)
+      {
+source.timeSamples = Mathf.Clamp(targetSample, 0, source.clip.samples - 1);
+  }
+  }
             }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Error applying speed adjustment: {ex.Message}");
-            }
+          catch (Exception ex)
+     {
+       Debug.LogError($"Error applying speed adjustment: {ex.Message}");
+      }
         }
         #endregion
     }

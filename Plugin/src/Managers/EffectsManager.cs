@@ -17,12 +17,26 @@ namespace H3TVR
         private ManualLogSource logger;
         private static EffectsManager instance;
 
+        // Slomo ramp state tracking
+        private float rampStartTime;
+        private float rampStartValue;
+        private float rampTargetValue;
+        private bool isRampingDown;
+        private bool isRampingUp;
+
         public void Initialize(H3TVRImproved pluginInstance, SlomoMovementController controller, ManualLogSource logSource)
         {
             plugin = pluginInstance;
             slomoController = controller;
             logger = logSource;
             instance = this;
+            
+            // Initialize ramp state
+            rampStartTime = 0f;
+            rampStartValue = 1f;
+            rampTargetValue = 1f;
+            isRampingDown = false;
+            isRampingUp = false;
         }
 
         /// <summary>
@@ -39,18 +53,60 @@ namespace H3TVR
             float maxSlomoValue, waitTime, scaleSpeed, returnSpeed;
             plugin.GetSlomoConfig(out maxSlomoValue, out waitTime, out scaleSpeed, out returnSpeed);
             
-            if (Time.timeScale > maxSlomoValue)
+            bool useRamp;
+            string curve;
+            float rampDuration, returnDuration;
+            plugin.GetSlomoRampConfig(out useRamp, out curve, out rampDuration, out returnDuration);
+        
+            if (useRamp)
             {
-                Time.timeScale -= scaleSpeed * Time.unscaledDeltaTime;
+                // Use smooth ramp speed
+                if (!isRampingDown)
+                {
+                    // Start ramping
+                    rampStartTime = Time.unscaledTime;
+                    rampStartValue = Time.timeScale;
+                    rampTargetValue = maxSlomoValue;
+                    isRampingDown = true;
+                    isRampingUp = false;
+                }
+    
+                float elapsed = Time.unscaledTime - rampStartTime;
+                float t = Mathf.Clamp01(elapsed / rampDuration);
+            
+                // Apply easing curve
+                float easedT = ApplyEasingCurve(t, curve);
+                
+                // Interpolate between start and target
+                Time.timeScale = Mathf.Lerp(rampStartValue, rampTargetValue, easedT);
                 Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
                 Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
-                
+    
                 slomoController?.UpdateMovementScale(Time.timeScale);
+                
+                if (t >= 1f)
+                {
+                    // Ramp complete
+                    isRampingDown = false;
+                    plugin.SetSlomoStatus("Wait");
+                }
             }
-
-            if (Time.timeScale <= maxSlomoValue)
+            else
             {
-                plugin.SetSlomoStatus("Wait");
+                // Original linear scaling
+                if (Time.timeScale > maxSlomoValue)
+                {
+                    Time.timeScale -= scaleSpeed * Time.unscaledDeltaTime;
+                    Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
+                    Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
+                    
+                    slomoController?.UpdateMovementScale(Time.timeScale);
+                }
+
+                if (Time.timeScale <= maxSlomoValue)
+                {
+                    plugin.SetSlomoStatus("Wait");
+                }
             }
         }
 
@@ -58,17 +114,58 @@ namespace H3TVR
         {
             float maxSlomoValue, waitTime, scaleSpeed, returnSpeed;
             plugin.GetSlomoConfig(out maxSlomoValue, out waitTime, out scaleSpeed, out returnSpeed);
-            
-            if (Time.timeScale != 1)
+   
+            bool useRamp;
+            string curve;
+            float rampDuration, returnDuration;
+            plugin.GetSlomoRampConfig(out useRamp, out curve, out rampDuration, out returnDuration);
+         
+            if (useRamp)
             {
-                Time.timeScale += returnSpeed * Time.unscaledDeltaTime;
+                // Use smooth ramp speed for return
+                if (!isRampingUp)
+                {
+                    // Start ramping up
+                    rampStartTime = Time.unscaledTime;
+                    rampStartValue = Time.timeScale;
+                    rampTargetValue = 1f;
+                    isRampingUp = true;
+                    isRampingDown = false;
+                }
+                
+                float elapsed = Time.unscaledTime - rampStartTime;
+                float t = Mathf.Clamp01(elapsed / returnDuration);
+                   
+                // Apply easing curve
+                float easedT = ApplyEasingCurve(t, curve);
+        
+                // Interpolate to normal speed
+                Time.timeScale = Mathf.Lerp(rampStartValue, rampTargetValue, easedT);
                 Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
                 Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
-                
+        
                 slomoController?.UpdateMovementScale(Time.timeScale);
+        
+                if (t >= 1f)
+                {
+                    // Ramp complete
+                    isRampingUp = false;
+                }
             }
+            else
+            {
+                // Original linear return
+                if (Time.timeScale != 1)
+                {
+                    Time.timeScale += returnSpeed * Time.unscaledDeltaTime;
+                    Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
+                    Time.timeScale = Mathf.Clamp(Time.timeScale, 0f, 1f);
+                
+                    slomoController?.UpdateMovementScale(Time.timeScale);
+                }
+             }
         }
-
+        
         public IEnumerator SlomoWait(System.Action onComplete)
         {
             float maxSlomoValue, waitTime, scaleSpeed, returnSpeed;
@@ -81,21 +178,57 @@ namespace H3TVR
         {
             float maxSlomoValue, waitTime, scaleSpeed, returnSpeed;
             plugin.GetSlomoConfig(out maxSlomoValue, out waitTime, out scaleSpeed, out returnSpeed);
-            float originalTimeScale = Time.timeScale;
-            
-            Time.timeScale = maxSlomoValue;
-            Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
-            slomoController?.UpdateMovementScale(Time.timeScale);
-            
-            logger.LogInfo($"Pillow slow motion activated for {duration} seconds (scale: {maxSlomoValue})");
+     float originalTimeScale = Time.timeScale;
+  
+     Time.timeScale = maxSlomoValue;
+    Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
+   slomoController?.UpdateMovementScale(Time.timeScale);
 
-            yield return new WaitForSecondsRealtime(duration);
+        logger.LogInfo($"Pillow slow motion activated for {duration} seconds (scale: {maxSlomoValue})");
+
+   yield return new WaitForSecondsRealtime(duration);
 
             Time.timeScale = originalTimeScale;
-            Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
+      Time.fixedDeltaTime = Time.timeScale / SteamVR.instance.hmd_DisplayFrequency;
             slomoController?.UpdateMovementScale(Time.timeScale);
+         
+          logger.LogInfo("Pillow slow motion effect ended");
+ }
+
+        /// <summary>
+        /// Apply easing curve to time value for smooth transitions
+        /// </summary>
+        private float ApplyEasingCurve(float t, string curveType)
+        {
+            switch (curveType.ToLower())
+            {
+                case "linear":
+                    return t;
             
-            logger.LogInfo("Pillow slow motion effect ended");
+                case "easein":
+                    // Slow start, fast end
+                    return t * t;
+                        
+                case "easeout":
+                    // Fast start, slow end
+                    return t * (2f - t);
+                
+                case "easeinout":
+                    // Slow start and end
+                    return t < 0.5f ? 2f * t * t : -1f + (4f - 2f * t) * t;
+                
+                case "smooth":
+                    // Smooth cubic easing
+                    return t * t * (3f - 2f * t);
+                
+                case "cinematic":
+                    // Very smooth quintic easing (most cinematic)
+                    return t * t * t * (t * (t * 6f - 15f) + 10f);
+                
+                default:
+                    logger.LogWarning($"Unknown easing curve: {curveType}. Using EaseInOut.");
+                    return t < 0.5f ? 2f * t * t : -1f + (4f - 2f * t) * t;
+            }
         }
         #endregion
 

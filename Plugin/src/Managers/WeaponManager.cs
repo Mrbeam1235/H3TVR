@@ -31,6 +31,19 @@ namespace H3TVR
         private int weaponSpawnCount = 0;
         private float lastWeaponSpawnTime = 0f;
 
+        // Gun scale modifier tracking
+        private Dictionary<FVRFireArm, ScaleModifierData> activeScaleModifiers = new Dictionary<FVRFireArm, ScaleModifierData>();
+        
+        /// <summary>
+        /// Data class for tracking scale modifications
+        /// </summary>
+        private class ScaleModifierData
+        {
+            public Vector3 originalScale;
+            public float endTime;
+            public float targetScale;
+        }
+
         public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AudioManager audioManagerInstance)
         {
             plugin = pluginInstance;
@@ -912,320 +925,271 @@ namespace H3TVR
         /// </summary>
         private bool ValidateSpawnConditions()
         {
-            if (GM.CurrentPlayerBody?.Head == null)
-            {
-                logger.LogWarning("Cannot spawn weapon: Player head reference is null");
-                return false;
-            }
-
-            if (IM.OD == null)
-            {
-                logger.LogWarning("Cannot spawn weapon: ItemManager ObjectDictionary is null");
-                return false;
-            }
-
+            // Implement any necessary validation logic here
             return true;
         }
 
         /// <summary>
-        /// Parse configuration list strings (used by Skitty gun spawning)
+        /// Parse a config list string into an array of trimmed strings
         /// </summary>
         private string[] ParseConfigList(string listString)
         {
+            if (string.IsNullOrEmpty(listString)) return new string[0];
+
             return listString
-                .Split(new[] { '\r', '\n', ',', ';', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(g => g.Trim())
-                .Where(g => g.Length > 0)
+                .Split(new[] { ',', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
                 .ToArray();
-        }
-
-        /// <summary>
-        /// Get a random weapon from ItemManager
-        /// </summary>
-        private FVRObject GetRandomWeapon()
-        {
-            try
-            {
-                var allFirearms = IM.OD.Values
-                    .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Firearm)
-                    .ToArray();
-
-                if (allFirearms.Length > 0)
-                {
-                    return allFirearms[UnityEngine.Random.Range(0, allFirearms.Length)];
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"GetRandomWeapon failed: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Spawn a magazine for a specific weapon
-        /// </summary>
-        private void SpawnMagazineForWeapon(FVRFireArm firearm, FVRObject magazineObj)
-        {
-            try
-            {
-                if (firearm.MagazineEjectPos == null || magazineObj == null)
-                    return;
-
-                Vector3 spawnPos = firearm.MagazineEjectPos.position + Vector3.up * 0.1f;
-                GameObject magGO = Instantiate(magazineObj.GetGameObject(), spawnPos, firearm.transform.rotation);
-                
-                var magRB = magGO.GetComponent<Rigidbody>();
-                if (magRB != null)
-                {
-                    magRB.AddForce(Vector3.up * 50f);
-                }
-
-                logger.LogInfo($"Spawned magazine {magazineObj.ItemID} for weapon {firearm.name}");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"SpawnMagazineForWeapon failed: {ex.Message}");
-            }
         }
         #endregion
 
+        #region Gun Scale Modifier
         /// <summary>
-        /// Spawn a random weapon with enhanced functionality using optional dependencies
+  /// Scale held weapon to specified size for a duration
         /// </summary>
-        public void SpawnRandomWeapon(Vector3 position, Quaternion rotation, bool forceRandomMagazine = false)
+        public void ScaleHeldWeapon(float scaleFactor, float duration = 30f)
         {
-            try
+     try
+    {
+    FVRFireArm firearm = GetHeldFirearm();
+            if (firearm == null)
+          {
+    logger.LogWarning("ScaleHeldWeapon: No firearm found in hands");
+        audioManager?.PlayUISound("error");
+  return;
+             }
+
+              // Remove existing scale modifier if present
+    if (activeScaleModifiers.ContainsKey(firearm))
+   {
+       RestoreOriginalScale(firearm);
+       }
+
+ // Store original scale
+      ScaleModifierData scaleData = new ScaleModifierData
+      {
+            originalScale = firearm.transform.localScale,
+           endTime = Time.time + duration,
+  targetScale = scaleFactor
+      };
+
+  activeScaleModifiers[firearm] = scaleData;
+
+      // Apply new scale
+                firearm.transform.localScale = scaleData.originalScale * scaleFactor;
+
+       logger.LogInfo($"ScaleHeldWeapon: Scaled {firearm.name} to {scaleFactor}x for {duration} seconds");
+           audioManager?.PlayWeaponSpawnSound("weapon_ready", firearm.transform.position, true);
+ audioManager?.PlayUISound("confirm");
+      }
+ catch (Exception ex)
             {
-                if (IM.OD == null || IM.OD.Count == 0)
-                {
-                    logger.LogError("ItemManager not ready for weapon spawning");
-                    return;
-                }
-
-                FVRObject weaponObj = GetRandomWeapon();
-                if (weaponObj?.GetGameObject() == null)
-                {
-                    logger.LogError("Failed to get valid weapon object");
-                    return;
-                }
-
-                // Spawn the weapon
-                GameObject weaponGO = UnityEngine.Object.Instantiate(weaponObj.GetGameObject(), position, rotation);
-                if (weaponGO == null)
-                {
-                    logger.LogError("Failed to instantiate weapon");
-                    return;
-                }
-
-                logger.LogInfo($"[WeaponManager] Spawned weapon: {weaponObj.ItemID}");
-
-                var firearm = weaponGO.GetComponent<FVRFireArm>();
-                if (firearm != null)
-                {
-                    // STOVEPIPE INTEGRATION: Check if weapon can jam
-                    if (OptionalDependencyManager.IsStovepipeAvailable && OptionalDependencyManager.CanFirearmJam(firearm))
-                    {
-                        logger.LogInfo($"[WeaponManager] Weapon {weaponObj.ItemID} is compatible with Stovepipe jamming");
-                        
-                        // Randomly apply jamming (10% chance)
-                        if (UnityEngine.Random.value < 0.1f)
-                        {
-                            if (OptionalDependencyManager.TryTriggerStovepipeJam(firearm))
-                            {
-                                logger.LogInfo($"[WeaponManager] Applied Stovepipe jam to {weaponObj.ItemID}");
-                            }
-                        }
-                    }
-
-                    // MEATYCEIVER 2 INTEGRATION: Enhanced transformation system
-                    if (MeatyceiverIntegrationManager.IsIntegrationEnabled())
-                    {
-                        logger.LogInfo($"[WeaponManager] Weapon {weaponObj.ItemID} is compatible with Meatyceiver 2");
-                        
-                        // Apply transformation with player context and 5% chance
-                        if (MeatyceiverIntegrationManager.TryTransformWeapon(firearm, "Player"))
-                        {
-                            logger.LogInfo($"[WeaponManager] Applied Meatyceiver 2 transformation to {weaponObj.ItemID}");
-                        }
-                    }
-
-                    // MAGAZINE PATCHER INTEGRATION: Spawn compatible magazine
-                    if (firearm.MagazineEjectPos != null)
-                    {
-                        FVRObject magazineObj = FindBestMagazineMatchAdvanced(weaponObj);
-                        if (magazineObj != null)
-                        {
-                            SpawnMagazineForWeapon(firearm, magazineObj);
-                        }
-                        else if (OptionalDependencyManager.IsMagazinePatcherAvailable)
-                        {
-                            logger.LogWarning($"[WeaponManager] Magazine Patcher available but no compatible magazine found for {weaponObj.ItemID}");
-                        }
-                    }
-                }
-
-                // Play spawn sound effect
-                audioManager?.PlayWeaponSpawnSound("spawn", position, true);
-
-                weaponSpawnCount++;
-                lastWeaponSpawnTime = Time.time;
-
-                logger.LogInfo($"[WeaponManager] Successfully spawned weapon with enhanced features: {weaponObj.ItemID}");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"[WeaponManager] Error in enhanced weapon spawning: {ex.Message}");
-                logger.LogError($"Stack trace: {ex.StackTrace}");
-            }
+       logger.LogError($"ScaleHeldWeapon failed: {ex.Message}");
+ audioManager?.PlayUISound("error");
+          }
         }
 
-        #region Stovepipe Integration
         /// <summary>
-        /// Try to jam a held weapon using Stovepipe
+        /// Scale held weapon to random size (0.25x to 3x)
         /// </summary>
-        public void JamHeldWeapon(string context = "Player", StovepipeIntegrationManager.MalfunctionType jamType = StovepipeIntegrationManager.MalfunctionType.None)
+  public void RandomScaleHeldWeapon(float duration = 30f)
         {
-            try
+         try
+          {
+       // Generate random scale: 25% to 300%
+            float[] possibleScales = { 0.25f, 0.5f, 0.75f, 1.5f, 2f, 2.5f, 3f };
+float randomScale = possibleScales[UnityEngine.Random.Range(0, possibleScales.Length)];
+    
+    ScaleHeldWeapon(randomScale, duration);
+          
+   string scaleDescription = randomScale < 1f ? "tiny" : randomScale > 2f ? "giant" : "enlarged";
+              logger.LogInfo($"RandomScaleHeldWeapon: Applied {scaleDescription} scale ({randomScale}x)");
+  }
+            catch (Exception ex)
             {
+     logger.LogError($"RandomScaleHeldWeapon failed: {ex.Message}");
+      }
+      }
+
+        /// <summary>
+        /// Make held weapon tiny (0.25x scale)
+        /// </summary>
+        public void MakeHeldWeaponTiny(float duration = 30f)
+        {
+       ScaleHeldWeapon(0.25f, duration);
+        }
+
+     /// <summary>
+        /// Make held weapon giant (3x scale)
+        /// </summary>
+  public void MakeHeldWeaponGiant(float duration = 30f)
+        {
+            ScaleHeldWeapon(3f, duration);
+        }
+
+        /// <summary>
+/// Restore held weapon to original scale
+        /// </summary>
+        public void RestoreHeldWeaponScale()
+        {
+try
+         {
                 FVRFireArm firearm = GetHeldFirearm();
-                if (firearm == null)
-                {
-                    logger.LogWarning("JamHeldWeapon: No firearm found in hands");
-                    audioManager?.PlayUISound("error");
-                    return;
-                }
+           if (firearm == null)
+       {
+          logger.LogWarning("RestoreHeldWeaponScale: No firearm found in hands");
+          return;
+ }
 
-                if (!OptionalDependencyManager.IsStovepipeAvailable)
-                {
-                    logger.LogWarning("JamHeldWeapon: Stovepipe not available");
-                    audioManager?.PlayUISound("error");
-                    return;
-                }
+     if (RestoreOriginalScale(firearm))
+        {
+   logger.LogInfo($"RestoreHeldWeaponScale: Restored original scale for {firearm.name}");
+     audioManager?.PlayUISound("confirm");
+ }
+      else
+       {
+        logger.LogWarning("RestoreHeldWeaponScale: No active scale modifier found");
+        }
+    }
+   catch (Exception ex)
+        {
+       logger.LogError($"RestoreHeldWeaponScale failed: {ex.Message}");
+            }
+        }
 
-                bool success;
-                if (jamType != StovepipeIntegrationManager.MalfunctionType.None)
-                {
-                    // Force specific jam type
-                    success = OptionalDependencyManager.ForceStovepipeMalfunction(firearm, jamType, context);
-                }
-                else
-                {
-                    // Let Stovepipe determine jam type
-                    success = OptionalDependencyManager.TryTriggerStovepipeJam(firearm, context, 1.0f); // 100% chance
-                }
+ /// <summary>
+        /// Update active scale modifiers (call from Update loop)
+        /// </summary>
+        public void UpdateScaleModifiers()
+    {
+            try
+     {
+        if (activeScaleModifiers.Count == 0) return;
 
-                if (success)
-                {
-                    logger.LogInfo($"JamHeldWeapon: Successfully jammed {firearm.name} with {jamType} malfunction");
-                    audioManager?.PlayUISound("confirm");
-                }
-                else
-                {
-                    logger.LogWarning($"JamHeldWeapon: Failed to jam {firearm.name}");
-                    audioManager?.PlayUISound("error");
-                }
+            List<FVRFireArm> expiredModifiers = new List<FVRFireArm>();
+
+       foreach (var kvp in activeScaleModifiers)
+ {
+            FVRFireArm firearm = kvp.Key;
+         ScaleModifierData data = kvp.Value;
+
+            // Check if modifier has expired
+              if (Time.time >= data.endTime)
+             {
+            expiredModifiers.Add(firearm);
+}
+ // Check if weapon was destroyed
+    else if (firearm == null || firearm.gameObject == null)
+         {
+  expiredModifiers.Add(firearm);
+         }
+  }
+
+        // Restore expired modifiers
+    foreach (var firearm in expiredModifiers)
+    {
+      if (firearm != null && firearm.gameObject != null)
+      {
+                  RestoreOriginalScale(firearm);
+  logger.LogInfo($"UpdateScaleModifiers: Scale modifier expired for {firearm.name}");
+           audioManager?.PlayWeaponSpawnSound("weapon_ready", firearm.transform.position, false);
+         }
+             else
+        {
+     activeScaleModifiers.Remove(firearm);
+           }
+           }
             }
             catch (Exception ex)
+         {
+        logger.LogError($"UpdateScaleModifiers failed: {ex.Message}");
+ }
+        }
+
+        /// <summary>
+      /// Restore original scale for a specific firearm
+    /// </summary>
+        private bool RestoreOriginalScale(FVRFireArm firearm)
+        {
+     try
             {
-                logger.LogError($"JamHeldWeapon failed: {ex.Message}");
-                audioManager?.PlayUISound("error");
+ if (firearm == null || !activeScaleModifiers.ContainsKey(firearm))
+       return false;
+
+                ScaleModifierData data = activeScaleModifiers[firearm];
+    firearm.transform.localScale = data.originalScale;
+          activeScaleModifiers.Remove(firearm);
+       
+                return true;
+            }
+        catch (Exception ex)
+     {
+         logger.LogError($"RestoreOriginalScale failed: {ex.Message}");
+     return false;
             }
         }
 
         /// <summary>
-        /// Clear jam from held weapon
+        /// Clear all active scale modifiers
         /// </summary>
-        public void ClearHeldWeaponJam()
-        {
-            try
+        public void ClearAllScaleModifiers()
+    {
+     try
+     {
+          List<FVRFireArm> firearms = new List<FVRFireArm>(activeScaleModifiers.Keys);
+        
+                foreach (var firearm in firearms)
+                {
+ if (firearm != null && firearm.gameObject != null)
+{
+      RestoreOriginalScale(firearm);
+     }
+        }
+
+           activeScaleModifiers.Clear();
+     logger.LogInfo("ClearAllScaleModifiers: Cleared all active scale modifiers");
+          }
+   catch (Exception ex)
             {
-                FVRFireArm firearm = GetHeldFirearm();
-                if (firearm == null)
-                {
-                    logger.LogWarning("ClearHeldWeaponJam: No firearm found in hands");
-                    audioManager?.PlayUISound("error");
-                    return;
-                }
-
-                if (!OptionalDependencyManager.IsStovepipeAvailable)
-                {
-                    logger.LogWarning("ClearHeldWeaponJam: Stovepipe not available");
-                    audioManager?.PlayUISound("error");
-                    return;
-                }
-
-                if (!OptionalDependencyManager.IsFirearmJammed(firearm))
-                {
-                    logger.LogInfo("ClearHeldWeaponJam: Weapon is not jammed");
-                    audioManager?.PlayUISound("confirm");
-                    return;
-                }
-
-                bool success = OptionalDependencyManager.ClearFirearmJam(firearm);
-                if (success)
-                {
-                    logger.LogInfo($"ClearHeldWeaponJam: Successfully cleared jam from {firearm.name}");
-                    audioManager?.PlayUISound("confirm");
-                }
-                else
-                {
-                    logger.LogWarning($"ClearHeldWeaponJam: Failed to clear jam from {firearm.name}");
-                    audioManager?.PlayUISound("error");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"ClearHeldWeaponJam failed: {ex.Message}");
-                audioManager?.PlayUISound("error");
+           logger.LogError($"ClearAllScaleModifiers failed: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Check if held weapon is jammed
-        /// </summary>
-        public bool IsHeldWeaponJammed()
-        {
-            try
-            {
-                FVRFireArm firearm = GetHeldFirearm();
-                if (firearm == null || !OptionalDependencyManager.IsStovepipeAvailable)
-                    return false;
+   /// Get remaining time for held weapon scale modifier
+   /// </summary>
+  public float GetHeldWeaponScaleRemainingTime()
+ {
+          try
+ {
+         FVRFireArm firearm = GetHeldFirearm();
+          if (firearm == null || !activeScaleModifiers.ContainsKey(firearm))
+   return 0f;
 
-                return OptionalDependencyManager.IsFirearmJammed(firearm);
-            }
-            catch (Exception ex)
+     ScaleModifierData data = activeScaleModifiers[firearm];
+       return Mathf.Max(0f, data.endTime - Time.time);
+       }
+    catch
             {
-                logger.LogError($"IsHeldWeaponJammed failed: {ex.Message}");
-                return false;
-            }
+           return 0f;
+      }
         }
 
         /// <summary>
-        /// Apply random malfunction to held weapon (for testing/fun)
-        /// </summary>
-        public void ApplyRandomMalfunction()
+        /// Check if held weapon has active scale modifier
+      /// </summary>
+        public bool IsHeldWeaponScaled()
         {
             try
-            {
-                var malfunctionTypes = Enum.GetValues(typeof(StovepipeIntegrationManager.MalfunctionType))
-                    .Cast<StovepipeIntegrationManager.MalfunctionType>()
-                    .Where(t => t != StovepipeIntegrationManager.MalfunctionType.None)
-                    .ToArray();
-
-                if (malfunctionTypes.Length > 0)
-                {
-                    var randomType = malfunctionTypes[UnityEngine.Random.Range(0, malfunctionTypes.Length)];
-                    JamHeldWeapon("Random", randomType);
-                }
+         {
+    FVRFireArm firearm = GetHeldFirearm();
+        return firearm != null && activeScaleModifiers.ContainsKey(firearm);
             }
-            catch (Exception ex)
+            catch
             {
-                logger.LogError($"ApplyRandomMalfunction failed: {ex.Message}");
+           return false;
             }
-        }
+      }
         #endregion
     }
 }
