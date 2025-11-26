@@ -52,6 +52,10 @@ if (sosig == null)
                 {
         logger?.LogWarning($"Failed to apply config template: {configEx.Message}");
          }
+
+      // Apply armor based on IFF code
+      int armorLevel = IFF == 0 ? SosigCustomizationUI.AllyArmor.Value : SosigCustomizationUI.EnemyArmor.Value;
+      SosigArmorManager.ApplyArmorToSosig(sosig, armorLevel);
   
       sosig.E.IFFCode = IFF;
 sosig.SetIFF(IFF);
@@ -126,6 +130,10 @@ sosig.SetIFF(IFF);
      {
        sosig.Priority.IFFChart[IFF] = true;
            }
+
+      // Apply armor based on IFF code
+      int armorLevel = IFF == 0 ? SosigCustomizationUI.AllyArmor.Value : SosigCustomizationUI.EnemyArmor.Value;
+      SosigArmorManager.ApplyArmorToSosig(sosig, armorLevel);
       
             EquipWeapons(sosig, template, pos, rot);
         
@@ -145,6 +153,7 @@ sosig.SetIFF(IFF);
         
   private void EquipWeapons(Sosig sosig, SosigEnemyTemplate template, Vector3 pos, Quaternion rot)
      {
+            if (!SosigCustomizationUI.EnableGuns.Value) return;
             try
   {
   if (template.WeaponOptions != null && template.WeaponOptions.Count > 0)

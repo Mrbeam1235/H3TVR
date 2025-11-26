@@ -52,6 +52,9 @@ namespace H3TVR
         private ConfigEntry<string> slomoRampCurve; // "Linear", "EaseIn", "EaseOut", "EaseInOut", "Smooth"
         private ConfigEntry<float> slomoRampDuration; // How long the ramp takes
         private ConfigEntry<float> slomoReturnRampDuration; // Duration for return to normal
+
+        // NEW: Kill Slomo Configuration
+        private ConfigEntry<bool> enableKillSlomo;
         
         // Audio Configuration
         private ConfigEntry<bool> slomoAffectsAudio;
@@ -127,6 +130,9 @@ namespace H3TVR
         private AdvancedChatSosigSpawner advancedChatSpawner; // Advanced Chat Sosig Spawner with Update 120 TNH
         private SosigArmorWristMenuIntegration sosigArmorWristMenu;
         private SteamFriendsIntegration steamFriendsIntegration; // Steam Friends Integration
+        private SosigCustomizationUI sosigCustomizationUI;
+        private AirdropManager airdropManager;
+        private LioranBoardIntegration lioranBoardIntegration;
         #endregion
 
         #region Initialization
@@ -156,7 +162,15 @@ namespace H3TVR
                 // Initialize components
                 base.Logger.LogInfo("Step 3: Initializing components...");
                 InitializeComponents();
+
+                // Initialize UI
+                base.Logger.LogInfo("Step 3.5: Initializing UI...");
+                InitializeUI();
                 
+                // Initialize Airdrop Manager
+                base.Logger.LogInfo("Step 3.6: Initializing Airdrop Manager...");
+                InitializeAirdropManager();
+
                 // Initialize chat spawner first - it's the core component
                 base.Logger.LogInfo("Step 4: Initializing Sosig Spawner...");
                 InitializeSosigSpawner();
@@ -180,6 +194,10 @@ namespace H3TVR
                 // Initialize Steam Friends integration (if enabled)
                 base.Logger.LogInfo("Step 6.5: Initializing Steam Friends integration...");
                 InitializeSteamFriendsIntegration();
+
+                // Initialize LioranBoard integration
+                base.Logger.LogInfo("Step 6.6: Initializing LioranBoard 2 integration...");
+                InitializeLioranBoardIntegration();
                 
                 // Initialize wrist menu integration with error handling
                 base.Logger.LogInfo("Step 7: Initializing wrist menu...");
@@ -255,6 +273,9 @@ namespace H3TVR
         "Duration in seconds for slomo to ramp down to max slow speed");
             slomoReturnRampDuration = Config.Bind("Slomo.Ramp", "ReturnRampDuration", 0.8f, 
        "Duration in seconds for slomo to ramp back to normal speed");
+
+            // NEW: Kill Slomo Configuration
+            enableKillSlomo = Config.Bind("Slomo", "EnableKillSlomo", true, "Enable slow motion effect on enemy kill.");
         
             // Audio configuration
             slomoAffectsAudio = Config.Bind("Audio", "SlomoAffectsAudio", true, "Whether slomo affects audio pitch");
@@ -460,6 +481,18 @@ namespace H3TVR
             }
         }
 
+        private void InitializeAirdropManager()
+        {
+            airdropManager = gameObject.AddComponent<AirdropManager>();
+            airdropManager.Initialize(this, Logger);
+        }
+
+        private void InitializeUI()
+        {
+            sosigCustomizationUI = gameObject.AddComponent<SosigCustomizationUI>();
+            sosigCustomizationUI.Initialize(Config);
+        }
+
         private void InitializeComponents()
         {
             try
@@ -560,6 +593,25 @@ namespace H3TVR
         }
 
         /// <summary>
+        /// Initialize LioranBoard 2 integration for external commands
+        /// </summary>
+        private void InitializeLioranBoardIntegration()
+        {
+            try
+            {
+                GameObject lioranBoardObject = new GameObject("LioranBoardIntegration");
+                lioranBoardObject.transform.SetParent(transform);
+                lioranBoardIntegration = lioranBoardObject.AddComponent<LioranBoardIntegration>();
+                lioranBoardIntegration.Initialize(Logger, this);
+                Logger.LogInfo("LioranBoard 2 integration initialized successfully.");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Failed to initialize LioranBoard 2 integration: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Initialize the Sosig Armor Wrist Menu Integration
         /// </summary>
         private void InitializeSosigArmorWristMenuIntegration()
@@ -641,6 +693,11 @@ namespace H3TVR
             weaponManager?.UpdateScaleModifiers();
      
      // Input handling is delegated to InputHandler component
+        }
+
+        private void OnDestroy()
+        {
+            lioranBoardIntegration?.Shutdown();
         }
 
         private void HandleSlomoStateMachine()
@@ -986,6 +1043,7 @@ namespace H3TVR
         public WeaponManager GetWeaponManager() => weaponManager;
         public EffectsManager GetEffectsManager() => effectsManager;
         public AudioManager GetAudioManager() => audioManager;
+        public AirdropManager GetAirdropManager() => airdropManager;
         
         // Spawn configuration access methods
         public void GetShurikenConfig(out int min, out int max)
@@ -1033,6 +1091,9 @@ namespace H3TVR
         // Gun randomization config
         public bool UseItemManagerForGuns() => useItemManagerForGunRandomization.Value;
         
+        // Slomo config
+        public bool IsKillSlomoEnabled() => enableKillSlomo.Value;
+
         public void GetGunLists(out string gunListValue, out string magListValue)
         {
             gunListValue = gunList.Value;
@@ -1132,6 +1193,7 @@ namespace H3TVR
   {
        disableEncryptionNodes.Value = disabled;
        Logger.LogInfo($"Encryption nodes {(disabled ? "disabled" : "enabled")}");
+
    }
         }
         

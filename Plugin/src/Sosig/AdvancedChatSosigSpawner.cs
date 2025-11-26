@@ -270,25 +270,33 @@ return;
  {
         try
        {
-          var armorIntegration = plugin?.GetSosigArmorWristMenu();
-  if (armorIntegration != null && armorIntegration.IsArmorIntegrationAvailable())
-       {
-           armorIntegration.ApplyArmorToSosig(sosig, true);
+                        ApplyArmor(sosig, true);
      }
-        }
-         catch (Exception armorEx)
+        catch (Exception armorEx)
             {
     logger?.LogWarning($"Failed to apply armor: {armorEx.Message}");
            }
   }
         
-       string displayName = username;
-      if (config.useRandomNames.Value)
-    {
-   displayName = nameManager.GetRandomName(true, steamFriends, plugin.UseSteamFriendsRandomNames());
-             }
-     
-     if (config.enableNameplates.Value && nameplateAlly != null)
+                if (config.enableArmorCustomization.Value)
+                {
+                    try
+                    {
+                        ApplyArmor(sosig, true);
+                    }
+                    catch (Exception armorEx)
+                    {
+                        logger?.LogWarning($"Failed to apply armor: {armorEx.Message}");
+                    }
+                }
+
+                string displayName = username;
+                if (config.useRandomNames.Value && string.IsNullOrEmpty(username))
+                {
+                    displayName = nameManager.GetRandomName(true, steamFriends, plugin.UseSteamFriendsRandomNames());
+                }
+
+                if (config.enableNameplates.Value && nameplateAlly != null)
     {
                   nameplateManager.AttachNameplate(sosig, displayName, nameplateAlly, false);
             }
@@ -355,24 +363,20 @@ return;
           {
           behaviorController.SetupEnemyBehavior(sosig);
       
-         if (config.enableArmorCustomization.Value)
-{
-        try
-         {
-      var armorIntegration = plugin?.GetSosigArmorWristMenu();
-     if (armorIntegration != null && armorIntegration.IsArmorIntegrationAvailable())
-    {
-        armorIntegration.ApplyArmorToSosig(sosig, false);
-         }
- }
-       catch (Exception armorEx)
-              {
-           logger?.LogWarning($"Failed to apply armor: {armorEx.Message}");
-       }
-           }
-    
- string displayName = username;
-          if (config.useRandomNames.Value)
+                if (config.enableArmorCustomization.Value)
+                {
+                    try
+                    {
+                        ApplyArmor(sosig, false);
+                    }
+                    catch (Exception armorEx)
+                    {
+                        logger?.LogWarning($"Failed to apply armor: {armorEx.Message}");
+                    }
+                }
+
+                string displayName = username;
+          if (config.useRandomNames.Value && string.IsNullOrEmpty(username))
       {
             displayName = nameManager.GetRandomName(false, steamFriends, plugin.UseSteamFriendsRandomNames());
   }
@@ -394,7 +398,7 @@ return;
             }
         }
 
-     public void SpawningSequenceBoss(string bossType, string username = null)
+     public void SpawningSequenceBoss(String bossType, string username = null)
         {
    try
  {
@@ -439,10 +443,7 @@ behaviorController.SetupEnemyBehavior(sosig);
     {
         try
     {
-    var armorIntegration = plugin?.GetSosigArmorWristMenu();
-if (armorIntegration != null && armorIntegration.IsArmorIntegrationAvailable())
-      {
-armorIntegration.ApplyArmorToSosig(sosig, false);
+                    ApplyArmor(sosig, false);
 }
        }
       catch { }
@@ -490,6 +491,12 @@ logger?.LogError($"Boss spawn failed: {ex.Message}");
     default:
        return config.GetRandomEnemyID();
        }
+        }
+
+        private void ApplyArmor(Sosig sosig, bool isAlly)
+        {
+            int armorLevel = isAlly ? SosigCustomizationUI.AllyArmor.Value : SosigCustomizationUI.EnemyArmor.Value;
+            SosigArmorManager.ApplyArmorToSosig(sosig, armorLevel);
         }
 
   private SosigEnemyTemplate GetRandomTemplate(bool isAlly)
@@ -545,7 +552,7 @@ logger?.LogError($"Boss spawn failed: {ex.Message}");
 
             for (int i = spawnedEnemyChatters.Count - 1; i >= 0; i--)
         {
-    if (spawnedEnemyChatters[i] == null || spawnedEnemyChatters[i].BodyState == Sosig.SosigBodyState.Dead)
+    if (spawnedEnemyChatters[i] == null || spawnedEnemyChatters[i].BodyState == Sosig.Sosig.BodyState.Dead)
                 {
     if (config.enableAutoCleanup.Value && spawnedEnemyChatters[i] != null)
       {

@@ -184,22 +184,22 @@ namespace H3TVR
         #region Update Loop
         private void Update()
         {
-            try
-            {
-                // Handle manual keyboard spawning
-                HandleManualInput();
-
-                // Check files periodically
-                if (enableFileWatching.Value && Time.time - lastFileCheckTime >= fileCheckInterval.Value)
+        try
                 {
-                    CheckChatFiles();
-                    lastFileCheckTime = Time.time;
+                    // Handle manual keyboard spawning
+                    HandleManualInput();
+
+                    // Check files periodically
+                    if (enableFileWatching.Value && Time.time - lastFileCheckTime >= fileCheckInterval.Value)
+                    {
+                        CheckChatFiles();
+                        lastFileCheckTime = Time.time;
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Update loop error: {ex.Message}");
-            }
+                catch (Exception ex)
+                {
+                    logger?.LogError($"Update loop error: {ex.Message}");
+                }
         }
 
         private void HandleManualInput()
@@ -306,16 +306,34 @@ namespace H3TVR
                 }
 
                 // Skip if empty
-                if (content == null || content.Trim().Length == 0)
+                if (string.IsNullOrEmpty(content) || content.Trim().Length == 0)
                 {
                     return;
                 }
 
-                // Parse usernames
-                List<string> usernames = ParseUsernames(content);
+                // Parse usernames and commands
+                var parsedResult = ParseContent(content);
+
+                // Handle armor commands
+                if (parsedResult.ArmorCommands.Count > 0)
+                {
+                    foreach (var command in parsedResult.ArmorCommands)
+                    {
+                        if (command.Key == "ally_armor")
+                        {
+                            SosigCustomizationUI.AllyArmor.Value = command.Value;
+                            logger?.LogInfo($"Set ally armor to {command.Value} via file command.");
+                        }
+                        else if (command.Key == "enemy_armor")
+                        {
+                            SosigCustomizationUI.EnemyArmor.Value = command.Value;
+                            logger?.LogInfo($"Set enemy armor to {command.Value} via file command.");
+                        }
+                    }
+                }
 
                 // Spawn sosigs for each username
-                foreach (string username in usernames)
+                foreach (string username in parsedResult.Usernames)
                 {
                     // Skip if already processed (prevent duplicates)
                     if (processedUsernames.Contains(username))
@@ -340,7 +358,7 @@ namespace H3TVR
                 }
 
                 // Clear file if configured
-                if (clearFileAfterRead.Value && usernames.Count > 0)
+                if (clearFileAfterRead.Value && (parsedResult.Usernames.Count > 0 || parsedResult.ArmorCommands.Count > 0))
                 {
                     ClearChatFile(filePath, isAlly);
                 }
@@ -358,6 +376,110 @@ namespace H3TVR
         }
 
         /// <summary>
+        /// Holds the results of parsing the chat file.
+        /// </summary>
+        private struct ParsedContentResult
+        {
+            public List<string> Usernames;
+            public List<KeyValuePair<string, int>> ArmorCommands;
+        }
+
+        /// <summary>
+        /// Parse usernames and commands from file content.
+        /// </summary>
+        private ParsedContentResult ParseContent(string content)
+        {
+            var result = new ParsedContentResult
+            {
+                Usernames = new List<string>(),
+                ArmorCommands = new List<KeyValuePair<string, int>>()
+            };
+
+            try
+            {
+                string[] lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                foreach (string line in lines)
+                {
+                    string trimmed = line.Trim();
+
+                    if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#") || trimmed.StartsWith(";"))
+                    {
+                        continue;
+                    }
+
+                    // Check for armor commands first
+                    if (TryParseArmorCommand(trimmed, out var armorCommand))
+                    {
+                        result.ArmorCommands.Add(armorCommand);
+                        logger?.LogDebug($"Parsed armor command: '{armorCommand.Key}={armorCommand.Value}'");
+                        continue;
+                    }
+
+                    // Check for airdrop command
+                    if (TryParseAirdropCommand(trimmed, out var airdropUser))
+                    {
+                        plugin.GetAirdropManager()?.CallAirdrop(airdropUser);
+                        continue;
+                    }
+
+                    // If not an armor command, try to extract a username
+                    string username = ExtractUsername(trimmed);
+                    if (!string.IsNullOrEmpty(username))
+                    {
+                        result.Usernames.Add(username);
+                        logger?.LogDebug($"Extracted username: '{username}' from line: '{trimmed}'");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to parse content: {ex.Message}");
+            }
+
+            return result;
+        }
+
+        private bool TryParseArmorCommand(string line, out KeyValuePair<string, int> command)
+        {
+            command = default;
+            if (!line.Contains("=")) return false;
+
+            string[] parts = line.Split('=');
+            if (parts.Length < 2) return false;
+
+            string key = parts[0].Trim().ToLower();
+            if (key == "ally_armor" || key == "enemy_armor")
+            {
+                if (int.TryParse(parts[1].Trim(), out int value))
+                {
+                    command = new KeyValuePair<string, int>(key, Mathf.Clamp(value, 0, 5));
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryParseAirdropCommand(string line, out string username)
+        {
+            username = null;
+            if (!line.Contains("=")) return false;
+
+            string[] parts = line.Split('=');
+            if (parts.Length < 2) return false;
+
+            string key = parts[0].Trim().ToLower();
+            if (key == "airdrop")
+            {
+                username = parts[1].Trim();
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Parse usernames from file content - supports multiple formats for Channel Points compatibility
         /// Formats supported:
         /// 1. Plain username per line: "ViewerName"
@@ -367,39 +489,7 @@ namespace H3TVR
         /// </summary>
         private List<string> ParseUsernames(string content)
         {
-            List<string> usernames = new List<string>();
-
-            try
-            {
-                // Split by lines
-                string[] lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (string line in lines)
-                {
-                    string trimmed = line.Trim();
-
-                    // Skip comments and empty lines
-                    if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#") || trimmed.StartsWith(";"))
-                    {
-                        continue;
-                    }
-
-                    // Extract username from the line
-                    string username = ExtractUsername(trimmed);
-                    
-                    if (!string.IsNullOrEmpty(username))
-                    {
-                        usernames.Add(username);
-                        logger?.LogDebug($"Extracted username: '{username}' from line: '{trimmed}'");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to parse usernames: {ex.Message}");
-            }
-
-            return usernames;
+            return ParseContent(content).Usernames;
         }
 
         /// <summary>
@@ -427,8 +517,7 @@ namespace H3TVR
                     string value = parts[1].Trim();
 
                     // Check if key matches known username keys
-                    if (key == "username" || key == "user" || key == "redeemer" || 
-                        key == "name" || key == "viewer" || key == "chatter")
+                    if (key == "username" || key == "user" || key == "redeemer" || key == "name")
                     {
                         // Remove any trailing text after the username (e.g., "ViewerName # comment")
                         int commentIndex = value.IndexOf('#');

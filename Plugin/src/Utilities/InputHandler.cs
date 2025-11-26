@@ -17,6 +17,7 @@ namespace H3TVR
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
         private ManualLogSource logger;
+        private AudioManager audioManager;
 
         public void Initialize(Dictionary<string, ConfigEntry<KeyCode>> bindings, H3TVRImproved pluginInstance)
         {
@@ -28,6 +29,7 @@ namespace H3TVR
             spawnManager = plugin.GetSpawnManager();
             effectsManager = plugin.GetEffectsManager();
             weaponManager = plugin.GetWeaponManager();
+            audioManager = plugin.GetAudioManager();
         }
 
         void Update()
@@ -62,7 +64,10 @@ namespace H3TVR
                 spawnManager.SpawnHydration();
                 
             if (Input.GetKeyDown(keyBindings["SpawnJeditToy"].Value))
+            {
                 spawnManager.SpawnJeditToy();
+                audioManager.PlayJeditoySound();
+            }
                 
             if (Input.GetKeyDown(keyBindings["SpawnSkittySubGun"].Value))
                 spawnManager.SpawnSkittySubGun();

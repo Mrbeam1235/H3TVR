@@ -59,6 +59,7 @@ namespace H3TVR
         private ConfigEntry<float> skittySubGunVolume;
         private ConfigEntry<float> destroyQuickbeltVolume;
         private ConfigEntry<float> wondertoyVolume;
+        private ConfigEntry<float> jeditoyVolume;
         
         // Custom audio path configurations
         private ConfigEntry<string> customAudioDirectory1;
@@ -80,6 +81,7 @@ namespace H3TVR
         private ConfigEntry<string> itemDestroyPath;
         private ConfigEntry<string> wondertoySpawnPath;
         private ConfigEntry<string> wondertoyActivatePath;
+        private ConfigEntry<string> jeditoySpawnPath;
         private ConfigEntry<string> uiConfirmPath;
         private ConfigEntry<string> uiErrorPath;
         private ConfigEntry<string> systemReadyPath;
@@ -144,6 +146,7 @@ namespace H3TVR
             skittySubGunVolume = plugin.Config.Bind("Audio.Effects", "SkittySubGunVolume", 0.8f, "Weapon spawn volume");
             destroyQuickbeltVolume = plugin.Config.Bind("Audio.Effects", "DestroyQuickbeltVolume", 0.6f, "Destruction volume");
             wondertoyVolume = plugin.Config.Bind("Audio.Effects", "WondertoyVolume", 0.7f, "Wondertoy volume");
+            jeditoyVolume = plugin.Config.Bind("Audio.Effects", "JeditoyVolume", 0.7f, "Jeditoy volume");
             
             // Custom directories - can point ANYWHERE on your computer!
             customAudioDirectory1 = plugin.Config.Bind("Audio.CustomPaths", "CustomDirectory1", "", 
@@ -188,6 +191,7 @@ namespace H3TVR
                 "Full path to wondertoy spawn sound. Leave empty for auto-detection.");
             wondertoyActivatePath = plugin.Config.Bind("Audio.FilePaths", "WondertoyActivate", "", 
                 "Full path to wondertoy activate sound. Leave empty for auto-detection.");
+            jeditoySpawnPath = plugin.Config.Bind("Audio.FilePaths", "JeditoySpawn", "", "Full path to jeditoy spawn sound. Leave empty for auto-detection.");
             
             uiConfirmPath = plugin.Config.Bind("Audio.FilePaths", "UIConfirm", "", 
                 "Full path to UI confirm sound. Leave empty for auto-detection.");
@@ -238,6 +242,7 @@ namespace H3TVR
             RegisterConfigPath("item_destroy", itemDestroyPath.Value);
             RegisterConfigPath("wondertoy", wondertoySpawnPath.Value);
             RegisterConfigPath("wondertoy_activate", wondertoyActivatePath.Value);
+            RegisterConfigPath("jeditoy", jeditoySpawnPath.Value);
             RegisterConfigPath("ui_confirm", uiConfirmPath.Value);
             RegisterConfigPath("ui_error", uiErrorPath.Value);
             RegisterConfigPath("system_ready", systemReadyPath.Value);
@@ -518,6 +523,7 @@ DESTRUCTION:
 WONDERTOY:
   - wondertoy_spawn.*
   - wondertoy_activate.*
+  - jeditoy_spawn.*
 
 UI SOUNDS:
   - ui_confirm.*
@@ -587,6 +593,7 @@ PRIORITY ORDER:
                 // Wondertoy
                 { "wondertoy", "wondertoy_spawn" },
                 { "wondertoy_activate", "wondertoy_activate" },
+                { "jeditoy", "jeditoy_spawn" },
                 
                 // UI
                 { "ui_confirm", "ui_confirm" },
@@ -770,6 +777,15 @@ PRIORITY ORDER:
             
             string soundKey = action == "spawn" ? "wondertoy" : $"wondertoy_{action}";
             float volume = customVolume >= 0 ? customVolume : wondertoyVolume.Value * effectsVolume.Value * masterVolume.Value;
+            PlayEffect(soundKey, position, is3D, volume, DEFAULT_PITCH, customFilePath);
+        }
+
+        public void PlayJeditoySound(string action = "spawn", Vector3 position = default, bool is3D = true, string customFilePath = null, float customVolume = -1f)
+        {
+            if (!enableAudioEffects.Value) return;
+
+            string soundKey = action == "spawn" ? "jeditoy" : $"jeditoy_{action}";
+            float volume = customVolume >= 0 ? customVolume : jeditoyVolume.Value * effectsVolume.Value * masterVolume.Value;
             PlayEffect(soundKey, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
