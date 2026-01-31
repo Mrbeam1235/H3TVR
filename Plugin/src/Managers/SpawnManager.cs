@@ -70,15 +70,15 @@ namespace H3TVR
             {
                 if (!ValidateSpawnConditions()) return;
 
-                // Correct Item ID for Jedit Tippy Toy mod
+                // Item ID for Jedi Tippy Toy mod
                 string jeditToyID = "ftw.JediTippyToy";
                 
                 if (!IM.OD.ContainsKey(jeditToyID))
                 {
-                    logger.LogWarning("Jedit Tippy Toy not available. Install: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/");
+                    logger.LogWarning("Jedi Tippy Toy not available. Install: https://thunderstore.io/c/h3vr/p/PutterMyBancakes/Jeditippytoy/");
                     logger.LogInfo($"Expected Item ID: {jeditToyID}");
                     
-                    // List all tippy toy items for debugging
+                    // List available tippy toys for debugging
                     logger.LogInfo("Available Tippy Toy items:");
                     foreach (var kvp in IM.OD)
                     {
@@ -89,22 +89,86 @@ namespace H3TVR
                 }
 
                 FVRObject obj = IM.OD[jeditToyID];
+                
+                // Spawn normally first
                 GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
 
-                var rb = go.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    rb.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
-                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25);
-                }
+                // Simulate the flip motion to activate the tippy toy
+                // (flip upside down, then back right-side up)
+                StartCoroutine(FlipTippyToyToActivate(go));
 
-                logger.LogInfo($"Successfully spawned Jedit Tippy Toy (ID: {jeditToyID})");
+                logger.LogInfo($"Successfully spawned Jedi Tippy Toy (ID: {jeditToyID})");
                 audioManager?.PlayWondertoySound("after_activate", spawnPos, true, "wondertoy/jedi_ready.wav");
             }
             catch (Exception ex)
             {
                 logger.LogError($"SpawnJeditToy failed: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Simulate flipping the tippy toy upside down and back to activate it
+        /// </summary>
+        private IEnumerator FlipTippyToyToActivate(GameObject tippyToy)
+        {
+            if (tippyToy == null) yield break;
+
+            // Wait a frame for initialization
+            yield return null;
+
+            // Disable physics temporarily so we can control the rotation
+            var rb = tippyToy.GetComponent<Rigidbody>();
+            bool wasKinematic = false;
+            if (rb != null)
+            {
+                wasKinematic = rb.isKinematic;
+                rb.isKinematic = true;
+            }
+
+            // Store original rotation
+            Quaternion originalRotation = tippyToy.transform.rotation;
+            
+            // Flip upside down (rotate 180 degrees on X axis)
+            float flipDuration = 0.15f;
+            float elapsed = 0f;
+            
+            // Flip DOWN
+            while (elapsed < flipDuration)
+            {
+                if (tippyToy == null) yield break;
+                
+                elapsed += Time.deltaTime;
+                float t = elapsed / flipDuration;
+                tippyToy.transform.rotation = Quaternion.Slerp(originalRotation, originalRotation * Quaternion.Euler(180f, 0f, 0f), t);
+                yield return null;
+            }
+
+            // Brief pause while upside down
+            yield return new WaitForSeconds(0.1f);
+
+            // Flip back UP
+            Quaternion upsideDownRotation = tippyToy.transform.rotation;
+            elapsed = 0f;
+            
+            while (elapsed < flipDuration)
+            {
+                if (tippyToy == null) yield break;
+                
+                elapsed += Time.deltaTime;
+                float t = elapsed / flipDuration;
+                tippyToy.transform.rotation = Quaternion.Slerp(upsideDownRotation, originalRotation, t);
+                yield return null;
+            }
+
+            // Re-enable physics and give it a push forward
+            if (rb != null)
+            {
+                rb.isKinematic = wasKinematic;
+                rb.AddTorque(new Vector3(0.25f, 0.25f, 0.25f));
+                rb.AddForce(GM.CurrentPlayerBody.Head.forward * 25);
+            }
+
+            logger.LogInfo("Tippy Toy flip animation complete - should be activated!");
         }
 
 
@@ -250,7 +314,7 @@ namespace H3TVR
 
         /// <summary>
         /// Spawn Air Strike Smoke Grenade from JerryAr
-        /// Spawns from player head forward
+        /// Spawns from player head forward, pulls pin and throws
         /// Mod: https://thunderstore.io/c/h3vr/p/JerryAr/AirStrikeSmokeGrenade/
         /// </summary>
         public void SpawnAirStrikeGrenade()
@@ -285,6 +349,46 @@ namespace H3TVR
                 FVRObject obj = IM.OD[airStrikeID];
                 GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
 
+                // Pull the pin and release lever to arm the grenade
+                PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
+                if (grenade != null)
+                {
+                    grenade.ReleaseLever();
+                    logger.LogInfo("Air Strike grenade pin pulled and lever released!");
+                }
+                else
+                {
+                    // Try to find any grenade-like component and activate it
+                    var allComponents = go.GetComponentsInChildren<Component>(true);
+                    foreach (var comp in allComponents)
+                    {
+                        if (comp == null) continue;
+                        var compType = comp.GetType();
+                        
+                        // Try common grenade activation methods
+                        var releaseMethod = compType.GetMethod("ReleaseLever", 
+                            System.Reflection.BindingFlags.Public | 
+                            System.Reflection.BindingFlags.Instance);
+                        if (releaseMethod != null)
+                        {
+                            releaseMethod.Invoke(comp, null);
+                            logger.LogInfo($"Air Strike grenade activated via {compType.Name}.ReleaseLever()");
+                            break;
+                        }
+                        
+                        var armMethod = compType.GetMethod("Arm", 
+                            System.Reflection.BindingFlags.Public | 
+                            System.Reflection.BindingFlags.Instance);
+                        if (armMethod != null && armMethod.GetParameters().Length == 0)
+                        {
+                            armMethod.Invoke(comp, null);
+                            logger.LogInfo($"Air Strike grenade activated via {compType.Name}.Arm()");
+                            break;
+                        }
+                    }
+                }
+
+                // Throw it forward
                 var rb = go.GetComponent<Rigidbody>();
                 if (rb != null)
                 {
@@ -292,7 +396,7 @@ namespace H3TVR
                     rb.AddTorque(UnityEngine.Random.insideUnitSphere * 2f);
                 }
 
-                logger.LogInfo($"Successfully spawned Air Strike Smoke Grenade (ID: {airStrikeID})");
+                logger.LogInfo($"Successfully spawned and armed Air Strike Smoke Grenade (ID: {airStrikeID})");
                 
                 // Play after-action sound
                 audioManager?.PlayDangerCloseSound("after_airstrike", spawnPos, true, "danger_close/airstrike_deployed.wav", 0.8f);
@@ -367,6 +471,130 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"SpawnTitanMachine failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Spawn a devastating nuke effect - massive explosion barrage
+        /// Creates multiple large explosions around the player's forward position
+        /// </summary>
+        public void SpawnNuke()
+        {
+            try
+            {
+                if (!ValidateSpawnConditions()) return;
+
+                Vector3 playerPos = GM.CurrentPlayerBody.Head.position;
+                Vector3 targetPos = playerPos + (GM.CurrentPlayerBody.Head.forward * 15f);
+
+                // Play dramatic warning sound
+                audioManager?.PlayDangerCloseSound("nuke_incoming", playerPos, false, "danger_close/nuke_incoming.wav", 1.0f);
+
+                logger.LogInfo("NUKE INCOMING! Taking cover is advised...");
+
+                // Start the nuke sequence
+                StartCoroutine(NukeSequence(targetPos));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnNuke failed: {ex.Message}");
+            }
+        }
+
+        private IEnumerator NukeSequence(Vector3 targetPosition)
+        {
+            // Brief delay for dramatic effect
+            yield return new WaitForSeconds(1.5f);
+
+            // Play nuke detonation sound
+            audioManager?.PlayDangerCloseSound("nuke_detonate", targetPosition, false, "danger_close/nuke_explosion.wav", 1.0f);
+
+            // Check for danger close cartridge
+            string nukeCartridgeID = "Cartridge50mmFlareDangerClose";
+            if (!IM.OD.ContainsKey(nukeCartridgeID))
+            {
+                logger.LogWarning("Nuke cartridge not available - using fallback explosion");
+                yield break;
+            }
+
+            FVRObject obj = IM.OD[nukeCartridgeID];
+
+            // Primary blast - center explosion
+            SpawnNukeExplosion(obj, targetPosition, 0f);
+
+            yield return new WaitForSeconds(0.1f);
+
+            // Secondary ring of explosions
+            int ringCount = 8;
+            float ringRadius = 5f;
+            for (int i = 0; i < ringCount; i++)
+            {
+                float angle = (360f / ringCount) * i;
+                Vector3 offset = new Vector3(
+                    Mathf.Sin(angle * Mathf.Deg2Rad) * ringRadius,
+                    UnityEngine.Random.Range(-1f, 2f),
+                    Mathf.Cos(angle * Mathf.Deg2Rad) * ringRadius
+                );
+                SpawnNukeExplosion(obj, targetPosition + offset, 0.05f * i);
+            }
+
+            yield return new WaitForSeconds(0.3f);
+
+            // Outer ring of explosions
+            int outerRingCount = 12;
+            float outerRadius = 10f;
+            for (int i = 0; i < outerRingCount; i++)
+            {
+                float angle = (360f / outerRingCount) * i + 15f; // Offset from inner ring
+                Vector3 offset = new Vector3(
+                    Mathf.Sin(angle * Mathf.Deg2Rad) * outerRadius,
+                    UnityEngine.Random.Range(-2f, 3f),
+                    Mathf.Cos(angle * Mathf.Deg2Rad) * outerRadius
+                );
+                SpawnNukeExplosion(obj, targetPosition + offset, 0.03f * i);
+            }
+
+            yield return new WaitForSeconds(0.5f);
+
+            // Final skyward explosions
+            for (int i = 0; i < 5; i++)
+            {
+                Vector3 skyOffset = new Vector3(
+                    UnityEngine.Random.Range(-3f, 3f),
+                    5f + (i * 2f),
+                    UnityEngine.Random.Range(-3f, 3f)
+                );
+                SpawnNukeExplosion(obj, targetPosition + skyOffset, 0.1f * i);
+            }
+
+            logger.LogInfo("Nuke detonation complete - area devastated!");
+            
+            // Play aftermath sound
+            audioManager?.PlayDangerCloseSound("nuke_aftermath", targetPosition, false, "danger_close/nuke_aftermath.wav", 0.8f);
+        }
+
+        private void SpawnNukeExplosion(FVRObject explosiveObj, Vector3 position, float delay)
+        {
+            try
+            {
+                GameObject go = Instantiate(explosiveObj.GetGameObject(), position, UnityEngine.Random.rotation);
+
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    // Small random velocity for variation
+                    rb.velocity = UnityEngine.Random.insideUnitSphere * 5f;
+                }
+
+                FVRFireArmRound cartridge = go.GetComponent<FVRFireArmRound>();
+                if (cartridge != null)
+                {
+                    TryExplodeCartridge(cartridge, delay);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning($"SpawnNukeExplosion failed: {ex.Message}");
             }
         }
 

@@ -314,7 +314,7 @@ namespace H3TVR
                 // Parse usernames and commands
                 var parsedResult = ParseContent(content);
 
-                // Handle armor commands
+                // Handle global armor commands (ally_armor=X, enemy_armor=X)
                 if (parsedResult.ArmorCommands.Count > 0)
                 {
                     foreach (var command in parsedResult.ArmorCommands)
@@ -322,13 +322,34 @@ namespace H3TVR
                         if (command.Key == "ally_armor")
                         {
                             SosigCustomizationUI.AllyArmor.Value = command.Value;
-                            logger?.LogInfo($"Set ally armor to {command.Value} via file command.");
+                            SosigArmorManager.SetGlobalDefaults(command.Value, SosigCustomizationUI.EnemyArmor.Value);
+                            logger?.LogInfo($"Set ally armor to {SosigArmorManager.GetArmorName(command.Value)}");
                         }
                         else if (command.Key == "enemy_armor")
                         {
                             SosigCustomizationUI.EnemyArmor.Value = command.Value;
-                            logger?.LogInfo($"Set enemy armor to {command.Value} via file command.");
+                            SosigArmorManager.SetGlobalDefaults(SosigCustomizationUI.AllyArmor.Value, command.Value);
+                            logger?.LogInfo($"Set enemy armor to {SosigArmorManager.GetArmorName(command.Value)}");
                         }
+                    }
+                }
+
+                // Handle user-specific armor commands (!armor)
+                foreach (var userCmd in parsedResult.UserArmorCommands)
+                {
+                    if (!string.IsNullOrEmpty(userCmd.Username))
+                    {
+                        // User-specific armor preference
+                        SosigArmorManager.SetUserArmorPreference(userCmd.Username, userCmd.ArmorLevel);
+                        logger?.LogInfo($"[ARMOR] {userCmd.Username} set armor to {userCmd.ArmorName}");
+                    }
+                    else
+                    {
+                        // Anonymous/global armor command - set for both ally and enemy
+                        SosigCustomizationUI.SetAllyArmor(userCmd.ArmorLevel);
+                        SosigCustomizationUI.SetEnemyArmor(userCmd.ArmorLevel);
+                        SosigArmorManager.SetGlobalDefaults(userCmd.ArmorLevel, userCmd.ArmorLevel);
+                        logger?.LogInfo($"[ARMOR] Global armor set to {userCmd.ArmorName}");
                     }
                 }
 
@@ -341,16 +362,16 @@ namespace H3TVR
                         continue;
                     }
 
-                    // Spawn sosig
+                    // Spawn sosig (armor will be applied based on user preference in SpawningSequence)
                     if (isAlly)
                     {
                         sosigSpawner?.SpawningSequence(username);
-                        logger?.LogInfo($"Channel Point Redemption: Spawned ally for {username}");
+                        logger?.LogInfo($"Channel Point: Spawned ally for {username} (Armor: {SosigArmorManager.GetArmorName(SosigArmorManager.GetUserArmorPreference(username, true))})");
                     }
                     else
                     {
                         sosigSpawner?.SpawningSequenceEnemy(1, username);
-                        logger?.LogInfo($"Channel Point Redemption: Spawned enemy for {username}");
+                        logger?.LogInfo($"Channel Point: Spawned enemy for {username} (Armor: {SosigArmorManager.GetArmorName(SosigArmorManager.GetUserArmorPreference(username, false))})");
                     }
 
                     // Mark as processed
@@ -382,6 +403,17 @@ namespace H3TVR
         {
             public List<string> Usernames;
             public List<KeyValuePair<string, int>> ArmorCommands;
+            public List<UserArmorCommand> UserArmorCommands;
+        }
+
+        /// <summary>
+        /// User-specific armor command
+        /// </summary>
+        private struct UserArmorCommand
+        {
+            public string Username;
+            public int ArmorLevel;
+            public string ArmorName;
         }
 
         /// <summary>
@@ -392,7 +424,8 @@ namespace H3TVR
             var result = new ParsedContentResult
             {
                 Usernames = new List<string>(),
-                ArmorCommands = new List<KeyValuePair<string, int>>()
+                ArmorCommands = new List<KeyValuePair<string, int>>(),
+                UserArmorCommands = new List<UserArmorCommand>()
             };
 
             try
@@ -408,7 +441,15 @@ namespace H3TVR
                         continue;
                     }
 
-                    // Check for armor commands first
+                    // Check for user armor chat command (!armor) first
+                    if (TryParseUserArmorCommand(trimmed, out var userArmorCmd))
+                    {
+                        result.UserArmorCommands.Add(userArmorCmd);
+                        logger?.LogDebug($"User armor command: {userArmorCmd.Username} -> {userArmorCmd.ArmorName}");
+                        continue;
+                    }
+
+                    // Check for global armor commands (ally_armor=, enemy_armor=)
                     if (TryParseArmorCommand(trimmed, out var armorCommand))
                     {
                         result.ArmorCommands.Add(armorCommand);
@@ -438,6 +479,109 @@ namespace H3TVR
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Parse user-specific armor command from chat
+        /// Formats supported:
+        ///   !armor light                     (global/anonymous)
+        ///   username:!armor heavy            (user-specific from chat relay)
+        ///   user=ViewerName armor=heavy      (channel points style)
+        /// </summary>
+        private bool TryParseUserArmorCommand(string line, out UserArmorCommand cmd)
+        {
+            cmd = default;
+            string lower = line.ToLower();
+
+            // Format 1: "username:!armor level" (chat relay format)
+            if (lower.Contains(":!armor"))
+            {
+                int colonIndex = line.IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    string username = line.Substring(0, colonIndex).Trim();
+                    string armorPart = line.Substring(colonIndex + 1).Trim();
+                    
+                    if (SosigArmorManager.TryParseArmorCommand(armorPart, username, out int level, out string name))
+                    {
+                        cmd = new UserArmorCommand { Username = username, ArmorLevel = level, ArmorName = name };
+                        return true;
+                    }
+                }
+            }
+
+            // Format 2: "!armor level" (anonymous/global)
+            if (lower.StartsWith("!armor"))
+            {
+                if (SosigArmorManager.TryParseArmorCommand(line, null, out int level, out string name))
+                {
+                    cmd = new UserArmorCommand { Username = null, ArmorLevel = level, ArmorName = name };
+                    return true;
+                }
+            }
+
+            // Format 3: "user=ViewerName armor=heavy" (channel points with armor)
+            if (lower.Contains("armor=") && (lower.Contains("user=") || lower.Contains("username=")))
+            {
+                string username = null;
+                int armorLevel = 0;
+
+                string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string part in parts)
+                {
+                    if (part.ToLower().StartsWith("user=") || part.ToLower().StartsWith("username="))
+                    {
+                        username = part.Substring(part.IndexOf('=') + 1).Trim();
+                    }
+                    else if (part.ToLower().StartsWith("armor="))
+                    {
+                        string armorValue = part.Substring(6).Trim();
+                        ParseArmorValue(armorValue, out armorLevel);
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(username))
+                {
+                    SosigArmorManager.SetUserArmorPreference(username, armorLevel);
+                    cmd = new UserArmorCommand 
+                    { 
+                        Username = username, 
+                        ArmorLevel = armorLevel, 
+                        ArmorName = SosigArmorManager.GetArmorName(armorLevel) 
+                    };
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Parse armor value from string (number or name)
+        /// </summary>
+        private bool ParseArmorValue(string value, out int level)
+        {
+            level = 0;
+            if (string.IsNullOrEmpty(value)) return false;
+
+            // Try number first
+            if (int.TryParse(value, out level))
+            {
+                level = Mathf.Clamp(level, 0, 5);
+                return true;
+            }
+
+            // Try name
+            switch (value.ToLower())
+            {
+                case "none": case "off": level = 0; return true;
+                case "light": case "l": level = 1; return true;
+                case "medium": case "med": case "m": level = 2; return true;
+                case "heavy": case "h": level = 3; return true;
+                case "tank": case "juggernaut": case "jug": case "t": level = 4; return true;
+                case "god": case "godmode": case "g": level = 5; return true;
+                default: return false;
+            }
         }
 
         private bool TryParseArmorCommand(string line, out KeyValuePair<string, int> command)

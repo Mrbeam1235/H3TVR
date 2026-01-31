@@ -39,13 +39,13 @@ namespace H3TVR
 
             Vector3 spawnPos = GM.CurrentPlayerBody.transform.position + Vector3.up * SpawnHeight;
             
-            FVRObject crateTemplate = IM.Instance.GetFVRObject(CrateId);
-            if (crateTemplate == null)
+            if (!IM.OD.ContainsKey(CrateId))
             {
                 logger?.LogError($"Cannot start airdrop: Crate template '{CrateId}' not found.");
                 yield break;
             }
 
+            FVRObject crateTemplate = IM.OD[CrateId];
             GameObject crateGO = Instantiate(crateTemplate.GetGameObject(), spawnPos, Quaternion.identity);
             Rigidbody rb = crateGO.GetComponent<Rigidbody>();
             if (rb == null)
@@ -79,18 +79,51 @@ namespace H3TVR
             if (isHelpful)
             {
                 logger?.LogInfo("Airdrop is... HELPFUL!");
-                // Spawn a random high-tier gun
-                var gun = IM.Instance.GetRandomItem(ItemManager.ItemCategory.Firearm, ItemManager.SubCategory.Firearm_Rifle);
-                IM.Instance.CreateObject(gun.ItemID, position, Quaternion.identity);
+                // Spawn a random item from available ones
+                SpawnRandomHelpfulItem(position);
 
                 // Spawn some health
-                IM.Instance.CreateObject("Health_Sausage", position + Vector3.up * 0.1f, Quaternion.identity);
+                SpawnItem("Health_Sausage", position + Vector3.up * 0.1f);
             }
             else
             {
                 logger?.LogInfo("Airdrop is... a TROLL!");
                 // Spawn a live grenade
-                IM.Instance.CreateObject("Grenade_Frag_M67_Live", position, Quaternion.identity);
+                SpawnItem("PinnedGrenadeM67", position);
+            }
+        }
+
+        private void SpawnRandomHelpfulItem(Vector3 position)
+        {
+            // List of helpful item IDs
+            string[] helpfulItems = new string[]
+            {
+                "MeatBatBaseball",
+                "Health_Sausage",
+                "SuppressorBottle"
+            };
+
+            string itemId = helpfulItems[UnityEngine.Random.Range(0, helpfulItems.Length)];
+            SpawnItem(itemId, position);
+        }
+
+        private void SpawnItem(string itemId, Vector3 position)
+        {
+            try
+            {
+                if (IM.OD.ContainsKey(itemId))
+                {
+                    FVRObject obj = IM.OD[itemId];
+                    Instantiate(obj.GetGameObject(), position, Quaternion.identity);
+                }
+                else
+                {
+                    logger?.LogWarning($"Item '{itemId}' not found in ObjectDictionary");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Failed to spawn item '{itemId}': {ex.Message}");
             }
         }
     }

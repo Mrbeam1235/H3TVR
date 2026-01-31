@@ -1,26 +1,26 @@
 using BepInEx;
 using BepInEx.Logging;
 using System;
+using System.Collections;
 using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
+using FistVR;
 
 namespace H3TVR
 {
-    public class LioranBoardIntegration
+    public class LioranBoardIntegration : MonoBehaviour
     {
         private ManualLogSource logger;
         private string commandFilePath;
-        private CancellationTokenSource cancellationTokenSource;
         private H3TVRImproved plugin;
+        private bool isWatching = false;
+        private long lastFileSize = 0;
 
         public void Initialize(ManualLogSource logSource, H3TVRImproved pluginInstance)
         {
             logger = logSource;
             plugin = pluginInstance;
             commandFilePath = Path.Combine(Paths.BepInExRootPath, "LioranBoard_H3TVR.txt");
-            cancellationTokenSource = new CancellationTokenSource();
 
             logger.LogInfo("Initializing LioranBoard 2 Integration...");
             logger.LogInfo($"Watching for commands in: {commandFilePath}");
@@ -31,34 +31,43 @@ namespace H3TVR
                 File.WriteAllText(commandFilePath, "// H3TVR LioranBoard Integration Command File\n");
             }
 
-            // Use a background task to poll for file changes
-            Task.Run(() => WatchFileForChanges(cancellationTokenSource.Token));
+            // Start file watching coroutine
+            isWatching = true;
+            StartCoroutine(WatchFileCoroutine());
         }
 
-        private async Task WatchFileForChanges(CancellationToken token)
+        private IEnumerator WatchFileCoroutine()
         {
-            long lastSize = new FileInfo(commandFilePath).Length;
-            while (!token.IsCancellationRequested)
+            if (File.Exists(commandFilePath))
             {
+                lastFileSize = new FileInfo(commandFilePath).Length;
+            }
+
+            while (isWatching)
+            {
+                yield return new WaitForSeconds(0.5f);
+
                 try
                 {
-                    var currentSize = new FileInfo(commandFilePath).Length;
-                    if (currentSize > lastSize)
+                    if (File.Exists(commandFilePath))
                     {
-                        ReadAndProcessCommands();
-                        lastSize = currentSize;
-                    }
-                    else if (currentSize < lastSize)
-                    {
-                        // File has been cleared or shrunk
-                        lastSize = currentSize;
+                        var currentSize = new FileInfo(commandFilePath).Length;
+                        if (currentSize > lastFileSize)
+                        {
+                            ReadAndProcessCommands();
+                            lastFileSize = currentSize;
+                        }
+                        else if (currentSize < lastFileSize)
+                        {
+                            // File has been cleared or shrunk
+                            lastFileSize = currentSize;
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     logger.LogError($"Error watching file: {ex.Message}");
                 }
-                await Task.Delay(500, token); // Check every 500ms
             }
         }
 
@@ -70,7 +79,8 @@ namespace H3TVR
                 // Clear the file to prevent reprocessing commands
                 File.WriteAllText(commandFilePath, "");
 
-                var commands = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                // Use semicolon as a command delimiter for easier LioranBoard setup
+                var commands = content.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
 
                 foreach (var command in commands)
                 {
@@ -107,29 +117,51 @@ namespace H3TVR
 
             switch (action)
             {
-                // Armor Commands
+                // ============== UNIFIED ARMOR COMMAND ==============
+                // Single command works both ways:
+                //   armor heavy              ? Set global armor to heavy
+                //   armor ViewerName heavy   ? Set ViewerName's armor to heavy
+                //   armor ViewerName 3       ? Set ViewerName's armor to level 3
+                case "armor":
+                case "!armor":
+                    HandleArmorCommand(param);
+                    break;
+
+                // Legacy armor commands (still supported for backwards compatibility)
                 case "set_ally_armor":
                     if (int.TryParse(param, out int allyArmor))
                     {
                         SosigCustomizationUI.SetAllyArmor(allyArmor);
-                        logger.LogInfo($"Ally armor set to {allyArmor}");
+                        SosigArmorManager.SetGlobalDefaults(allyArmor, SosigCustomizationUI.EnemyArmor.Value);
+                        logger.LogInfo($"Ally armor set to {SosigArmorManager.GetArmorName(allyArmor)}");
                     }
                     break;
                 case "set_enemy_armor":
                     if (int.TryParse(param, out int enemyArmor))
                     {
                         SosigCustomizationUI.SetEnemyArmor(enemyArmor);
-                        logger.LogInfo($"Enemy armor set to {enemyArmor}");
+                        SosigArmorManager.SetGlobalDefaults(SosigCustomizationUI.AllyArmor.Value, enemyArmor);
+                        logger.LogInfo($"Enemy armor set to {SosigArmorManager.GetArmorName(enemyArmor)}");
                     }
+                    break;
+
+                // Clear all armor preferences
+                case "clear_armor":
+                case "reset_armor":
+                    SosigArmorManager.ClearAllPreferences();
+                    SosigArmorManager.SetGlobalDefaults(0, 0);
+                    SosigCustomizationUI.SetAllyArmor(0);
+                    SosigCustomizationUI.SetEnemyArmor(0);
+                    logger.LogInfo("[ARMOR] All armor preferences cleared");
                     break;
 
                 // Sosig Spawning
                 case "spawn_ally":
-                    sosigSpawner?.SpawnSosig(0, param ?? "LioranBoard Viewer");
+                    sosigSpawner?.SpawningSequence(param ?? "LioranBoard Viewer");
                     logger.LogInfo($"Spawning ally sosig with name: {param ?? "LioranBoard Viewer"}");
                     break;
                 case "spawn_enemy":
-                    sosigSpawner?.SpawnSosig(1, param ?? "LioranBoard Viewer");
+                    sosigSpawner?.SpawningSequenceEnemy(1, param ?? "LioranBoard Viewer");
                     logger.LogInfo($"Spawning enemy sosig with name: {param ?? "LioranBoard Viewer"}");
                     break;
                 case "clear_sosigs":
@@ -139,20 +171,15 @@ namespace H3TVR
 
                 // Boss Spawning
                 case "spawn_boss":
-                    var bossSpawner = sosigSpawner?.GetComponent<BossSosigSystem>();
-                    if (bossSpawner != null)
+                    if (spawnManager != null)
                     {
-                        bossSpawner.SpawnBossByName(param ?? "random");
+                        spawnManager.SpawnBossSosig();
                         logger.LogInfo($"Spawning boss: {param ?? "random"}");
                     }
                     break;
                 case "clear_bosses":
-                    var bossSpawnerClear = sosigSpawner?.GetComponent<BossSosigSystem>();
-                    if (bossSpawnerClear != null)
-                    {
-                        bossSpawnerClear.ClearAllBosses();
-                        logger.LogInfo("Clearing all bosses.");
-                    }
+                    BossSosigSystem.ClearAllBosses();
+                    logger.LogInfo("Clearing all bosses.");
                     break;
 
                 // Item/Effect Spawning
@@ -192,15 +219,172 @@ namespace H3TVR
                     logger.LogInfo("Triggering zero gravity.");
                     break;
 
+                // Ally Commands
+                case "allies_follow":
+                    var spawnerFollow = plugin.GetAdvancedChatSpawner();
+                    if (spawnerFollow != null)
+                    {
+                        var behaviorController = spawnerFollow.GetComponent<SosigBehaviorController>();
+                        if (behaviorController != null)
+                        {
+                            behaviorController.CommandAlliesFollowPlayer();
+                        }
+                    }
+                    logger.LogInfo("Commanding allies to follow player.");
+                    break;
+                case "allies_defend":
+                    var spawnerDefend = plugin.GetAdvancedChatSpawner();
+                    if (spawnerDefend != null && GM.CurrentPlayerBody?.Head != null)
+                    {
+                        var behaviorController = spawnerDefend.GetComponent<SosigBehaviorController>();
+                        if (behaviorController != null)
+                        {
+                            behaviorController.CommandAlliesDefendPoint(GM.CurrentPlayerBody.Head.position);
+                        }
+                    }
+                    logger.LogInfo("Commanding allies to defend current position.");
+                    break;
+                case "allies_attack":
+                    var spawnerAttack = plugin.GetAdvancedChatSpawner();
+                    if (spawnerAttack != null && GM.CurrentPlayerBody?.Head != null)
+                    {
+                        var behaviorController = spawnerAttack.GetComponent<SosigBehaviorController>();
+                        if (behaviorController != null)
+                        {
+                            // Attack towards player's look direction
+                            var attackPoint = GM.CurrentPlayerBody.Head.position + GM.CurrentPlayerBody.Head.forward * 10f;
+                            behaviorController.CommandAlliesAttackTarget(attackPoint);
+                        }
+                    }
+                    logger.LogInfo("Commanding allies to attack forward.");
+                    break;
+                case "allies_hold_fire":
+                    var spawnerHold = plugin.GetAdvancedChatSpawner();
+                    if (spawnerHold != null)
+                    {
+                        var behaviorController = spawnerHold.GetComponent<SosigBehaviorController>();
+                        if (behaviorController != null)
+                        {
+                            bool holdFire = param?.ToLower() == "true" || param == "1";
+                            behaviorController.SetAlliesHoldFire(holdFire);
+                        }
+                    }
+                    logger.LogInfo($"Allies hold fire: {param}");
+                    break;
+
                 default:
                     logger.LogWarning($"Unknown LioranBoard command: {action}");
                     break;
             }
         }
 
+        /// <summary>
+        /// Unified armor command handler
+        /// Formats:
+        ///   armor heavy              ? Set global armor
+        ///   armor 3                  ? Set global armor by number
+        ///   armor ViewerName heavy   ? Set specific user's armor
+        ///   armor ViewerName 3       ? Set specific user's armor by number
+        /// </summary>
+        private void HandleArmorCommand(string param)
+        {
+            if (string.IsNullOrEmpty(param))
+            {
+                logger.LogInfo("[ARMOR] Usage: armor <level> OR armor <username> <level>");
+                logger.LogInfo("[ARMOR] Levels: none/light/medium/heavy/tank/god or 0-5");
+                return;
+            }
+
+            string[] parts = param.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            if (parts.Length == 1)
+            {
+                // Single parameter: "armor heavy" or "armor 3" ? Global armor
+                if (TryParseArmorLevel(parts[0], out int level, out string name))
+                {
+                    SosigCustomizationUI.SetAllyArmor(level);
+                    SosigCustomizationUI.SetEnemyArmor(level);
+                    SosigArmorManager.SetGlobalDefaults(level, level);
+                    logger.LogInfo($"[ARMOR] Global armor set to {name} (level {level})");
+                }
+                else
+                {
+                    logger.LogWarning($"[ARMOR] Unknown armor level: {parts[0]}");
+                }
+            }
+            else if (parts.Length >= 2)
+            {
+                // Two parameters: Could be "username level" or check if first is a level
+                // First try: Is the first word an armor level? (e.g., "armor heavy" with extra text)
+                if (TryParseArmorLevel(parts[0], out int globalLevel, out string globalName))
+                {
+                    // First word is armor level - treat as global
+                    SosigCustomizationUI.SetAllyArmor(globalLevel);
+                    SosigCustomizationUI.SetEnemyArmor(globalLevel);
+                    SosigArmorManager.SetGlobalDefaults(globalLevel, globalLevel);
+                    logger.LogInfo($"[ARMOR] Global armor set to {globalName} (level {globalLevel})");
+                }
+                else
+                {
+                    // First word is NOT an armor level - treat as username
+                    string username = parts[0];
+                    string armorValue = parts[1];
+                    
+                    if (TryParseArmorLevel(armorValue, out int userLevel, out string userName))
+                    {
+                        SosigArmorManager.SetUserArmorPreference(username, userLevel);
+                        logger.LogInfo($"[ARMOR] {username}'s armor set to {userName} (level {userLevel})");
+                    }
+                    else
+                    {
+                        logger.LogWarning($"[ARMOR] Unknown armor level: {armorValue}");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Try to parse an armor level from string (name or number)
+        /// </summary>
+        private bool TryParseArmorLevel(string value, out int level, out string name)
+        {
+            level = 0;
+            name = "None";
+
+            if (string.IsNullOrEmpty(value)) return false;
+
+            // Try parse as number first
+            if (int.TryParse(value, out level))
+            {
+                level = Mathf.Clamp(level, 0, 5);
+                name = SosigArmorManager.GetArmorName(level);
+                return true;
+            }
+
+            // Parse by name
+            switch (value.ToLower())
+            {
+                case "none": case "off": case "naked": case "n":
+                    level = 0; name = "None"; return true;
+                case "light": case "l":
+                    level = 1; name = "Light"; return true;
+                case "medium": case "med": case "m":
+                    level = 2; name = "Medium"; return true;
+                case "heavy": case "h":
+                    level = 3; name = "Heavy"; return true;
+                case "tank": case "juggernaut": case "jug": case "t":
+                    level = 4; name = "Tank"; return true;
+                case "god": case "godmode": case "immortal": case "g":
+                    level = 5; name = "God"; return true;
+                default:
+                    return false;
+            }
+        }
+
         public void Shutdown()
         {
-            cancellationTokenSource?.Cancel();
+            isWatching = false;
+            StopAllCoroutines();
         }
     }
 }

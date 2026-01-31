@@ -227,62 +227,51 @@ return;
             return;
            }
 
-         if (Time.time - lastSpawnTime < config.spawnCooldown.Value)
-         {
-             logger?.LogWarning($"Spawn cooldown active");
-     return;
-       }
-
-                if (userSosigCounts.ContainsKey(username))
-                {
-                    if (userSosigCounts[username] >= config.maxSosigsPerUser.Value)
-         {
-        logger?.LogWarning($"User {username} has reached max sosigs limit");
-     return;
-         }
-      }
-
-       Vector3 spawnPos = positionCalculator.CalculateAllySpawnPoint();
-                Quaternion spawnRot = Quaternion.identity;
-
-    Sosig sosig = null;
-            
-       if (config.useModernSpawnSystem.Value)
-    {
-        var enemyID = config.GetRandomAllyID();
-        sosig = spawner.SpawnModern(enemyID, spawnPos, spawnRot, 0);
-      }
-       
-          if (sosig == null)
-     {
-        var template = GetRandomTemplate(true);
-           if (template != null)
-   {
-            sosig = spawner.SpawnLegacy(template, spawnPos, spawnRot, 0);
-        }
-       }
-     
-       if (sosig != null)
-              {
-    behaviorController.SetupAllyBehavior(sosig);
-
-  if (config.enableArmorCustomization.Value)
- {
-        try
-       {
-                        ApplyArmor(sosig, true);
-     }
-        catch (Exception armorEx)
+            if (Time.time - lastSpawnTime < config.spawnCooldown.Value)
             {
-    logger?.LogWarning($"Failed to apply armor: {armorEx.Message}");
-           }
-  }
-        
+                logger?.LogWarning($"Spawn cooldown active");
+                return;
+            }
+
+            if (userSosigCounts.ContainsKey(username))
+            {
+                if (userSosigCounts[username] >= config.maxSosigsPerUser.Value)
+                {
+                    logger?.LogWarning($"User {username} has reached max sosigs limit");
+                    return;
+                }
+            }
+
+            Vector3 spawnPos = positionCalculator.CalculateAllySpawnPoint();
+            Quaternion spawnRot = Quaternion.identity;
+
+            Sosig sosig = null;
+            
+            if (config.useModernSpawnSystem.Value)
+            {
+                var enemyID = config.GetRandomAllyID();
+                sosig = spawner.SpawnModern(enemyID, spawnPos, spawnRot, 0);
+            }
+            
+            if (sosig == null)
+            {
+                var template = GetRandomTemplate(true);
+                if (template != null)
+                {
+                    sosig = spawner.SpawnLegacy(template, spawnPos, spawnRot, 0);
+                }
+            }
+            
+            if (sosig != null)
+            {
+                behaviorController.SetupAllyBehavior(sosig);
+
+                // Apply armor based on user preference (lightweight - only at spawn)
                 if (config.enableArmorCustomization.Value)
                 {
                     try
                     {
-                        ApplyArmor(sosig, true);
+                        ApplyArmor(sosig, true, username);
                     }
                     catch (Exception armorEx)
                     {
@@ -297,37 +286,38 @@ return;
                 }
 
                 if (config.enableNameplates.Value && nameplateAlly != null)
-    {
-                  nameplateManager.AttachNameplate(sosig, displayName, nameplateAlly, false);
-            }
-    
-            spawnedChatters.Add(sosig);
-          lastSpawnTime = Time.time;
-        
-          if (userSosigCounts.ContainsKey(username))
-           {
-      userSosigCounts[username]++;
-      }
-      else
-         {
-  userSosigCounts.Add(username, 1);
-        }
-          
-       logger?.LogInfo($"✓ Spawned ally sosig '{displayName}' for {username}");
-      }
-  }
-            catch (Exception ex)
-          {
-     logger?.LogError($"Ally spawn failed for {username}: {ex.Message}");
-   }
-        }
-
-        public void SpawningSequenceEnemy(int IFF, string username)
- {
-        try
-            {
-        if (spawnedEnemyChatters.Count >= config.maxEnemySosigs.Value)
                 {
+                    nameplateManager.AttachNameplate(sosig, displayName, nameplateAlly, false);
+                }
+    
+                spawnedChatters.Add(sosig);
+                lastSpawnTime = Time.time;
+        
+                if (userSosigCounts.ContainsKey(username))
+                {
+                    userSosigCounts[username]++;
+                }
+                else
+                {
+                    userSosigCounts.Add(username, 1);
+                }
+                
+                int armorLevel = SosigArmorManager.GetUserArmorPreference(username, true);
+                logger?.LogInfo($"✓ Spawned ally '{displayName}' for {username} [Armor: {SosigArmorManager.GetArmorName(armorLevel)}]");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError($"Ally spawn failed for {username}: {ex.Message}");
+        }
+    }
+
+    public void SpawningSequenceEnemy(int IFF, string username)
+    {
+        try
+        {
+            if (spawnedEnemyChatters.Count >= config.maxEnemySosigs.Value)
+            {
            logger?.LogWarning($"Max enemy sosigs reached ({config.maxEnemySosigs.Value})");
    return;
           }
@@ -338,36 +328,38 @@ return;
     return;
          }
 
-      Vector3 spawnPos = positionCalculator.CalculateEnemySpawnPoint();
-      Quaternion spawnRot = Quaternion.identity;
-   int finalIFF = IFF > 0 ? IFF : Mathf.Max(1, (int)config.enemyIFF.Value);
+
+            Vector3 spawnPos = positionCalculator.CalculateEnemySpawnPoint();
+            Quaternion spawnRot = Quaternion.identity;
+            int finalIFF = IFF > 0 ? IFF : Mathf.Max(1, (int)config.enemyIFF.Value);
 
             Sosig sosig = null;
    
-      if (config.useModernSpawnSystem.Value)
-     {
-  var enemyID = config.GetRandomEnemyID();
-  sosig = spawner.SpawnModern(enemyID, spawnPos, spawnRot, finalIFF);
-       }
+            if (config.useModernSpawnSystem.Value)
+            {
+                var enemyID = config.GetRandomEnemyID();
+                sosig = spawner.SpawnModern(enemyID, spawnPos, spawnRot, finalIFF);
+            }
    
-   if (sosig == null)
-       {
-               var template = GetRandomTemplate(false);
-  if (template != null)
-   {
-             sosig = spawner.SpawnLegacy(template, spawnPos, spawnRot, finalIFF);
-  }
-      }
+            if (sosig == null)
+            {
+                var template = GetRandomTemplate(false);
+                if (template != null)
+                {
+                    sosig = spawner.SpawnLegacy(template, spawnPos, spawnRot, finalIFF);
+                }
+            }
       
-        if (sosig != null)
-          {
-          behaviorController.SetupEnemyBehavior(sosig);
+            if (sosig != null)
+            {
+                behaviorController.SetupEnemyBehavior(sosig);
       
+                // Apply armor based on user preference (lightweight - only at spawn)
                 if (config.enableArmorCustomization.Value)
                 {
                     try
                     {
-                        ApplyArmor(sosig, false);
+                        ApplyArmor(sosig, false, username);
                     }
                     catch (Exception armorEx)
                     {
@@ -376,58 +368,59 @@ return;
                 }
 
                 string displayName = username;
-          if (config.useRandomNames.Value && string.IsNullOrEmpty(username))
-      {
-            displayName = nameManager.GetRandomName(false, steamFriends, plugin.UseSteamFriendsRandomNames());
-  }
+                if (config.useRandomNames.Value && string.IsNullOrEmpty(username))
+                {
+                    displayName = nameManager.GetRandomName(false, steamFriends, plugin.UseSteamFriendsRandomNames());
+                }
   
-    if (config.enableNameplates.Value && nameplateEnemy != null)
-    {
-           nameplateManager.AttachNameplate(sosig, displayName, nameplateEnemy, true);
-               }
+                if (config.enableNameplates.Value && nameplateEnemy != null)
+                {
+                    nameplateManager.AttachNameplate(sosig, displayName, nameplateEnemy, true);
+                }
      
-      spawnedEnemyChatters.Add(sosig);
-           lastSpawnTime = Time.time;
+                spawnedEnemyChatters.Add(sosig);
+                lastSpawnTime = Time.time;
  
-    logger?.LogInfo($"✓ Spawned enemy sosig '{displayName}' for {username}");
-          }
-            }
-            catch (Exception ex)
-            {
-    logger?.LogError($"Enemy spawn failed for {username}: {ex.Message}");
+                int armorLevel = SosigArmorManager.GetUserArmorPreference(username, false);
+                logger?.LogInfo($"✓ Spawned enemy '{displayName}' for {username} [Armor: {SosigArmorManager.GetArmorName(armorLevel)}]");
             }
         }
-
-     public void SpawningSequenceBoss(String bossType, string username = null)
+        catch (Exception ex)
         {
-   try
- {
-     if (spawnedEnemyChatters.Count >= config.maxEnemySosigs.Value)
-      {
-            logger?.LogWarning($"Max enemy sosigs reached - cannot spawn boss");
-     return;
-   }
+            logger?.LogError($"Enemy spawn failed for {username}: {ex.Message}");
+        }
+    }
 
-         if (Time.time - lastSpawnTime < config.spawnCooldown.Value)
+    public void SpawningSequenceBoss(String bossType, string username = null)
+    {
+        try
         {
-     logger?.LogWarning("Spawn cooldown active");
-  return;
-   }
+            if (spawnedEnemyChatters.Count >= config.maxEnemySosigs.Value)
+            {
+                logger?.LogWarning($"Max enemy sosigs reached - cannot spawn boss");
+                return;
+            }
 
-     Vector3 spawnPos = positionCalculator.CalculateBossSpawnPoint();
-    Quaternion spawnRot = Quaternion.identity;
-    int finalIFF = Mathf.Max(1, (int)config.enemyIFF.Value);
+            if (Time.time - lastSpawnTime < config.spawnCooldown.Value)
+            {
+                logger?.LogWarning("Spawn cooldown active");
+                return;
+            }
 
-   Sosig sosig = null;
+            Vector3 spawnPos = positionCalculator.CalculateBossSpawnPoint();
+            Quaternion spawnRot = Quaternion.identity;
+            int finalIFF = Mathf.Max(1, (int)config.enemyIFF.Value);
+
+            Sosig sosig = null;
  
-          if (config.useModernSpawnSystem.Value)
-     {
-var enemyID = GetBossTemplate(bossType);
-         sosig = spawner.SpawnModern(enemyID, spawnPos, spawnRot, finalIFF);
-     }
+            if (config.useModernSpawnSystem.Value)
+            {
+                var enemyID = GetBossTemplate(bossType);
+                sosig = spawner.SpawnModern(enemyID, spawnPos, spawnRot, finalIFF);
+            }
     
-  if (sosig == null)
-      {
+            if (sosig == null)
+            {
    var template = GetRandomTemplate(false);
         if (template != null)
                {
@@ -435,88 +428,101 @@ var enemyID = GetBossTemplate(bossType);
  }
      }
      
-    if (sosig != null)
-   {
-behaviorController.SetupEnemyBehavior(sosig);
-      
-        if (config.enableArmorCustomization.Value)
-    {
-        try
-    {
-                    ApplyArmor(sosig, false);
-}
-       }
-      catch { }
-       }
-    
-   string displayName = username ?? $"BOSS_{bossType}";
- 
-    if (config.enableNameplates.Value && nameplateEnemy != null)
-   {
-   nameplateManager.AttachNameplate(sosig, $"★ {displayName} ★", nameplateEnemy, true);
-         }
- 
-   spawnedEnemyChatters.Add(sosig);
-   lastSpawnTime = Time.time;
-  
-       logger?.LogInfo($"Spawned {bossType} BOSS '{displayName}'");
-   }
-    }
-catch (Exception ex)
-       {
-logger?.LogError($"Boss spawn failed: {ex.Message}");
-         }
-     }
-
-      /// <summary>
-        /// Overload for BossType enum support
-   /// </summary>
-        public void SpawningSequenceBoss(BossSosigSystem.BossType bossType, string username = null)
- {
-            SpawningSequenceBoss(bossType.ToString(), username);
-        }
-
-     private SosigEnemyID GetBossTemplate(string bossType)
-  {
-            switch (bossType.ToLower())
+            if (sosig != null)
             {
-       case "tank":
-         case "juggernaut":
-  return SosigEnemyID.M_Swat_Heavy;
-    case "sniper":
-          return SosigEnemyID.M_Swat_Sniper;
-        case "berserker":
-    case "assassin":
-           return SosigEnemyID.M_Swat_Breacher;
-    default:
-       return config.GetRandomEnemyID();
-       }
+                behaviorController.SetupEnemyBehavior(sosig);
+                
+                if (config.enableArmorCustomization.Value)
+                {
+                    try
+                    {
+                        ApplyArmor(sosig, false);
+                    }
+                    catch { }
+                }
+                
+                string displayName = username ?? $"BOSS_{bossType}";
+                
+                if (config.enableNameplates.Value && nameplateEnemy != null)
+                {
+                    nameplateManager.AttachNameplate(sosig, $"★ {displayName} ★", nameplateEnemy, true);
+                }
+                
+                spawnedEnemyChatters.Add(sosig);
+                lastSpawnTime = Time.time;
+                
+                logger?.LogInfo($"Spawned {bossType} BOSS '{displayName}'");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError($"Boss spawn failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Overload for BossType enum support
+    /// </summary>
+    public void SpawningSequenceBoss(BossSosigSystem.BossType bossType, string username = null)
+    {
+        SpawningSequenceBoss(bossType.ToString(), username);
+    }
+
+    private SosigEnemyID GetBossTemplate(string bossType)
+    {
+        switch (bossType.ToLower())
+        {
+            case "tank":
+            case "juggernaut":
+                return SosigEnemyID.M_Swat_Heavy;
+            case "sniper":
+                return SosigEnemyID.M_Swat_Sniper;
+            case "berserker":
+            case "assassin":
+                return SosigEnemyID.M_Swat_Breacher;
+            default:
+                return config.GetRandomEnemyID();
+            }
         }
 
-        private void ApplyArmor(Sosig sosig, bool isAlly)
+        /// <summary>
+        /// Apply armor to sosig - checks user preference first, then falls back to global
+        /// </summary>
+        private void ApplyArmor(Sosig sosig, bool isAlly, string username = null)
         {
-            int armorLevel = isAlly ? SosigCustomizationUI.AllyArmor.Value : SosigCustomizationUI.EnemyArmor.Value;
+            // First check if user has a specific armor preference
+            int armorLevel;
+            if (!string.IsNullOrEmpty(username))
+            {
+                armorLevel = SosigArmorManager.GetUserArmorPreference(username, isAlly);
+            }
+            else
+            {
+                // Fall back to global setting
+                armorLevel = isAlly ? SosigCustomizationUI.AllyArmor.Value : SosigCustomizationUI.EnemyArmor.Value;
+            }
+            
             SosigArmorManager.ApplyArmorToSosig(sosig, armorLevel);
         }
 
-  private SosigEnemyTemplate GetRandomTemplate(bool isAlly)
+        private SosigEnemyTemplate GetRandomTemplate(bool isAlly)
         {
-    var templates = isAlly ? allyTemplates : enemyTemplates;
-         
-        if (templates == null || templates.Count == 0)
+            var templates = isAlly ? allyTemplates : enemyTemplates;
+            
+            if (templates == null || templates.Count == 0)
             {
-    logger?.LogWarning($"No {(isAlly ? "ally" : "enemy")} templates available");
+                logger?.LogWarning($"No {(isAlly ? "ally" : "enemy")} templates available");
                 return null;
-  }
+            }
 
-  return templates[UnityEngine.Random.Range(0, templates.Count)];
- }
-    #endregion
+            return templates[UnityEngine.Random.Range(0, templates.Count)];
+        }
+        #endregion
 
         #region Update and Cleanup
-  private IEnumerator UpdateSosigsCoroutine()
-   {
-  var wait = new WaitForSeconds(config.sosigUpdateInterval.Value);
+        private IEnumerator UpdateSosigsCoroutine()
+        {
+            var wait = new WaitForSeconds(config.sosigUpdateInterval.Value);
 
             while (true)
   {
@@ -552,7 +558,7 @@ logger?.LogError($"Boss spawn failed: {ex.Message}");
 
             for (int i = spawnedEnemyChatters.Count - 1; i >= 0; i--)
         {
-    if (spawnedEnemyChatters[i] == null || spawnedEnemyChatters[i].BodyState == Sosig.Sosig.BodyState.Dead)
+    if (spawnedEnemyChatters[i] == null || spawnedEnemyChatters[i].BodyState == Sosig.SosigBodyState.Dead)
                 {
     if (config.enableAutoCleanup.Value && spawnedEnemyChatters[i] != null)
       {
@@ -591,60 +597,60 @@ logger?.LogError($"Boss spawn failed: {ex.Message}");
         }
         #endregion
 
-    #region Public API
+        #region Public API
         public void ClearSosigs(bool clearAllies = true, bool clearEnemies = true)
- {
+        {
             try
-      {
-              int cleared = 0;
+            {
+                int cleared = 0;
 
-      if (clearAllies)
- {
-   for (int i = spawnedChatters.Count - 1; i >= 0; i--)
-              {
-   if (spawnedChatters[i] != null)
-          {
-   Destroy(spawnedChatters[i].gameObject);
-      cleared++;
-       }
- }
-         spawnedChatters.Clear();
-         }
+                if (clearAllies)
+                {
+                    for (int i = spawnedChatters.Count - 1; i >= 0; i--)
+                    {
+                        if (spawnedChatters[i] != null)
+                        {
+                            Destroy(spawnedChatters[i].gameObject);
+                            cleared++;
+                        }
+                    }
+                    spawnedChatters.Clear();
+                }
 
-  if (clearEnemies)
-              {
-           for (int i = spawnedEnemyChatters.Count - 1; i >= 0; i--)
-      {
-    if (spawnedEnemyChatters[i] != null)
-         {
-                 Destroy(spawnedEnemyChatters[i].gameObject);
-                 cleared++;
-     }
-           }
-      spawnedEnemyChatters.Clear();
-      }
-     
-            userSosigCounts.Clear();
- userLastSpawnTime.Clear();
+                if (clearEnemies)
+                {
+                    for (int i = spawnedEnemyChatters.Count - 1; i >= 0; i--)
+                    {
+                        if (spawnedEnemyChatters[i] != null)
+                        {
+                            Destroy(spawnedEnemyChatters[i].gameObject);
+                            cleared++;
+                        }
+                    }
+                    spawnedEnemyChatters.Clear();
+                }
 
-    logger?.LogInfo($"Cleared {cleared} sosigs");
-   }
+                userSosigCounts.Clear();
+                userLastSpawnTime.Clear();
+
+                logger?.LogInfo($"Cleared {cleared} sosigs");
+            }
             catch (Exception ex)
-     {
-     logger?.LogError($"Clear sosigs failed: {ex.Message}");
-   }
-   }
+            {
+                logger?.LogError($"Clear sosigs failed: {ex.Message}");
+            }
+        }
 
         public void ClearAllSosigs()
         {
-        ClearSosigs(true, true);
-     }
+            ClearSosigs(true, true);
+        }
 
         public ChatWatcher GetChatWatcher()
         {
-    return chatWatcher;
+            return chatWatcher;
         }
-        
+
         public bool IsChatWatcherEnabled()
         {
             return chatWatcherEnabled && chatWatcher != null;
@@ -653,63 +659,63 @@ logger?.LogError($"Boss spawn failed: {ex.Message}");
         public void QueueSpawn(string username, string displayName, bool isFriendly, string armorPreset = null, SpawnPriority priority = SpawnPriority.Normal, string behavior = null)
         {
             try
-  {
-        if (isFriendly)
-  {
-       SpawningSequence(displayName ?? username);
-       }
-        else
-       {
-       SpawningSequenceEnemy((int)config.enemyIFF.Value, displayName ?? username);
-       }
-       }
+            {
+                if (isFriendly)
+                {
+                    SpawningSequence(displayName ?? username);
+                }
+                else
+                {
+                    SpawningSequenceEnemy((int)config.enemyIFF.Value, displayName ?? username);
+                }
+            }
             catch (Exception ex)
-      {
-    logger?.LogError($"QueueSpawn failed for {username}: {ex.Message}");
-   }
+            {
+                logger?.LogError($"QueueSpawn failed for {username}: {ex.Message}");
+            }
         }
 
         public struct SosigStats
         {
             public int Allies;
-          public int Enemies;
-        public int Queued;
-      public int TotalActive;
-  public bool ChatWatcherActive;
+            public int Enemies;
+            public int Queued;
+            public int TotalActive;
+            public bool ChatWatcherActive;
         }
 
-      public SosigStats GetStats()
+        public SosigStats GetStats()
         {
             return new SosigStats
-        {
+            {
                 Allies = spawnedChatters.Count,
-Enemies = spawnedEnemyChatters.Count,
-         Queued = 0,
-    TotalActive = spawnedChatters.Count + spawnedEnemyChatters.Count,
-            ChatWatcherActive = chatWatcherEnabled && chatWatcher != null
-   };
-     }
+                Enemies = spawnedEnemyChatters.Count,
+                Queued = 0,
+                TotalActive = spawnedChatters.Count + spawnedEnemyChatters.Count,
+                ChatWatcherActive = chatWatcherEnabled && chatWatcher != null
+            };
+        }
 
         public bool QueueTwitchSpawnRequest(string username, string displayName, bool isFriendly, string armorPreset = null, SpawnPriority priority = SpawnPriority.Normal, string requestedBehavior = null)
         {
             try
-      {
-        if (isFriendly)
-              {
-    SpawningSequence(displayName ?? username);
-          }
-   else
+            {
+                if (isFriendly)
                 {
-    SpawningSequenceEnemy((int)config.enemyIFF.Value, displayName ?? username);
-          }
-    return true;
-    }
-catch (Exception ex)
-       {
-       logger?.LogError($"Twitch spawn request failed for {username}: {ex.Message}");
-      return false;
+                    SpawningSequence(displayName ?? username);
+                }
+                else
+                {
+                    SpawningSequenceEnemy((int)config.enemyIFF.Value, displayName ?? username);
+                }
+                return true;
             }
-    }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Twitch spawn request failed for {username}: {ex.Message}");
+                return false;
+            }
+        }
         #endregion
     }
 }
