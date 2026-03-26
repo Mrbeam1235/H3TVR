@@ -26,6 +26,7 @@
     </ItemGroup>
     
     <ItemGroup>
+      <Folder Include="config\NewFolder\" />
       <Folder Include="src\obj\" />
     </ItemGroup>
 
