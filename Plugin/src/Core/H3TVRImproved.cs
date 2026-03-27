@@ -95,10 +95,9 @@ namespace H3TVR
         private readonly Dictionary<string, ConfigEntry<KeyCode>> keyBindings = new Dictionary<string, ConfigEntry<KeyCode>>();
         
         // Chat Sosig Configuration
+        // NOTE: File paths are configured in ChatWatcher under [Chat Watcher - File Mode]
+        // to avoid duplicate config entries. Only enable/max settings here.
         private ConfigEntry<bool> enableTwitchChatSosigs;
-        private ConfigEntry<bool> enableLegacyFileMode; // For backwards compatibility
-        private ConfigEntry<string> twitchChatFilePath; // Legacy
-        private ConfigEntry<string> twitchEnemyChatFilePath; // Legacy
         private ConfigEntry<int> maxChatSosigs;
         
         // Steam Friends Configuration
@@ -327,10 +326,8 @@ namespace H3TVR
             dangerCloseMaxCount = Config.Bind("DangerClose", "MaxCount", 5, "Maximum danger close rounds");
             
             // Chat Sosig Configuration
+            // NOTE: File paths are in ChatWatcher [Chat Watcher - File Mode] section
             enableTwitchChatSosigs = Config.Bind("ChatSosigs", "Enabled", true, "Enable Chat Sosig spawning system");
-            enableLegacyFileMode = Config.Bind("ChatSosigs", "LegacyFileMode", false, "Enable legacy file-based chat watching (deprecated)");
-            twitchChatFilePath = Config.Bind("ChatSosigs", "ChatFilePath", "chat.txt", "Path to Twitch chat file (legacy)");
-            twitchEnemyChatFilePath = Config.Bind("ChatSosigs", "EnemyChatFilePath", "enemy_chat.txt", "Path to enemy chat file (legacy)");
             maxChatSosigs = Config.Bind("ChatSosigs", "MaxChatSosigs", 10, "Maximum number of active chat sosigs");
 
             // Steam Friends Configuration

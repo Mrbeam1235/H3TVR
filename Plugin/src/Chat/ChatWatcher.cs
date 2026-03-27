@@ -37,9 +37,8 @@ namespace H3TVR
         private ConfigEntry<string> enemyChatFilePath;
         private ConfigEntry<float> fileCheckInterval;
         private ConfigEntry<bool> clearFileAfterRead;
-        private ConfigEntry<KeyCode> manualAllySpawnKey;
-        private ConfigEntry<KeyCode> manualEnemySpawnKey;
-        private ConfigEntry<KeyCode> clearAllSosigsKey;
+        // Note: Keybinds are now centralized in ConfigurationManager to avoid duplicates
+        // Use ConfigurationManager.KeyBindings["SpawnChatSosigFriendly"], etc.
         #endregion
 
         #region File Watching State
@@ -111,13 +110,10 @@ namespace H3TVR
                 clearFileAfterRead = plugin.Config.Bind("Chat Watcher - File Mode", "ClearFileAfterRead", true,
                     "Clear chat file after reading usernames (recommended for channel points)");
 
-                // Manual spawn key bindings
-                manualAllySpawnKey = plugin.Config.Bind("Chat Watcher - Keys", "ManualAllySpawnKey", KeyCode.P,
-                    "Key to manually spawn ally sosig");
-                manualEnemySpawnKey = plugin.Config.Bind("Chat Watcher - Keys", "ManualEnemySpawnKey", KeyCode.O,
-                    "Key to manually spawn enemy sosig");
-                clearAllSosigsKey = plugin.Config.Bind("Chat Watcher - Keys", "ClearAllSosigsKey", KeyCode.Delete,
-                    "Key to clear all chat sosigs");
+                // Note: Keybinds are centralized in ConfigurationManager under [KeyBindings] section
+                // - KeyBindForSpawnChatSosigFriendly (default: P) - Spawn ally sosig
+                // - KeyBindForSpawnChatSosigEnemy (default: O) - Spawn enemy sosig  
+                // - KeyBindForClearChatSosigs (default: Delete) - Clear all chat sosigs
 
                 logger?.LogInfo("Chat Watcher configuration initialized (Channel Points format supported)");
             }
@@ -184,43 +180,30 @@ namespace H3TVR
         #region Update Loop
         private void Update()
         {
-        try
+            try
+            {
+                // Note: Manual keybind handling is now centralized in InputHandler
+                // to avoid duplicate keybind configurations.
+                // InputHandler uses ConfigurationManager.KeyBindings for:
+                // - SpawnChatSosigFriendly (P)
+                // - SpawnChatSosigEnemy (O)
+                // - ClearChatSosigs (Delete)
+
+                // Check files periodically
+                if (enableFileWatching.Value && Time.time - lastFileCheckTime >= fileCheckInterval.Value)
                 {
-                    // Handle manual keyboard spawning
-                    HandleManualInput();
-
-                    // Check files periodically
-                    if (enableFileWatching.Value && Time.time - lastFileCheckTime >= fileCheckInterval.Value)
-                    {
-                        CheckChatFiles();
-                        lastFileCheckTime = Time.time;
-                    }
+                    CheckChatFiles();
+                    lastFileCheckTime = Time.time;
                 }
-                catch (Exception ex)
-                {
-                    logger?.LogError($"Update loop error: {ex.Message}");
-                }
-        }
-
-        private void HandleManualInput()
-        {
-            if (Input.GetKeyDown(manualAllySpawnKey.Value))
-            {
-                SpawnManualAlly();
             }
-
-            if (Input.GetKeyDown(manualEnemySpawnKey.Value))
+            catch (Exception ex)
             {
-                SpawnManualEnemy();
-            }
-
-            if (Input.GetKeyDown(clearAllSosigsKey.Value))
-            {
-                ClearAllSosigs();
+                logger?.LogError($"Update loop error: {ex.Message}");
             }
         }
 
-        private void SpawnManualAlly()
+        // These methods are called by InputHandler (centralized input processing)
+        public void SpawnManualAlly()
         {
             try
             {
@@ -234,7 +217,7 @@ namespace H3TVR
             }
         }
 
-        private void SpawnManualEnemy()
+        public void SpawnManualEnemy()
         {
             try
             {
@@ -248,7 +231,7 @@ namespace H3TVR
             }
         }
 
-        private void ClearAllSosigs()
+        public void ClearAllSosigs()
         {
             try
             {
@@ -464,6 +447,22 @@ namespace H3TVR
                         continue;
                     }
 
+                    // Check for nuke command
+                    if (TryParseNukeCommand(trimmed))
+                    {
+                        plugin.GetSpawnManager()?.SpawnNuke();
+                        logger?.LogInfo("[NUKE] Nuclear strike triggered!");
+                        continue;
+                    }
+
+                    // Check for warlord boss spawn command
+                    if (TryParseWarlordCommand(trimmed, out string warlordName))
+                    {
+                        plugin.GetSpawnManager()?.SpawnWarlordBoss(warlordName);
+                        logger?.LogInfo($"[WARLORD] Spawning Warlord boss named '{warlordName}'!");
+                        continue;
+                    }
+
                     // If not an armor command, try to extract a username
                     string username = ExtractUsername(trimmed);
                     if (!string.IsNullOrEmpty(username))
@@ -602,6 +601,7 @@ namespace H3TVR
                 }
             }
 
+
             return false;
         }
 
@@ -620,6 +620,60 @@ namespace H3TVR
                 return true;
             }
 
+            return false;
+        }
+
+        /// <summary>
+        /// Parse nuke command from chat/file
+        /// Formats: nuke=1, nuke=true, !nuke
+        /// </summary>
+        private bool TryParseNukeCommand(string line)
+        {
+            string lower = line.ToLower().Trim();
+            
+            // Format: !nuke
+            if (lower == "!nuke" || lower == "nuke")
+            {
+                return true;
+            }
+            
+            // Format: nuke=1 or nuke=true
+            if (lower.StartsWith("nuke="))
+            {
+                string value = lower.Substring(5).Trim();
+                return value == "1" || value == "true" || value == "yes";
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Parse warlord boss spawn command
+        /// Formats: warlord=ViewerName, !warlord ViewerName, boss_warlord=ViewerName
+        /// </summary>
+        private bool TryParseWarlordCommand(string line, out string bossName)
+        {
+            bossName = null;
+            string lower = line.ToLower().Trim();
+            
+            // Format: warlord=ViewerName or boss_warlord=ViewerName
+            if (lower.StartsWith("warlord=") || lower.StartsWith("boss_warlord="))
+            {
+                int eqIndex = line.IndexOf('=');
+                if (eqIndex > 0 && eqIndex < line.Length - 1)
+                {
+                    bossName = line.Substring(eqIndex + 1).Trim();
+                    return !string.IsNullOrEmpty(bossName);
+                }
+            }
+            
+            // Format: !warlord ViewerName
+            if (lower.StartsWith("!warlord "))
+            {
+                bossName = line.Substring(9).Trim();
+                return !string.IsNullOrEmpty(bossName);
+            }
+            
             return false;
         }
 

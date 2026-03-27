@@ -752,49 +752,29 @@ namespace H3TVR
         }
 
         /// <summary>
-        /// Spawn a boss sosig with random type
+        /// Spawn a Warlord boss with a custom Twitch username as the name
+        /// Giant 5x scaled boss with heavy armor that spawns minions
         /// </summary>
-        public void SpawnBossSosig()
+        public void SpawnWarlordBoss(string twitchUsername = null)
         {
             try
             {
-                var bossType = BossSosigSystem.GetRandomBossType();
-                string bossName = $"Boss_{bossType}_{UnityEngine.Random.Range(100, 999)}";
+                // Use provided username or generate default
+                string bossName = !string.IsNullOrEmpty(twitchUsername) 
+                    ? $"?? {twitchUsername.ToUpper()} ??" 
+                    : $"?? WARLORD ??";
                 
-                advancedChatSpawner?.SpawningSequenceBoss(bossType, bossName);
-                logger?.LogInfo($"Spawned {bossType} boss: {bossName}");
+                advancedChatSpawner?.SpawningSequenceWarlord(bossName);
+                logger?.LogInfo($"Spawned WARLORD boss: {bossName}");
                 
-                // Play dramatic boss spawn sound
-                audioManager?.PlayDangerCloseSound("boss_spawn", 
+                // Play dramatic warlord spawn sound
+                audioManager?.PlayDangerCloseSound("warlord_spawn", 
                     GM.CurrentPlayerBody?.Head?.position ?? Vector3.zero, 
-                    false, "boss/boss_appears.wav", 1.0f);
+                    false, "boss/warlord_appears.wav", 1.0f);
             }
             catch (Exception ex)
             {
-                logger?.LogError($"Failed to spawn boss sosig: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Spawn specific boss type
-        /// </summary>
-        public void SpawnBossSosig(BossSosigSystem.BossType bossType)
-        {
-            try
-            {
-                string bossName = $"Boss_{bossType}_{UnityEngine.Random.Range(100, 999)}";
-                
-                advancedChatSpawner?.SpawningSequenceBoss(bossType, bossName);
-                logger?.LogInfo($"Spawned specific {bossType} boss: {bossName}");
-                
-                // Play boss-specific sound
-                audioManager?.PlayDangerCloseSound($"boss_{bossType.ToString().ToLower()}", 
-                    GM.CurrentPlayerBody?.Head?.position ?? Vector3.zero, 
-                    false, $"boss/{bossType.ToString().ToLower()}_appears.wav", 1.0f);
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to spawn {bossType} boss: {ex.Message}");
+                logger?.LogError($"Failed to spawn Warlord boss: {ex.Message}");
             }
         }
 

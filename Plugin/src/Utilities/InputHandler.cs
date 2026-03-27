@@ -84,6 +84,10 @@ namespace H3TVR
             
             if (Input.GetKeyDown(keyBindings["SpawnTitanMachine"].Value))
                 spawnManager.SpawnTitanMachine();
+            
+            // Nuke - massive explosion
+            if (Input.GetKeyDown(keyBindings["SpawnNuke"].Value))
+                spawnManager.SpawnNuke();
         }
 
         private void ProcessEffectInputs()
@@ -117,6 +121,9 @@ namespace H3TVR
                 
             if (Input.GetKeyDown(keyBindings["BoostMalfunction"].Value))
                 plugin.ActivateMalfunctionBoost();
+                
+            if (Input.GetKeyDown(keyBindings["EmptyHeldGunChamber"].Value))
+                weaponManager.EmptyHeldGunChamber();
         }
 
         private void ProcessUtilityInputs()
@@ -246,51 +253,10 @@ namespace H3TVR
         {
             try
             {
-                // Random boss spawn
-                if (Input.GetKeyDown(keyBindings["SpawnBossRandom"].Value))
+                // Spawn Warlord boss (giant scaled boss with minions)
+                if (Input.GetKeyDown(keyBindings["SpawnBossWarlord"].Value))
                 {
-                    spawnManager?.SpawnBossSosig();
-                }
-                
-                // Specific boss types
-                if (Input.GetKeyDown(keyBindings["SpawnBossTank"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Tank);
-                }
-                
-                if (Input.GetKeyDown(keyBindings["SpawnBossBerserker"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Berserker);
-                }
-                
-                if (Input.GetKeyDown(keyBindings["SpawnBossSniper"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Sniper);
-                }
-                
-                if (Input.GetKeyDown(keyBindings["SpawnBossSummoner"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Summoner);
-                }
-                
-                if (Input.GetKeyDown(keyBindings["SpawnBossElite"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Elite);
-                }
-                
-                if (Input.GetKeyDown(keyBindings["SpawnBossJuggernaut"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Juggernaut);
-                }
-                
-                if (Input.GetKeyDown(keyBindings["SpawnBossAssassin"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Assassin);
-                }
-                
-                if (Input.GetKeyDown(keyBindings["SpawnBossCommander"].Value))
-                {
-                    spawnManager?.SpawnBossSosig(BossSosigSystem.BossType.Commander);
+                    spawnManager?.SpawnWarlordBoss();
                 }
                 
                 // Clear all bosses

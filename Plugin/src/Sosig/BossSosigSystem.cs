@@ -8,16 +8,16 @@ using BepInEx.Logging;
 namespace H3TVR
 {
     /// <summary>
-    /// Boss Sosig System - Enhanced enemies with special abilities and behaviors
-    /// Integrates with AdvancedSosigAI for tactical behaviors
+    /// Boss Sosig System - Warlord boss with special abilities
+    /// Giant 5x scaled boss that spawns minions
     /// </summary>
     public class BossSosigSystem : MonoBehaviour
     {
         #region Configuration
         public static bool EnableBossSosigs { get; set; } = true;
-        public static float BossHealthMultiplier { get; set; } = 3.0f;
-        public static float BossDamageMultiplier { get; set; } = 1.5f;
-        public static float BossSpeedMultiplier { get; set; } = 1.2f;
+        public static float BossHealthMultiplier { get; set; } = 5.0f;
+        public static float BossDamageMultiplier { get; set; } = 2.5f;
+        public static float BossSpeedMultiplier { get; set; } = 0.6f;
         public static int MaxBossesPerSession { get; set; } = 3;
         public static float BossSpawnCooldown { get; set; } = 120f; // 2 minutes
         public static bool EnableBossAbilities { get; set; } = true;
@@ -33,14 +33,7 @@ namespace H3TVR
         #region Boss Types
         public enum BossType
         {
-            Tank,           // High health, slow, heavy armor
-            Berserker,      // Fast, aggressive, high damage
-            Sniper,         // Long range, tactical, cover-focused
-            Summoner,       // Spawns minions, support role
-            Elite,          // Balanced, all-around enhanced
-            Juggernaut,     // Maximum armor, slow, devastating
-            Assassin,       // Fast, flanking, critical hits
-            Commander       // Buffs nearby sosigs, tactical leader
+            Warlord         // Giant 5x scaled boss, spawns minions, Twitch nameplate
         }
         #endregion
 
@@ -149,6 +142,11 @@ namespace H3TVR
         public AdvancedSosigAI advancedAI;
         private ManualLogSource logger;
 
+        // Boss visual
+        public string bossName = "WARLORD";
+        public float bossScale = 1.0f;
+        private GameObject nameplateObject;
+
         // Boss stats
         private float maxHealth;
         private float currentHealth;
@@ -164,12 +162,27 @@ namespace H3TVR
         #endregion
 
         #region Initialization
-        public void Initialize(BossSosigSystem.BossType type, ManualLogSource logSource)
+        public void Initialize(BossSosigSystem.BossType type, ManualLogSource logSource, string customName = null)
         {
             bossType = type;
             logger = logSource;
+            
+            // Set custom name if provided
+            if (!string.IsNullOrEmpty(customName))
+            {
+                bossName = customName;
+            }
+            else
+            {
+                bossName = GetDefaultBossName(type);
+            }
 
             StartCoroutine(DelayedBossSetup());
+        }
+
+        private string GetDefaultBossName(BossSosigSystem.BossType type)
+        {
+            return "?? WARLORD ??";
         }
 
         private IEnumerator DelayedBossSetup()
@@ -186,10 +199,20 @@ namespace H3TVR
                 yield break;
             }
 
+            // Apply scale for Warlord
+            if (bossType == BossSosigSystem.BossType.Warlord)
+            {
+                bossScale = 5.0f;
+                ApplyBossScale(bossScale);
+            }
+
             // Apply boss enhancements
             ApplyBossStats();
             ApplyBossArmor();
             ApplyBossWeapons();
+
+            // Create nameplate above boss
+            CreateBossNameplate();
 
             // Attach Advanced AI if available
             advancedAI = sosig.gameObject.GetComponent<AdvancedSosigAI>();
@@ -206,7 +229,75 @@ namespace H3TVR
             // Start boss update loop
             StartCoroutine(BossUpdateLoop());
 
-            logger?.LogInfo($"[BossSosig] {bossType} boss fully initialized");
+            logger?.LogInfo($"[BossSosig] {bossType} boss '{bossName}' fully initialized (Scale: {bossScale}x)");
+        }
+
+        /// <summary>
+        /// Apply scale to the boss sosig
+        /// </summary>
+        private void ApplyBossScale(float scale)
+        {
+            try
+            {
+                if (sosig == null) return;
+
+                // Scale the sosig
+                sosig.transform.localScale = Vector3.one * scale;
+
+                logger?.LogInfo($"[BossSosig] Applied scale {scale}x to {bossType} boss");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning($"[BossSosig] Failed to apply scale: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Create a floating nameplate above the boss
+        /// </summary>
+        private void CreateBossNameplate()
+        {
+            try
+            {
+                if (sosig == null) return;
+
+                // Create nameplate GameObject
+                nameplateObject = new GameObject("BossNameplate");
+                
+                // Position above the boss head
+                Transform headLink = sosig.Links.Count > 0 ? sosig.Links[0].transform : sosig.transform;
+                nameplateObject.transform.SetParent(headLink);
+                nameplateObject.transform.localPosition = new Vector3(0, 0.8f * bossScale, 0);
+
+                // Add TextMesh for the name
+                TextMesh textMesh = nameplateObject.AddComponent<TextMesh>();
+                textMesh.text = bossName;
+                textMesh.fontSize = 24;
+                textMesh.characterSize = 0.1f * bossScale;
+                textMesh.anchor = TextAnchor.MiddleCenter;
+                textMesh.alignment = TextAlignment.Center;
+                textMesh.color = GetBossNameColor();
+                textMesh.fontStyle = FontStyle.Bold;
+
+                // Make it face the camera (billboard effect)
+                var billboard = nameplateObject.AddComponent<BossNameplateBillboard>();
+                billboard.Initialize();
+
+                logger?.LogDebug($"[BossSosig] Created nameplate '{bossName}' for {bossType} boss");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning($"[BossSosig] Failed to create nameplate: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get color for boss nameplate based on type
+        /// </summary>
+        private Color GetBossNameColor()
+        {
+            // Warlord only - Red color
+            return new Color(1f, 0.2f, 0.2f);
         }
         #endregion
 
@@ -215,63 +306,11 @@ namespace H3TVR
         {
             if (sosig == null) return;
 
-            // Calculate stats based on type
-            float healthMult = BossSosigSystem.BossHealthMultiplier;
-            damageMultiplier = BossSosigSystem.BossDamageMultiplier;
-            speedMultiplier = BossSosigSystem.BossSpeedMultiplier;
-
-            switch (bossType)
-            {
-                case BossSosigSystem.BossType.Tank:
-                    healthMult *= 1.5f;
-                    speedMultiplier *= 0.7f;
-                    damageMultiplier *= 0.8f;
-                    break;
-
-                case BossSosigSystem.BossType.Berserker:
-                    healthMult *= 0.8f;
-                    speedMultiplier *= 1.5f;
-                    damageMultiplier *= 1.5f;
-                    break;
-
-                case BossSosigSystem.BossType.Sniper:
-                    healthMult *= 1.0f;
-                    speedMultiplier *= 0.9f;
-                    damageMultiplier *= 2.0f;
-                    break;
-
-                case BossSosigSystem.BossType.Summoner:
-                    healthMult *= 1.2f;
-                    speedMultiplier *= 1.0f;
-                    damageMultiplier *= 0.7f;
-                    abilityCooldown = 15f;
-                    break;
-
-                case BossSosigSystem.BossType.Elite:
-                    healthMult *= 1.3f;
-                    speedMultiplier *= 1.1f;
-                    damageMultiplier *= 1.2f;
-                    break;
-
-                case BossSosigSystem.BossType.Juggernaut:
-                    healthMult *= 2.0f;
-                    speedMultiplier *= 0.5f;
-                    damageMultiplier *= 1.8f;
-                    break;
-
-                case BossSosigSystem.BossType.Assassin:
-                    healthMult *= 0.7f;
-                    speedMultiplier *= 1.8f;
-                    damageMultiplier *= 1.7f;
-                    break;
-
-                case BossSosigSystem.BossType.Commander:
-                    healthMult *= 1.4f;
-                    speedMultiplier *= 1.0f;
-                    damageMultiplier *= 1.1f;
-                    abilityCooldown = 8f;
-                    break;
-            }
+            // Warlord stats - Giant boss with massive health
+            float healthMult = BossSosigSystem.BossHealthMultiplier * 5.0f;
+            damageMultiplier = BossSosigSystem.BossDamageMultiplier * 2.5f;
+            speedMultiplier = BossSosigSystem.BossSpeedMultiplier * 0.6f;
+            abilityCooldown = 12f; // Spawns minions every 12 seconds
 
             // Apply health multiplier to all links
             foreach (var link in sosig.Links)
@@ -283,59 +322,32 @@ namespace H3TVR
             maxHealth = GetTotalHealth();
             currentHealth = maxHealth;
 
-            // Apply speed (note: H3VR's Sosig doesn't have a simple "Speed" property we can modify)
-            // Speed modifications would require deeper H3VR API integration
-            // For now, we'll track the speed multiplier for potential future use
-            logger?.LogDebug($"[BossSosig] Applied stats - Health: {maxHealth:F0}, Damage: x{damageMultiplier:F1}, Speed: x{speedMultiplier:F1}");
+            logger?.LogDebug($"[BossSosig] WARLORD stats - Health: {maxHealth:F0}, Damage: x{damageMultiplier:F1}, Speed: x{speedMultiplier:F1}");
         }
 
         private void ApplyBossArmor()
         {
-            // Apply enhanced armor based on type
-            // This would integrate with SosigArmorWristMenuComplete if available
-            logger?.LogDebug($"[BossSosig] Applied {bossType} armor configuration");
+            // Apply God-tier armor to Warlord
+            if (sosig != null)
+            {
+                SosigArmorManager.ApplyArmorToSosig(sosig, 5); // God armor
+            }
+            logger?.LogDebug("[BossSosig] Applied WARLORD God armor");
         }
 
         private void ApplyBossWeapons()
         {
-            // Enhanced weapon loadout
-            // Bosses get better weapons than regular sosigs
-            logger?.LogDebug($"[BossSosig] Applied {bossType} weapon loadout");
+            // Warlord gets enhanced weapons
+            logger?.LogDebug("[BossSosig] Applied WARLORD weapon loadout");
         }
 
         private void ConfigureBossAI()
         {
             if (advancedAI == null) return;
 
-            // Configure Advanced AI for boss-specific behavior
-            switch (bossType)
-            {
-                case BossSosigSystem.BossType.Tank:
-                    // Tank: Always aggressive, never retreat
-                    advancedAI.ForceState(AdvancedSosigAI.AIState.Assault);
-                    break;
-
-                case BossSosigSystem.BossType.Sniper:
-                    // Sniper: Prefer cover and distance
-                    advancedAI.ForceState(AdvancedSosigAI.AIState.TakingCover);
-                    break;
-
-                case BossSosigSystem.BossType.Berserker:
-                    // Berserker: Constant assault
-                    advancedAI.ForceState(AdvancedSosigAI.AIState.Assault);
-                    break;
-
-                case BossSosigSystem.BossType.Assassin:
-                    // Assassin: Flanking priority
-                    advancedAI.ForceState(AdvancedSosigAI.AIState.Flanking);
-                    break;
-
-                default:
-                    // Let AI decide naturally
-                    break;
-            }
-
-            logger?.LogDebug($"[BossSosig] Configured {bossType} AI behavior");
+            // Warlord: Aggressive assault behavior
+            advancedAI.ForceState(AdvancedSosigAI.AIState.Assault);
+            logger?.LogDebug("[BossSosig] Configured WARLORD AI - Assault mode");
         }
         #endregion
 
@@ -381,26 +393,8 @@ namespace H3TVR
             if (!BossSosigSystem.EnableBossAbilities) return;
             if (Time.time - lastAbilityTime < abilityCooldown) return;
 
-            // Use boss ability based on type
-            switch (bossType)
-            {
-                case BossSosigSystem.BossType.Summoner:
-                    SpawnMinions();
-                    break;
-
-                case BossSosigSystem.BossType.Commander:
-                    BuffNearbyAllies();
-                    break;
-
-                case BossSosigSystem.BossType.Berserker:
-                    BerserkerCharge();
-                    break;
-
-                case BossSosigSystem.BossType.Tank:
-                    TankShieldBash();
-                    break;
-            }
-
+            // Warlord spawns minions
+            SpawnWarlordMinions();
             lastAbilityTime = Time.time;
         }
 
@@ -421,88 +415,45 @@ namespace H3TVR
             speedMultiplier *= 1.3f;
             abilityCooldown *= 0.7f;
 
-            logger?.LogInfo($"[BossSosig] {bossType} boss ENRAGED! (Health < {enrageThreshold * 100}%)");
+            logger?.LogInfo($"[BossSosig] WARLORD ENRAGED! (Health < {enrageThreshold * 100}%)");
         }
 
-        private void SpawnMinions()
+        /// <summary>
+        /// Warlord spawns minions around itself
+        /// </summary>
+        private void SpawnWarlordMinions()
         {
-            if (spawnedMinions.Count >= 3) return; // Max 3 minions
+            if (spawnedMinions.Count >= 5) return; // Max 5 minions for Warlord
 
             try
             {
-                // Spawn 1-2 minions near boss
-                int minionCount = UnityEngine.Random.Range(1, 3);
+                // Spawn 2-3 minions near the Warlord
+                int minionCount = UnityEngine.Random.Range(2, 4);
                 
                 for (int i = 0; i < minionCount; i++)
                 {
-                    Vector3 spawnPos = transform.position + UnityEngine.Random.insideUnitSphere * 3f;
-                    spawnPos.y = transform.position.y;
+                    // Spawn in a circle around the Warlord
+                    float angle = (360f / minionCount) * i + UnityEngine.Random.Range(-15f, 15f);
+                    float distance = UnityEngine.Random.Range(4f, 7f);
+                    Vector3 spawnPos = transform.position + new Vector3(
+                        Mathf.Sin(angle * Mathf.Deg2Rad) * distance,
+                        0f,
+                        Mathf.Cos(angle * Mathf.Deg2Rad) * distance
+                    );
 
-                    // This would integrate with AdvancedChatSosigSpawner
-                    logger?.LogDebug($"[BossSosig] Summoner spawning minion {i + 1}/{minionCount}");
+                    logger?.LogDebug($"[BossSosig] Warlord spawning minion {i + 1}/{minionCount} at {spawnPos}");
                 }
 
-                logger?.LogInfo($"[BossSosig] Summoner spawned {minionCount} minions");
+                logger?.LogInfo($"[BossSosig] WARLORD summoned {minionCount} minions!");
             }
             catch (Exception ex)
             {
-                logger?.LogError($"[BossSosig] Minion spawn failed: {ex.Message}");
+                logger?.LogError($"[BossSosig] Warlord minion spawn failed: {ex.Message}");
             }
-        }
-
-        private void BuffNearbyAllies()
-        {
-            Collider[] nearbyColliders = Physics.OverlapSphere(transform.position, 15f);
-            int buffedCount = 0;
-
-            foreach (var col in nearbyColliders)
-            {
-                Sosig nearbySosig = col.GetComponentInParent<Sosig>();
-                if (nearbySosig != null && nearbySosig != sosig && nearbySosig.E.IFFCode == sosig.E.IFFCode)
-                {
-                    // Buff ally sosig (increased speed/damage would require H3VR API)
-                    buffedCount++;
-                }
-            }
-
-            if (buffedCount > 0)
-            {
-                logger?.LogDebug($"[BossSosig] Commander buffed {buffedCount} allies");
-            }
-        }
-
-        private void BerserkerCharge()
-        {
-            if (GM.CurrentPlayerBody == null) return;
-
-            // Charge toward player at high speed
-            Vector3 chargeDirection = (GM.CurrentPlayerBody.transform.position - transform.position).normalized;
-            
-            if (sosig != null)
-            {
-                sosig.CommandAssaultPoint(GM.CurrentPlayerBody.transform.position);
-                logger?.LogDebug("[BossSosig] Berserker charging player!");
-            }
-        }
-
-        private void TankShieldBash()
-        {
-            // AOE knockback around boss
-            Collider[] hitColliders = Physics.OverlapSphere(transform.position, 3f);
-
-            foreach (var col in hitColliders)
-            {
-                Rigidbody rb = col.GetComponent<Rigidbody>();
-                if (rb != null && col.gameObject != gameObject)
-                {
-                    Vector3 knockbackDir = (col.transform.position - transform.position).normalized;
-                    rb.AddForce(knockbackDir * 500f, ForceMode.Impulse);
-                }
-            }
-
-            logger?.LogDebug("[BossSosig] Tank shield bash!");
         }
         #endregion
+
+
 
         #region Helper Methods
         private float GetTotalHealth()
@@ -578,6 +529,46 @@ namespace H3TVR
             BossSosigSystem.BossSpawnCooldown = spawnCooldown.Value;
             BossSosigSystem.EnableBossAbilities = enableAbilities.Value;
             BossSosigSystem.EnableBossMinions = enableMinions.Value;
+        }
+    }
+
+    /// <summary>
+    /// Makes the nameplate always face the camera/player
+    /// </summary>
+    public class BossNameplateBillboard : MonoBehaviour
+    {
+        private Transform playerHead;
+
+        public void Initialize()
+        {
+            // Will find player head each frame if needed
+        }
+
+        private void LateUpdate()
+        {
+            try
+            {
+                // Find player head if not cached
+                if (playerHead == null && GM.CurrentPlayerBody != null)
+                {
+                    playerHead = GM.CurrentPlayerBody.Head;
+                }
+
+                if (playerHead != null)
+                {
+                    // Face the player
+                    Vector3 lookDir = playerHead.position - transform.position;
+                    lookDir.y = 0; // Keep upright
+                    if (lookDir != Vector3.zero)
+                    {
+                        transform.rotation = Quaternion.LookRotation(-lookDir);
+                    }
+                }
+            }
+            catch
+            {
+                // Silently fail - don't spam logs
+            }
         }
     }
 }

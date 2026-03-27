@@ -81,10 +81,9 @@ namespace H3TVR
 
         #region Chat Sosig Configuration
         public ConfigEntry<bool> EnableTwitchChatSosigs { get; private set; }
-        public ConfigEntry<bool> EnableLegacyFileMode { get; private set; }
-        public ConfigEntry<string> TwitchChatFilePath { get; private set; }
-        public ConfigEntry<string> TwitchEnemyChatFilePath { get; private set; }
-        public ConfigEntry<int> MaxChatSosigs { get; private set; }
+        // NOTE: MaxAllySosigs/MaxEnemySosigs are in SosigSpawnConfig [Chat Spawner] section
+        // NOTE: File paths (AllyChatFilePath, EnemyChatFilePath) are in ChatWatcher
+        // to avoid duplicate config entries.
         #endregion
 
         #region Steam Friends Configuration
@@ -222,17 +221,11 @@ namespace H3TVR
             DangerCloseMaxCount = config.Bind("DangerClose", "MaxCount", 5,
                 "Maximum danger close rounds");
 
-            // Chat Sosigs
+            // Chat Sosigs - Main enable/disable only
+            // NOTE: Detailed settings are in SosigSpawnConfig under [Chat Spawner] section
+            // NOTE: File paths are configured in ChatWatcher under [Chat Watcher - File Mode] section
             EnableTwitchChatSosigs = config.Bind("ChatSosigs", "Enabled", true,
                 "Enable Chat Sosig spawning system");
-            EnableLegacyFileMode = config.Bind("ChatSosigs", "LegacyFileMode", false,
-                "Enable legacy file-based chat watching (deprecated)");
-            TwitchChatFilePath = config.Bind("ChatSosigs", "ChatFilePath", "chat.txt",
-                "Path to Twitch chat file (legacy)");
-            TwitchEnemyChatFilePath = config.Bind("ChatSosigs", "EnemyChatFilePath", "enemy_chat.txt",
-                "Path to enemy chat file (legacy)");
-            MaxChatSosigs = config.Bind("ChatSosigs", "MaxChatSosigs", 10,
-                "Maximum number of active chat sosigs");
 
             // Steam Friends
             EnableSteamFriends = config.Bind("SteamFriends", "Enabled", true,
@@ -288,16 +281,7 @@ namespace H3TVR
                 { "CycleChatSosigArmor", new KeyValuePair<KeyCode, string>(KeyCode.L, "Cycle Chat Sosig Armor") },
                 { "ClearChatSosigs", new KeyValuePair<KeyCode, string>(KeyCode.Delete, "Clear All Chat Sosigs") },
                 { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") },
-                { "ArmorGUI", new KeyValuePair<KeyCode, string>(KeyCode.F6, "Open Armor Configuration GUI") },
-                { "SpawnBossRandom", new KeyValuePair<KeyCode, string>(KeyCode.B, "Spawn Random Boss") },
-                { "SpawnBossTank", new KeyValuePair<KeyCode, string>(KeyCode.Alpha1, "Spawn Tank Boss") },
-                { "SpawnBossBerserker", new KeyValuePair<KeyCode, string>(KeyCode.Alpha2, "Spawn Berserker Boss") },
-                { "SpawnBossSniper", new KeyValuePair<KeyCode, string>(KeyCode.Alpha3, "Spawn Sniper Boss") },
-                { "SpawnBossSummoner", new KeyValuePair<KeyCode, string>(KeyCode.Alpha4, "Spawn Summoner Boss") },
-                { "SpawnBossElite", new KeyValuePair<KeyCode, string>(KeyCode.Alpha5, "Spawn Elite Boss") },
-                { "SpawnBossJuggernaut", new KeyValuePair<KeyCode, string>(KeyCode.Alpha6, "Spawn Juggernaut Boss") },
-                { "SpawnBossAssassin", new KeyValuePair<KeyCode, string>(KeyCode.Alpha7, "Spawn Assassin Boss") },
-                { "SpawnBossCommander", new KeyValuePair<KeyCode, string>(KeyCode.Alpha8, "Spawn Commander Boss") },
+                { "SpawnBossWarlord", new KeyValuePair<KeyCode, string>(KeyCode.B, "Spawn Warlord Boss (Giant)") },
                 { "ClearBosses", new KeyValuePair<KeyCode, string>(KeyCode.Backspace, "Clear All Bosses") },
                 { "SpawnSteamFriendAlly", new KeyValuePair<KeyCode, string>(KeyCode.LeftBracket, "Spawn Steam Friend as Ally") },
                 { "SpawnSteamFriendEnemy", new KeyValuePair<KeyCode, string>(KeyCode.RightBracket, "Spawn Steam Friend as Enemy") },
@@ -306,7 +290,9 @@ namespace H3TVR
                 { "RefreshSteamFriends", new KeyValuePair<KeyCode, string>(KeyCode.F9, "Refresh Steam Friends List") },
                 { "SteamFriendsStats", new KeyValuePair<KeyCode, string>(KeyCode.Home, "Show Steam Friends Stats") },
                 { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
-                { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") }
+                { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") },
+                { "SpawnNuke", new KeyValuePair<KeyCode, string>(KeyCode.N, "Spawn Nuke (Massive Explosion)") },
+                { "EmptyHeldGunChamber", new KeyValuePair<KeyCode, string>(KeyCode.E, "Empty Held Gun Chamber") }
             };
 
             foreach (var kvp in keyBindingConfigs)
