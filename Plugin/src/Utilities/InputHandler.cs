@@ -45,99 +45,124 @@ namespace H3TVR
 
         private void ProcessSpawnInputs()
         {
-            if (Input.GetKeyDown(keyBindings["SpawnWonderfulToy"].Value))
-                spawnManager.SpawnWonderfulToy();
-                
-            if (Input.GetKeyDown(keyBindings["SpawnPillow"].Value))
-                spawnManager.SpawnPillow();
-                
-            if (Input.GetKeyDown(keyBindings["SpawnFlash"].Value))
-                spawnManager.SpawnFlash();
-                
-            if (Input.GetKey(keyBindings["SpawnShuri"].Value))
-                spawnManager.SpawnShuri();
-                
-            if (Input.GetKeyDown(keyBindings["SpawnNadeRain"].Value))
-                spawnManager.SpawnNadeRain();
-                
-            if (Input.GetKeyDown(keyBindings["SpawnHydration"].Value))
-                spawnManager.SpawnHydration();
-                
-            if (Input.GetKeyDown(keyBindings["SpawnJeditToy"].Value))
+            try
             {
-                spawnManager.SpawnJeditToy();
-                audioManager.PlayJeditoySound();
+                if (keyBindings.ContainsKey("SpawnWonderfulToy") && Input.GetKeyDown(keyBindings["SpawnWonderfulToy"].Value))
+                    spawnManager?.SpawnWonderfulToy();
+                    
+                if (keyBindings.ContainsKey("SpawnPillow") && Input.GetKeyDown(keyBindings["SpawnPillow"].Value))
+                    spawnManager?.SpawnPillow();
+                    
+                if (keyBindings.ContainsKey("SpawnFlash") && Input.GetKeyDown(keyBindings["SpawnFlash"].Value))
+                    spawnManager?.SpawnFlash();
+                    
+                if (keyBindings.ContainsKey("SpawnShuri") && Input.GetKey(keyBindings["SpawnShuri"].Value))
+                    spawnManager?.SpawnShuri();
+                    
+                if (keyBindings.ContainsKey("SpawnNadeRain") && Input.GetKeyDown(keyBindings["SpawnNadeRain"].Value))
+                    spawnManager?.SpawnNadeRain();
+                    
+                if (keyBindings.ContainsKey("SpawnHydration") && Input.GetKeyDown(keyBindings["SpawnHydration"].Value))
+                    spawnManager?.SpawnHydration();
+                    
+                if (keyBindings.ContainsKey("SpawnJeditToy") && Input.GetKeyDown(keyBindings["SpawnJeditToy"].Value))
+                {
+                    spawnManager?.SpawnJeditToy();
+                    audioManager?.PlayJeditoySound();
+                }
+                    
+                if (keyBindings.ContainsKey("SpawnSkittySubGun") && Input.GetKeyDown(keyBindings["SpawnSkittySubGun"].Value))
+                    spawnManager?.SpawnSkittySubGun();
+                    
+                if (keyBindings.ContainsKey("SpawnFlash2") && Input.GetKeyDown(keyBindings["SpawnFlash2"].Value))
+                    spawnManager?.SpawnFlash2();
+                    
+                if (keyBindings.ContainsKey("SpawnSkittyBigGun") && Input.GetKeyDown(keyBindings["SpawnSkittyBigGun"].Value))
+                    spawnManager?.SpawnSkittyBigGun();
+                
+                if (keyBindings.ContainsKey("SpawnAirStrike") && Input.GetKeyDown(keyBindings["SpawnAirStrike"].Value))
+                    spawnManager?.SpawnAirStrikeGrenade();
+                
+                if (keyBindings.ContainsKey("SpawnTitanMachine") && Input.GetKeyDown(keyBindings["SpawnTitanMachine"].Value))
+                    spawnManager?.SpawnTitanMachine();
+                
+                if (keyBindings.ContainsKey("SpawnNuke") && Input.GetKeyDown(keyBindings["SpawnNuke"].Value))
+                    spawnManager?.SpawnNuke();
             }
-                
-            if (Input.GetKeyDown(keyBindings["SpawnSkittySubGun"].Value))
-                spawnManager.SpawnSkittySubGun();
-                
-            if (Input.GetKeyDown(keyBindings["SpawnFlash2"].Value))
-                spawnManager.SpawnFlash2();
-                
-            if (Input.GetKeyDown(keyBindings["SpawnSkittyBigGun"].Value))
-                spawnManager.SpawnSkittyBigGun();
-            
-            // JerryAr mod spawns
-            if (Input.GetKeyDown(keyBindings["SpawnAirStrike"].Value))
-                spawnManager.SpawnAirStrikeGrenade();
-            
-            if (Input.GetKeyDown(keyBindings["SpawnTitanMachine"].Value))
-                spawnManager.SpawnTitanMachine();
-            
-            // Nuke - massive explosion
-            if (Input.GetKeyDown(keyBindings["SpawnNuke"].Value))
-                spawnManager.SpawnNuke();
+            catch (Exception ex)
+            {
+                logger?.LogError($"Spawn input error: {ex.Message}");
+            }
         }
 
         private void ProcessEffectInputs()
         {
-            // Slomo input handling
-            bool slomoTriggered = Input.GetKeyDown(keyBindings["TriggerSlomo"].Value);
-            
-            // Check VR controller input for slomo
-            bool vrEnabled;
-            string vrButton;
-            plugin.GetSlomoVRConfig(out vrEnabled, out vrButton);
-            if (vrEnabled && effectsManager.CheckVRButtonPress(vrButton))
+            try
             {
-                slomoTriggered = true;
+                // Slomo input handling
+                bool slomoTriggered = keyBindings.ContainsKey("TriggerSlomo") && Input.GetKeyDown(keyBindings["TriggerSlomo"].Value);
+                
+                // Check VR controller input for slomo
+                bool vrEnabled;
+                string vrButton;
+                plugin.GetSlomoVRConfig(out vrEnabled, out vrButton);
+                if (vrEnabled && effectsManager?.CheckVRButtonPress(vrButton) == true)
+                {
+                    slomoTriggered = true;
+                }
+                
+                if (slomoTriggered)
+                    plugin?.TriggerSlomo();
+                    
+                if (keyBindings.ContainsKey("TriggerZeroG") && Input.GetKeyDown(keyBindings["TriggerZeroG"].Value))
+                    plugin?.TriggerZeroGravity();
+                    
+                if (keyBindings.ContainsKey("DangerCloseBarrage") && Input.GetKey(keyBindings["DangerCloseBarrage"].Value))
+                    spawnManager?.DangerCloseBarrage();
             }
-            
-            if (slomoTriggered)
-                plugin.TriggerSlomo();
-                
-            if (Input.GetKeyDown(keyBindings["TriggerZeroG"].Value))
-                plugin.TriggerZeroGravity();
-                
-            if (Input.GetKey(keyBindings["DangerCloseBarrage"].Value))
-                spawnManager.DangerCloseBarrage();
+            catch (Exception ex)
+            {
+                logger?.LogError($"Effect input error: {ex.Message}");
+            }
         }
 
         private void ProcessWeaponInputs()
         {
-            if (Input.GetKeyDown(keyBindings["ToggleFireMode"].Value))
-                weaponManager.ToggleHeldGunFireMode();
-                
-            if (Input.GetKeyDown(keyBindings["BoostMalfunction"].Value))
-                plugin.ActivateMalfunctionBoost();
-                
-            if (Input.GetKeyDown(keyBindings["EmptyHeldGunChamber"].Value))
-                weaponManager.EmptyHeldGunChamber();
+            try
+            {
+                if (keyBindings.ContainsKey("ToggleFireMode") && Input.GetKeyDown(keyBindings["ToggleFireMode"].Value))
+                    weaponManager?.ToggleHeldGunFireMode();
+                    
+                if (keyBindings.ContainsKey("BoostMalfunction") && Input.GetKeyDown(keyBindings["BoostMalfunction"].Value))
+                    plugin?.ActivateMalfunctionBoost();
+                    
+                if (keyBindings.ContainsKey("EmptyHeldGunChamber") && Input.GetKeyDown(keyBindings["EmptyHeldGunChamber"].Value))
+                    weaponManager?.EmptyHeldGunChamber();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Weapon input error: {ex.Message}");
+            }
         }
 
         private void ProcessUtilityInputs()
         {
-            if (Input.GetKeyDown(keyBindings["DestroyHeld"].Value))
-                spawnManager.DestroyHeld();
-                
-            if (Input.GetKeyDown(keyBindings["DestroyQuickbelt"].Value))
-                spawnManager.DestroyQuickbelt();
-                
-            if (Input.GetKeyDown(keyBindings["ShowStats"].Value))
+            try
             {
-                // Show general stats
-                logger.LogInfo("H3TVR Stats - Plugin is running");
+                if (keyBindings.ContainsKey("DestroyHeld") && Input.GetKeyDown(keyBindings["DestroyHeld"].Value))
+                    spawnManager?.DestroyHeld();
+                    
+                if (keyBindings.ContainsKey("DestroyQuickbelt") && Input.GetKeyDown(keyBindings["DestroyQuickbelt"].Value))
+                    spawnManager?.DestroyQuickbelt();
+                    
+                if (keyBindings.ContainsKey("ShowStats") && Input.GetKeyDown(keyBindings["ShowStats"].Value))
+                {
+                    logger?.LogInfo("H3TVR Stats - Plugin is running");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Utility input error: {ex.Message}");
             }
         }
 
@@ -145,30 +170,29 @@ namespace H3TVR
         {
             try
             {
-                // Chat Sosig Controls - using EnhancedChatSpawner directly
-                if (Input.GetKeyDown(keyBindings["SpawnChatSosigFriendly"].Value))
+                if (keyBindings.ContainsKey("SpawnChatSosigFriendly") && Input.GetKeyDown(keyBindings["SpawnChatSosigFriendly"].Value))
                 {
                     spawnManager?.SpawnChatSosigFriendly();
                 }
                 
-                if (Input.GetKeyDown(keyBindings["SpawnChatSosigEnemy"].Value))
+                if (keyBindings.ContainsKey("SpawnChatSosigEnemy") && Input.GetKeyDown(keyBindings["SpawnChatSosigEnemy"].Value))
                 {
                     spawnManager?.SpawnChatSosigEnemy();
                 }
                 
-                if (Input.GetKeyDown(keyBindings["ClearChatSosigs"].Value))
+                if (keyBindings.ContainsKey("ClearChatSosigs") && Input.GetKeyDown(keyBindings["ClearChatSosigs"].Value))
                 {
                     spawnManager?.ClearAllChatSosigs();
                 }
                 
-                if (Input.GetKeyDown(keyBindings["ChatSosigStats"].Value))
+                if (keyBindings.ContainsKey("ChatSosigStats") && Input.GetKeyDown(keyBindings["ChatSosigStats"].Value))
                 {
                     ShowChatSosigStats();
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError($"Input handling error: {ex.Message}");
+                logger?.LogError($"Chat sosig input error: {ex.Message}");
             }
         }
 
@@ -199,53 +223,47 @@ namespace H3TVR
                 var steamFriends = plugin?.GetSteamFriendsIntegration();
                 if (steamFriends == null || !plugin.IsSteamFriendsEnabled())
                 {
-                    return; // Steam Friends integration not available
+                    return;
                 }
                 
-                // Spawn random Steam friend as ally
-                if (Input.GetKeyDown(keyBindings["SpawnSteamFriendAlly"].Value))
+                if (keyBindings.ContainsKey("SpawnSteamFriendAlly") && Input.GetKeyDown(keyBindings["SpawnSteamFriendAlly"].Value))
                 {
                     steamFriends.SpawnSosigWithFriendName(true);
-                    logger.LogInfo("Spawning Steam friend as ally");
+                    logger?.LogInfo("Spawning Steam friend as ally");
                 }
                 
-                // Spawn random Steam friend as enemy
-                if (Input.GetKeyDown(keyBindings["SpawnSteamFriendEnemy"].Value))
+                if (keyBindings.ContainsKey("SpawnSteamFriendEnemy") && Input.GetKeyDown(keyBindings["SpawnSteamFriendEnemy"].Value))
                 {
                     steamFriends.SpawnSosigWithFriendName(false);
-                    logger.LogInfo("Spawning Steam friend as enemy");
+                    logger?.LogInfo("Spawning Steam friend as enemy");
                 }
                 
-                // Spawn all Steam friends as allies
-                if (Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsAlly"].Value))
+                if (keyBindings.ContainsKey("SpawnAllSteamFriendsAlly") && Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsAlly"].Value))
                 {
                     steamFriends.SpawnAllFriendsAsSosigs(true);
-                    logger.LogInfo("Spawning all Steam friends as allies");
+                    logger?.LogInfo("Spawning all Steam friends as allies");
                 }
                 
-                // Spawn all Steam friends as enemies
-                if (Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsEnemy"].Value))
+                if (keyBindings.ContainsKey("SpawnAllSteamFriendsEnemy") && Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsEnemy"].Value))
                 {
                     steamFriends.SpawnAllFriendsAsSosigs(false);
-                    logger.LogInfo("Spawning all Steam friends as enemies");
+                    logger?.LogInfo("Spawning all Steam friends as enemies");
                 }
                 
-                // Refresh Steam friends list
-                if (Input.GetKeyDown(keyBindings["RefreshSteamFriends"].Value))
+                if (keyBindings.ContainsKey("RefreshSteamFriends") && Input.GetKeyDown(keyBindings["RefreshSteamFriends"].Value))
                 {
                     steamFriends.RefreshFriendsList();
-                    logger.LogInfo("Refreshing Steam friends list");
+                    logger?.LogInfo("Refreshing Steam friends list");
                 }
                 
-                // Show Steam friends stats
-                if (Input.GetKeyDown(keyBindings["SteamFriendsStats"].Value))
+                if (keyBindings.ContainsKey("SteamFriendsStats") && Input.GetKeyDown(keyBindings["SteamFriendsStats"].Value))
                 {
-                    logger.LogInfo(steamFriends.GetStatsInfo());
+                    logger?.LogInfo(steamFriends.GetStatsInfo());
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError($"Steam Friends input handling error: {ex.Message}");
+                logger?.LogError($"Steam Friends input error: {ex.Message}");
             }
         }
 
@@ -253,22 +271,20 @@ namespace H3TVR
         {
             try
             {
-                // Spawn Warlord boss (giant scaled boss with minions)
-                if (Input.GetKeyDown(keyBindings["SpawnBossWarlord"].Value))
+                if (keyBindings.ContainsKey("SpawnBossWarlord") && Input.GetKeyDown(keyBindings["SpawnBossWarlord"].Value))
                 {
                     spawnManager?.SpawnWarlordBoss();
                 }
                 
-                // Clear all bosses
-                if (Input.GetKeyDown(keyBindings["ClearBosses"].Value))
+                if (keyBindings.ContainsKey("ClearBosses") && Input.GetKeyDown(keyBindings["ClearBosses"].Value))
                 {
                     BossSosigSystem.ClearAllBosses();
-                    logger.LogInfo("Cleared all boss sosigs");
+                    logger?.LogInfo("Cleared all boss sosigs");
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError($"Boss input handling error: {ex.Message}");
+                logger?.LogError($"Boss input error: {ex.Message}");
             }
         }
     }
