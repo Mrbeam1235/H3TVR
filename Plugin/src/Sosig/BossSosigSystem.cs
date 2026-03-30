@@ -187,11 +187,64 @@ namespace H3TVR
 
         private IEnumerator DelayedBossSetup()
         {
-            // Wait for sosig to be properly spawned
-            yield return new WaitForSeconds(0.5f);
+            // Wait for IM.Instance to be available
+            float timeout = 10f;
+            float elapsed = 0f;
+            while (IM.Instance == null && elapsed < timeout)
+            {
+                yield return new WaitForSeconds(0.5f);
+                elapsed += 0.5f;
+            }
 
-            // Try to find sosig component
-            sosig = GetComponentInChildren<Sosig>();
+            if (IM.Instance == null)
+            {
+                logger?.LogError("[BossSosig] IM.Instance not available - boss setup failed");
+                Destroy(gameObject);
+                yield break;
+            }
+
+            // Spawn the actual sosig using U120 API
+            try
+            {
+                // Use a heavy sosig type for the boss base
+                SosigEnemyID bossBaseID = SosigEnemyID.M_Swat_Heavy;
+
+                if (IM.Instance.odicSosigObjsByID != null && IM.Instance.odicSosigObjsByID.ContainsKey(bossBaseID))
+                {
+                    var template = IM.Instance.odicSosigObjsByID[bossBaseID];
+                    if (template != null && template.SosigPrefabs != null && template.SosigPrefabs.Count > 0)
+                    {
+                        var prefab = template.SosigPrefabs[UnityEngine.Random.Range(0, template.SosigPrefabs.Count)];
+                        var prefabGO = prefab?.GetGameObject();
+
+                        if (prefabGO != null)
+                        {
+                            GameObject sosigGO = Instantiate(prefabGO, transform.position, transform.rotation, transform);
+                            sosig = sosigGO.GetComponentInChildren<Sosig>();
+
+                            if (sosig != null)
+                            {
+                                // Configure as enemy (IFF 1)
+                                sosig.E.IFFCode = 1;
+                                sosig.SetIFF(1);
+
+                                // Apply config if available
+                                if (template.ConfigTemplates != null && template.ConfigTemplates.Count > 0)
+                                {
+                                    sosig.Configure(template.ConfigTemplates[0]);
+                                }
+
+                                logger?.LogInfo($"[BossSosig] Spawned boss sosig from template {bossBaseID}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"[BossSosig] Failed to spawn boss sosig: {ex.Message}");
+            }
+
             if (sosig == null)
             {
                 logger?.LogError("[BossSosig] No sosig component found - boss setup failed");
@@ -429,8 +482,18 @@ namespace H3TVR
             {
                 // Spawn 2-3 minions near the Warlord
                 int minionCount = UnityEngine.Random.Range(2, 4);
-                
-                for (int i = 0; i < minionCount; i++)
+                SosigEnemyID minionID = SosigEnemyID.M_Swat_Scout;
+
+                if (IM.Instance?.odicSosigObjsByID == null || !IM.Instance.odicSosigObjsByID.ContainsKey(minionID))
+                {
+                    logger?.LogWarning("[BossSosig] Cannot spawn minions - template not available");
+                    return;
+                }
+
+                var template = IM.Instance.odicSosigObjsByID[minionID];
+                if (template?.SosigPrefabs == null || template.SosigPrefabs.Count == 0) return;
+
+                for (int i = 0; i < minionCount && spawnedMinions.Count < 5; i++)
                 {
                     // Spawn in a circle around the Warlord
                     float angle = (360f / minionCount) * i + UnityEngine.Random.Range(-15f, 15f);
@@ -441,7 +504,35 @@ namespace H3TVR
                         Mathf.Cos(angle * Mathf.Deg2Rad) * distance
                     );
 
-                    logger?.LogDebug($"[BossSosig] Warlord spawning minion {i + 1}/{minionCount} at {spawnPos}");
+                    var prefab = template.SosigPrefabs[UnityEngine.Random.Range(0, template.SosigPrefabs.Count)];
+                    var prefabGO = prefab?.GetGameObject();
+
+                    if (prefabGO != null)
+                    {
+                        GameObject minionGO = Instantiate(prefabGO, spawnPos, Quaternion.identity);
+                        Sosig minion = minionGO.GetComponentInChildren<Sosig>();
+
+                        if (minion != null)
+                        {
+                            // Configure as enemy
+                            minion.E.IFFCode = 1;
+                            minion.SetIFF(1);
+
+                            if (template.ConfigTemplates != null && template.ConfigTemplates.Count > 0)
+                            {
+                                minion.Configure(template.ConfigTemplates[0]);
+                            }
+
+                            // Make minion attack player
+                            if (GM.CurrentPlayerBody != null)
+                            {
+                                minion.CommandAssaultPoint(GM.CurrentPlayerBody.transform.position);
+                            }
+
+                            spawnedMinions.Add(minion);
+                            logger?.LogDebug($"[BossSosig] Warlord spawned minion {i + 1}/{minionCount} at {spawnPos}");
+                        }
+                    }
                 }
 
                 logger?.LogInfo($"[BossSosig] WARLORD summoned {minionCount} minions!");

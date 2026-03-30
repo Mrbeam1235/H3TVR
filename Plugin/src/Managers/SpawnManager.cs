@@ -285,11 +285,20 @@ namespace H3TVR
         public void SpawnSkittySubGun()
         {
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-            
+
             // Play before-action sound
             audioManager?.PlayWeaponSpawnSound("before_spawn", spawnPos, true, "weapons/weapon_materializing.wav", 0.8f);
-            
-            SpawnObject("SkittySubGun", "SkittySubGun");
+
+            // Use WeaponManager's list-based spawning (uses GunList/MagazineList config)
+            var weaponManager = plugin.GetWeaponManager();
+            if (weaponManager != null)
+            {
+                weaponManager.SpawnSkittySubGun();
+            }
+            else
+            {
+                logger.LogWarning("WeaponManager not available for SpawnSkittySubGun");
+            }
 
             // Play after-action sound
             audioManager?.PlayWeaponSpawnSound("after_spawn", spawnPos, true, "weapons/weapon_ready.wav", 0.7f);
@@ -298,14 +307,19 @@ namespace H3TVR
         public void SpawnSkittyBigGun()
         {
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-            
+
             // Play before-action sound
             audioManager?.PlayWeaponSpawnSound("before_big_spawn", spawnPos, true, "weapons/big_gun_materializing.wav", 0.9f);
-            
+
+            // Use WeaponManager's list-based spawning (uses GunList/MagazineList config)
             var weaponManager = plugin.GetWeaponManager();
             if (weaponManager != null)
             {
-                weaponManager.SpawnRandomGun(true);
+                weaponManager.SpawnSkittyBigGun();
+            }
+            else
+            {
+                logger.LogWarning("WeaponManager not available for SpawnSkittyBigGun");
             }
 
             // Play after-action sound

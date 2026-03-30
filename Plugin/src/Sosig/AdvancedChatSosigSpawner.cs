@@ -206,15 +206,24 @@ namespace H3TVR
         {
             try
             {
+                logger?.LogInfo($"[SpawnSequence] Starting ally spawn for '{username}'");
+
+                // Check if player is ready
+                if (!positionCalculator.IsPlayerReady())
+                {
+                    logger?.LogWarning("[SpawnSequence] Player not ready - cannot spawn");
+                    return;
+                }
+
                 if (spawnedChatters.Count >= config.maxAllySosigs.Value)
                 {
-                    logger?.LogWarning($"Max ally sosigs reached ({config.maxAllySosigs.Value})");
+                    logger?.LogWarning($"[SpawnSequence] Max ally sosigs reached ({config.maxAllySosigs.Value})");
                     return;
                 }
 
                 if (Time.time - lastSpawnTime < config.spawnCooldown.Value)
                 {
-                    logger?.LogWarning("Spawn cooldown active");
+                    logger?.LogWarning("[SpawnSequence] Spawn cooldown active");
                     return;
                 }
 
@@ -222,31 +231,50 @@ namespace H3TVR
                 {
                     if (userSosigCounts[username] >= config.maxSosigsPerUser.Value)
                     {
-                        logger?.LogWarning($"User {username} has reached max sosigs limit");
+                        logger?.LogWarning($"[SpawnSequence] User {username} has reached max sosigs limit");
                         return;
                     }
                 }
 
                 Vector3 spawnPos = positionCalculator.CalculateAllySpawnPoint();
+                if (spawnPos == Vector3.zero)
+                {
+                    logger?.LogError("[SpawnSequence] Invalid spawn position (Vector3.zero)");
+                    return;
+                }
+
                 Quaternion spawnRot = Quaternion.identity;
 
+                logger?.LogInfo($"[SpawnSequence] Spawning at position: {spawnPos}");
+
                 Sosig sosig = null;
-                
+
                 if (config.useModernSpawnSystem.Value)
                 {
                     var enemyID = config.GetRandomAllyID();
+                    logger?.LogInfo($"[SpawnSequence] Using modern spawn with ID: {enemyID}");
                     sosig = spawner.SpawnModern(enemyID, spawnPos, spawnRot, 0);
+
+                    if (sosig == null)
+                    {
+                        logger?.LogWarning("[SpawnSequence] Modern spawn returned null, trying legacy...");
+                    }
                 }
-                
+
                 if (sosig == null)
                 {
                     var template = GetRandomTemplate(true);
                     if (template != null)
                     {
+                        logger?.LogInfo($"[SpawnSequence] Using legacy spawn with template: {template.SosigEnemyID}");
                         sosig = spawner.SpawnLegacy(template, spawnPos, spawnRot, 0);
                     }
+                    else
+                    {
+                        logger?.LogError("[SpawnSequence] No templates available for legacy spawn!");
+                    }
                 }
-                
+
                 if (sosig != null)
                 {
                     behaviorController.SetupAllyBehavior(sosig);

@@ -12,110 +12,93 @@ namespace H3TVR
     {
         private ManualLogSource logger;
         private SosigTemplateCache templateCache;
-        
+
         public void Initialize(ManualLogSource logSource, SosigTemplateCache cache)
         {
             logger = logSource;
             templateCache = cache;
+            logger?.LogInfo("[SosigSpawner] Initialized");
         }
-        
+
         public Sosig SpawnModern(SosigEnemyID enemyID, Vector3 pos, Quaternion rot, int IFF)
         {
             try
             {
+                logger?.LogInfo($"[SosigSpawner] SpawnModern called - ID: {enemyID}, Pos: {pos}, IFF: {IFF}");
+
+                if (templateCache == null)
+                {
+                    logger?.LogError("[SosigSpawner] templateCache is null!");
+                    return null;
+                }
+
                 var template = templateCache.GetTemplate(enemyID);
                 if (template == null)
                 {
-                    logger?.LogError($"Could not find template for SosigEnemyID: {enemyID}");
+                    logger?.LogError($"[SosigSpawner] Could not find template for SosigEnemyID: {enemyID}");
                     return null;
                 }
-                
-                // Spawn sosig using the template
+
+                logger?.LogInfo($"[SosigSpawner] Got template: {template.DisplayName ?? template.SosigEnemyID.ToString()}");
+
+                // Spawn sosig using SpawnLegacy (handles all config, weapons, armor, outfit)
                 Sosig sosig = SpawnLegacy(template, pos, rot, IFF);
-                
+
                 if (sosig == null)
                 {
-                    logger?.LogError("Modern sosig spawn returned null");
+                    logger?.LogError("[SosigSpawner] SpawnLegacy returned null");
                     return null;
                 }
-                
-                // Configure with modern config system if available
-                try
-                {
-                    if (template.ConfigTemplates != null && template.ConfigTemplates.Count > 0)
-                    {
-                        var configTemplate = template.ConfigTemplates[UnityEngine.Random.Range(0, template.ConfigTemplates.Count)];
-                        sosig.Configure(configTemplate);
-                    }
-                }
-                catch (Exception configEx)
-                {
-                    logger?.LogWarning($"Failed to apply config template: {configEx.Message}");
-                }
-                
-                // Apply armor based on IFF code
-                int armorLevel = IFF == 0 ? SosigCustomizationUI.AllyArmor.Value : SosigCustomizationUI.EnemyArmor.Value;
-                SosigArmorManager.ApplyArmorToSosig(sosig, armorLevel);
-                
-                sosig.E.IFFCode = IFF;
-                sosig.SetIFF(IFF);
-                
-                try
-                {
-                    sosig.Inventory.FillAllAmmo();
-                }
-                catch (Exception invEx)
-                {
-                    logger?.LogWarning($"Failed to fill ammo: {invEx.Message}");
-                }
-                
-                try
-                {
-                    if (template.OutfitConfig != null && template.OutfitConfig.Count > 0)
-                    {
-                        ApplyOutfit(sosig, template.OutfitConfig[UnityEngine.Random.Range(0, template.OutfitConfig.Count)]);
-                    }
-                }
-                catch (Exception outfitEx)
-                {
-                    logger?.LogWarning($"Failed to apply outfit: {outfitEx.Message}");
-                }
-                
+
+                logger?.LogInfo($"[SosigSpawner] SpawnModern completed successfully");
                 return sosig;
             }
             catch (Exception ex)
             {
-                logger?.LogError($"Modern sosig spawn failed: {ex.Message}\n{ex.StackTrace}");
+                logger?.LogError($"[SosigSpawner] SpawnModern failed: {ex.Message}\n{ex.StackTrace}");
                 return null;
             }
         }
-        
+
         public Sosig SpawnLegacy(SosigEnemyTemplate template, Vector3 pos, Quaternion rot, int IFF)
         {
             try
             {
+                logger?.LogInfo($"[SosigSpawner] SpawnLegacy called - Template: {template?.SosigEnemyID}, Pos: {pos}");
+
                 if (template == null || template.SosigPrefabs == null || template.SosigPrefabs.Count == 0)
                 {
-                    logger?.LogError("Invalid template");
+                    logger?.LogError("[SosigSpawner] Invalid template or no prefabs available");
                     return null;
                 }
                 
                 var prefab = template.SosigPrefabs[UnityEngine.Random.Range(0, template.SosigPrefabs.Count)];
-                if (prefab?.GetGameObject() == null)
+                if (prefab == null)
                 {
-                    logger?.LogError("Invalid prefab");
+                    logger?.LogError("[SosigSpawner] Prefab is null");
                     return null;
                 }
-                
-                GameObject sosigGO = GameObject.Instantiate(prefab.GetGameObject(), pos, rot);
+
+                var prefabGO = prefab.GetGameObject();
+                if (prefabGO == null)
+                {
+                    logger?.LogError("[SosigSpawner] prefab.GetGameObject() returned null");
+                    return null;
+                }
+
+                logger?.LogInfo($"[SosigSpawner] Instantiating prefab at {pos}");
+                GameObject sosigGO = GameObject.Instantiate(prefabGO, pos, rot);
                 Sosig sosig = sosigGO.GetComponentInChildren<Sosig>();
-                
+
                 if (sosig == null)
                 {
+                    logger?.LogError("[SosigSpawner] No Sosig component found on instantiated object");
                     GameObject.Destroy(sosigGO);
                     return null;
                 }
-                
+
+                logger?.LogInfo("[SosigSpawner] Sosig component found, configuring...");
+
                 if (template.ConfigTemplates != null && template.ConfigTemplates.Count > 0)
                 {
                     var config = template.ConfigTemplates[UnityEngine.Random.Range(0, template.ConfigTemplates.Count)];
@@ -124,24 +107,42 @@ namespace H3TVR
                         sosig.Configure(config);
                     }
                 }
-                
+
                 sosig.E.IFFCode = IFF;
-                if (IFF < sosig.Priority.IFFChart.Length)
+                sosig.SetIFF(IFF);
+
+                // Configure IFF chart so sosig knows who to attack
+                if (sosig.Priority.IFFChart != null)
                 {
-                    sosig.Priority.IFFChart[IFF] = true;
+                    for (int i = 0; i < sosig.Priority.IFFChart.Length; i++)
+                    {
+                        // Sosigs are hostile to all IFFs except their own
+                        sosig.Priority.IFFChart[i] = (i != IFF);
+                    }
                 }
-                
+
                 // Apply armor based on IFF code
                 int armorLevel = IFF == 0 ? SosigCustomizationUI.AllyArmor.Value : SosigCustomizationUI.EnemyArmor.Value;
                 SosigArmorManager.ApplyArmorToSosig(sosig, armorLevel);
-                
+
                 EquipWeapons(sosig, template, pos, rot);
-                
+
+                // Fill ammo after weapons are equipped
+                try
+                {
+                    sosig.Inventory.FillAllAmmo();
+                }
+                catch (Exception ammoEx)
+                {
+                    logger?.LogWarning($"[SosigSpawner] Failed to fill ammo: {ammoEx.Message}");
+                }
+
                 if (template.OutfitConfig != null && template.OutfitConfig.Count > 0)
                 {
                     ApplyOutfit(sosig, template.OutfitConfig[UnityEngine.Random.Range(0, template.OutfitConfig.Count)]);
                 }
-                
+
+                logger?.LogInfo("[SosigSpawner] SpawnLegacy completed successfully");
                 return sosig;
             }
             catch (Exception ex)
