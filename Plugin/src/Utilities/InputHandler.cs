@@ -38,8 +38,6 @@ namespace H3TVR
             ProcessEffectInputs();
             ProcessWeaponInputs();
             ProcessUtilityInputs();
-            ProcessChatSosigInputs();
-            ProcessBossInputs();
             ProcessSteamFriendsInputs();
         }
 
@@ -138,6 +136,9 @@ namespace H3TVR
                     
                 if (keyBindings.ContainsKey("EmptyHeldGunChamber") && Input.GetKeyDown(keyBindings["EmptyHeldGunChamber"].Value))
                     weaponManager?.EmptyHeldGunChamber();
+
+                if (keyBindings.ContainsKey("SwapHeldGun") && Input.GetKeyDown(keyBindings["SwapHeldGun"].Value))
+                    weaponManager?.SwapHeldGun();
             }
             catch (Exception ex)
             {
@@ -166,56 +167,6 @@ namespace H3TVR
             }
         }
 
-        private void ProcessChatSosigInputs()
-        {
-            try
-            {
-                if (keyBindings.ContainsKey("SpawnChatSosigFriendly") && Input.GetKeyDown(keyBindings["SpawnChatSosigFriendly"].Value))
-                {
-                    spawnManager?.SpawnChatSosigFriendly();
-                }
-                
-                if (keyBindings.ContainsKey("SpawnChatSosigEnemy") && Input.GetKeyDown(keyBindings["SpawnChatSosigEnemy"].Value))
-                {
-                    spawnManager?.SpawnChatSosigEnemy();
-                }
-                
-                if (keyBindings.ContainsKey("ClearChatSosigs") && Input.GetKeyDown(keyBindings["ClearChatSosigs"].Value))
-                {
-                    spawnManager?.ClearAllChatSosigs();
-                }
-                
-                if (keyBindings.ContainsKey("ChatSosigStats") && Input.GetKeyDown(keyBindings["ChatSosigStats"].Value))
-                {
-                    ShowChatSosigStats();
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Chat sosig input error: {ex.Message}");
-            }
-        }
-
-        private void ShowChatSosigStats()
-        {
-            try
-            {
-                var stats = spawnManager?.GetChatSosigStats();
-                if (stats != null)
-                {
-                    string statsMessage = $"Chat Sosigs - Active: {stats.activeSosigCount} | " +
-                                        $"Friendly: {stats.friendlyCount} | " +
-                                        $"Enemy: {stats.enemyCount} | " +
-                                        $"Queued: {stats.queuedSpawns}";
-                    logger.LogInfo(statsMessage);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to show chat sosig stats: {ex.Message}");
-            }
-        }
-        
         private void ProcessSteamFriendsInputs()
         {
             try
@@ -224,30 +175,6 @@ namespace H3TVR
                 if (steamFriends == null || !plugin.IsSteamFriendsEnabled())
                 {
                     return;
-                }
-                
-                if (keyBindings.ContainsKey("SpawnSteamFriendAlly") && Input.GetKeyDown(keyBindings["SpawnSteamFriendAlly"].Value))
-                {
-                    steamFriends.SpawnSosigWithFriendName(true);
-                    logger?.LogInfo("Spawning Steam friend as ally");
-                }
-                
-                if (keyBindings.ContainsKey("SpawnSteamFriendEnemy") && Input.GetKeyDown(keyBindings["SpawnSteamFriendEnemy"].Value))
-                {
-                    steamFriends.SpawnSosigWithFriendName(false);
-                    logger?.LogInfo("Spawning Steam friend as enemy");
-                }
-                
-                if (keyBindings.ContainsKey("SpawnAllSteamFriendsAlly") && Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsAlly"].Value))
-                {
-                    steamFriends.SpawnAllFriendsAsSosigs(true);
-                    logger?.LogInfo("Spawning all Steam friends as allies");
-                }
-                
-                if (keyBindings.ContainsKey("SpawnAllSteamFriendsEnemy") && Input.GetKeyDown(keyBindings["SpawnAllSteamFriendsEnemy"].Value))
-                {
-                    steamFriends.SpawnAllFriendsAsSosigs(false);
-                    logger?.LogInfo("Spawning all Steam friends as enemies");
                 }
                 
                 if (keyBindings.ContainsKey("RefreshSteamFriends") && Input.GetKeyDown(keyBindings["RefreshSteamFriends"].Value))
@@ -264,27 +191,6 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger?.LogError($"Steam Friends input error: {ex.Message}");
-            }
-        }
-
-        private void ProcessBossInputs()
-        {
-            try
-            {
-                if (keyBindings.ContainsKey("SpawnBossWarlord") && Input.GetKeyDown(keyBindings["SpawnBossWarlord"].Value))
-                {
-                    spawnManager?.SpawnWarlordBoss();
-                }
-                
-                if (keyBindings.ContainsKey("ClearBosses") && Input.GetKeyDown(keyBindings["ClearBosses"].Value))
-                {
-                    BossSosigSystem.ClearAllBosses();
-                    logger?.LogInfo("Cleared all boss sosigs");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Boss input error: {ex.Message}");
             }
         }
     }

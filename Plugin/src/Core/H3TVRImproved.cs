@@ -57,12 +57,13 @@ namespace H3TVR
         private ConfigEntry<bool> enableKillSlomo;
         
         // Audio Configuration
-        private ConfigEntry<bool> slomoAffectsAudio;
-        private ConfigEntry<float> slomoAudioPitchScale;
-        private ConfigEntry<bool> slomoAudioPreservePitch;
-        private ConfigEntry<bool> slomoAffectsAudioSpeed;
-        private ConfigEntry<float> slomoAudioSpeedScale;
-        private ConfigEntry<string> slomoAudioMode; // "PitchOnly", "SpeedOnly", "Both", "Independent"
+        // Slomo audio settings (hardcoded defaults - [Audio] config section removed)
+        private const bool slomoAffectsAudio = true;
+        private const float slomoAudioPitchScale = 1f;
+        private const bool slomoAudioPreservePitch = false;
+        private const bool slomoAffectsAudioSpeed = false;
+        private const float slomoAudioSpeedScale = 1f;
+        private const string slomoAudioMode = "Both"; // "PitchOnly", "SpeedOnly", "Both", "Independent"
         
         // Gun Randomization Configuration
         private ConfigEntry<bool> useItemManagerForGunRandomization;
@@ -90,16 +91,14 @@ namespace H3TVR
         // Danger Close Configuration
         private ConfigEntry<int> dangerCloseMinCount;
         private ConfigEntry<int> dangerCloseMaxCount;
+
+        // Air Strike Grenade Configuration
+        private ConfigEntry<int> airStrikeGrenadeCount;
+        private ConfigEntry<float> airStrikePinPullChance;
         
         // Key Bindings - Organized
         private readonly Dictionary<string, ConfigEntry<KeyCode>> keyBindings = new Dictionary<string, ConfigEntry<KeyCode>>();
-        
-        // Chat Sosig Configuration
-        // NOTE: File paths are configured in ChatWatcher under [Chat Watcher - File Mode]
-        // to avoid duplicate config entries. Only enable/max settings here.
-        private ConfigEntry<bool> enableTwitchChatSosigs;
-        private ConfigEntry<int> maxChatSosigs;
-        
+
         // Steam Friends Configuration
         private ConfigEntry<bool> enableSteamFriends;
         private ConfigEntry<bool> steamFriendsRandomNames;
@@ -126,12 +125,8 @@ namespace H3TVR
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
         private AudioManager audioManager;
-        private AdvancedChatSosigSpawner advancedChatSpawner; // Advanced Chat Sosig Spawner with Update 120 TNH
-        private SosigArmorWristMenuIntegration sosigArmorWristMenu;
         private SteamFriendsIntegration steamFriendsIntegration; // Steam Friends Integration
-        private SosigCustomizationUI sosigCustomizationUI;
         private AirdropManager airdropManager;
-        private LioranBoardIntegration lioranBoardIntegration;
         #endregion
 
         #region Initialization
@@ -162,28 +157,20 @@ namespace H3TVR
                 base.Logger.LogInfo("Step 3: Initializing components...");
                 InitializeComponents();
 
-                // Initialize UI
-                base.Logger.LogInfo("Step 3.5: Initializing UI...");
-                InitializeUI();
-                
                 // Initialize Airdrop Manager
                 base.Logger.LogInfo("Step 3.6: Initializing Airdrop Manager...");
                 InitializeAirdropManager();
 
-                // Initialize chat spawner first - it's the core component
-                base.Logger.LogInfo("Step 4: Initializing Sosig Spawner...");
-                InitializeSosigSpawner();
-                
-                // Now initialize SpawnManager with the chat spawner reference
+                // Initialize SpawnManager
                 base.Logger.LogInfo("Step 5: Initializing SpawnManager...");
-                if (spawnManager != null && advancedChatSpawner != null)
+                if (spawnManager != null)
                 {
-                    spawnManager.Initialize(this, Logger, advancedChatSpawner, audioManager);
+                    spawnManager.Initialize(this, Logger, audioManager);
                     base.Logger.LogInfo("SpawnManager initialized successfully");
                 }
                 else
                 {
-                    Logger.LogWarning($"Cannot initialize SpawnManager - spawnManager: {spawnManager != null}, advancedChatSpawner: {advancedChatSpawner != null}");
+                    Logger.LogWarning($"Cannot initialize SpawnManager - spawnManager: {spawnManager != null}");
                 }
                 
                 // Initialize TwitchLib integration (if enabled)
@@ -194,21 +181,6 @@ namespace H3TVR
                 base.Logger.LogInfo("Step 6.5: Initializing Steam Friends integration...");
                 InitializeSteamFriendsIntegration();
 
-                // Initialize LioranBoard integration
-                base.Logger.LogInfo("Step 6.6: Initializing LioranBoard 2 integration...");
-                InitializeLioranBoardIntegration();
-                
-                // Initialize wrist menu integration with error handling
-                base.Logger.LogInfo("Step 7: Initializing wrist menu...");
-                try
-                {
-                    InitializeSosigArmorWristMenuIntegration();
-                }
-                catch (Exception ex)
-                {
-                    base.Logger.LogWarning($"Non-critical error in wrist menu integration: {ex.Message}");
-                }
-                
                 base.Logger.LogInfo("H3TVR Enhanced Edition loaded successfully!");
                 
                 // Log dependency status
@@ -219,18 +191,6 @@ namespace H3TVR
                 {
                     base.Logger.LogInfo("Meatyceiver 2 Integration: ACTIVE");
                     base.Logger.LogInfo(MeatyceiverIntegrationManager.GetTransformationStats());
-                }
-
-                // Log TwitchLib status
-                if (enableTwitchChatSosigs != null && enableTwitchChatSosigs.Value)
-                {
-                    base.Logger.LogInfo("Chat Sosig System: ENABLED");
-                    base.Logger.LogInfo("  - Standalone mode (no Twitch integration)");
-                    base.Logger.LogInfo("  - Use keyboard: P (ally), O (enemy), Delete (clear)");
-                }
-                else
-                {
-                    base.Logger.LogInfo("Chat Sosig System: DISABLED");
                 }
             }
             catch (Exception ex)
@@ -276,14 +236,8 @@ namespace H3TVR
             // NEW: Kill Slomo Configuration
             enableKillSlomo = Config.Bind("Slomo", "EnableKillSlomo", true, "Enable slow motion effect on enemy kill.");
         
-            // Audio configuration
-            slomoAffectsAudio = Config.Bind("Audio", "SlomoAffectsAudio", true, "Whether slomo affects audio pitch");
-            slomoAudioPitchScale = Config.Bind("Audio", "SlomoAudioPitchScale", 1f, "Audio pitch multiplier during slomo (1.0 = normal pitch, 0.5 = half pitch)");
-            slomoAudioPreservePitch = Config.Bind("Audio", "SlomoPreservePitch", false, "If true, audio pitch is preserved (no pitch change). If false, uses pitch scaling.");
-            slomoAffectsAudioSpeed = Config.Bind("Audio", "SlomoAffectsAudioSpeed", false, "Whether slomo affects audio speed (time stretching)");
-            slomoAudioSpeedScale = Config.Bind("Audio", "SlomoAudioSpeedScale", 1f, "Audio speed multiplier during slomo (1.0 = normal speed, 0.5 = half speed)");
-            slomoAudioMode = Config.Bind("Audio", "SlomoAudioMode", "Both", "Audio adjustment mode during slomo: 'PitchOnly', 'SpeedOnly', 'Both', 'Independent'");
-            
+            // Audio configuration removed - slomo audio uses hardcoded defaults
+
             // Gun randomization
             useItemManagerForGunRandomization = Config.Bind("GunRandomization", "UseItemManager", true, 
                 "Use ItemManager for gun randomization (includes all H3VR and modded guns). If false, uses GunList/MagazineList config files.");
@@ -324,14 +278,15 @@ namespace H3TVR
             // Danger Close Configuration
             dangerCloseMinCount = Config.Bind("DangerClose", "MinCount", 1, "Minimum danger close rounds");
             dangerCloseMaxCount = Config.Bind("DangerClose", "MaxCount", 5, "Maximum danger close rounds");
-            
-            // Chat Sosig Configuration
-            // NOTE: File paths are in ChatWatcher [Chat Watcher - File Mode] section
-            enableTwitchChatSosigs = Config.Bind("ChatSosigs", "Enabled", true, "Enable Chat Sosig spawning system");
-            maxChatSosigs = Config.Bind("ChatSosigs", "MaxChatSosigs", 10, "Maximum number of active chat sosigs");
+
+            // Air Strike Grenade Configuration
+            airStrikeGrenadeCount = Config.Bind("AirStrike", "GrenadeCount", 1,
+                "Number of air strike grenades to spawn per redeem");
+            airStrikePinPullChance = Config.Bind("AirStrike", "PinPullChance", 1.0f,
+                "Chance (0.0 - 1.0) that each spawned air strike grenade has its pin pulled and is armed");
 
             // Steam Friends Configuration
-            enableSteamFriends = Config.Bind("SteamFriends", "Enabled", true, "Enable Steam Friends integration for sosig spawning");
+            enableSteamFriends = Config.Bind("SteamFriends", "Enabled", true, "Enable Steam Friends list integration");
             steamFriendsRandomNames = Config.Bind("SteamFriends", "UseRandomNames", false, "Use random friend from list instead of specific name");
             steamFriendsRefreshInterval = Config.Bind("SteamFriends", "RefreshInterval", 300f, "Auto-refresh Steam friends list interval (seconds)");
             
@@ -376,38 +331,17 @@ namespace H3TVR
                 { "ToggleFireMode", new KeyValuePair<KeyCode, string>(KeyCode.T, "Toggle Fire Mode") },
                 { "BoostMalfunction", new KeyValuePair<KeyCode, string>(KeyCode.Y, "Boost Malfunction") },
                 { "ShowStats", new KeyValuePair<KeyCode, string>(KeyCode.Tab, "Show Stats") },
-                
-                // Chat Sosig Key Bindings
-                { "SpawnChatSosigFriendly", new KeyValuePair<KeyCode, string>(KeyCode.P, "Spawn Friendly Chat Sosig") },
-                { "SpawnChatSosigEnemy", new KeyValuePair<KeyCode, string>(KeyCode.O, "Spawn Enemy Chat Sosig") },
-                { "CycleChatSosigArmor", new KeyValuePair<KeyCode, string>(KeyCode.L, "Cycle Chat Sosig Armor") },
-                { "ClearChatSosigs", new KeyValuePair<KeyCode, string>(KeyCode.Delete, "Clear All Chat Sosigs") },
-                { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") },
-                { "ArmorGUI", new KeyValuePair<KeyCode, string>(KeyCode.F6, "Open Armor Configuration GUI") },
-                
-                // Boss Sosig Key Bindings
-                { "SpawnBossRandom", new KeyValuePair<KeyCode, string>(KeyCode.B, "Spawn Random Boss") },
-                { "SpawnBossTank", new KeyValuePair<KeyCode, string>(KeyCode.Alpha1, "Spawn Tank Boss") },
-                { "SpawnBossBerserker", new KeyValuePair<KeyCode, string>(KeyCode.Alpha2, "Spawn Berserker Boss") },
-                { "SpawnBossSniper", new KeyValuePair<KeyCode, string>(KeyCode.Alpha3, "Spawn Sniper Boss") },
-                { "SpawnBossSummoner", new KeyValuePair<KeyCode, string>(KeyCode.Alpha4, "Spawn Summoner Boss") },
-                { "SpawnBossElite", new KeyValuePair<KeyCode, string>(KeyCode.Alpha5, "Spawn Elite Boss") },
-                { "SpawnBossJuggernaut", new KeyValuePair<KeyCode, string>(KeyCode.Alpha6, "Spawn Juggernaut Boss") },
-                { "SpawnBossAssassin", new KeyValuePair<KeyCode, string>(KeyCode.Alpha7, "Spawn Assassin Boss") },
-                { "SpawnBossCommander", new KeyValuePair<KeyCode, string>(KeyCode.Alpha8, "Spawn Commander Boss") },
-                { "ClearBosses", new KeyValuePair<KeyCode, string>(KeyCode.Backspace, "Clear All Bosses") },
-                
+
                 // Steam Friends Key Bindings
-                { "SpawnSteamFriendAlly", new KeyValuePair<KeyCode, string>(KeyCode.LeftBracket, "Spawn Steam Friend as Ally") },
-                { "SpawnSteamFriendEnemy", new KeyValuePair<KeyCode, string>(KeyCode.RightBracket, "Spawn Steam Friend as Enemy") },
-                { "SpawnAllSteamFriendsAlly", new KeyValuePair<KeyCode, string>(KeyCode.F7, "Spawn All Steam Friends as Allies") },
-                { "SpawnAllSteamFriendsEnemy", new KeyValuePair<KeyCode, string>(KeyCode.F8, "Spawn All Steam Friends as Enemies") },
                 { "RefreshSteamFriends", new KeyValuePair<KeyCode, string>(KeyCode.F9, "Refresh Steam Friends List") },
                 { "SteamFriendsStats", new KeyValuePair<KeyCode, string>(KeyCode.Home, "Show Steam Friends Stats") },
                 
                 // JerryAr mod keybindings
                 { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
-                { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") }
+                { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") },
+
+                // Swap Gun redeem
+                { "SwapHeldGun", new KeyValuePair<KeyCode, string>(KeyCode.F12, "Swap Held Gun for Random Gun") }
             };
 
             foreach (var kvp in keyBindingConfigs)
@@ -433,12 +367,6 @@ namespace H3TVR
                 // Initialize Stovepipe Integration
                 StovepipeIntegrationManager.Initialize(Logger, Config);
 
-                // Initialize Advanced AI Config
-                AdvancedAIConfig.ApplyConfig(Config);
-
-                // Initialize Boss Sosig Config
-                BossConfig.ApplyConfig(Config);
-
                 // Log final status
                 if (OptionalDependencyManager.HasAnyDependencies())
                 {
@@ -459,18 +387,6 @@ namespace H3TVR
                 {
                     Logger.LogInfo("[H3TVRImproved] Running in standard mode - no optional dependencies found");
                 }
-
-                // Log Advanced AI status
-                if (AdvancedSosigAI.EnableAdvancedAI)
-                {
-                    Logger.LogInfo("[H3TVRImproved] Advanced AI system enabled");
-                }
-
-                // Log Boss System status
-                if (BossSosigSystem.EnableBossSosigs)
-                {
-                    Logger.LogInfo($"[H3TVRImproved] Boss Sosig system enabled (Max: {BossSosigSystem.MaxBossesPerSession})");
-                }
             }
             catch (Exception ex)
             {
@@ -482,12 +398,6 @@ namespace H3TVR
         {
             airdropManager = gameObject.AddComponent<AirdropManager>();
             airdropManager.Initialize(this, Logger);
-        }
-
-        private void InitializeUI()
-        {
-            sosigCustomizationUI = gameObject.AddComponent<SosigCustomizationUI>();
-            sosigCustomizationUI.Initialize(Config);
         }
 
         private void InitializeComponents()
@@ -507,7 +417,7 @@ namespace H3TVR
                 // Initialize each component
                 audioManager.Initialize(this, Logger);
                 inputHandler.Initialize(keyBindings, this);
-                // SpawnManager will be initialized after AdvancedChatSosigSpawner is created
+                // SpawnManager is initialized in Awake after components are created
                 effectsManager.Initialize(this, slomoMovementController, Logger);
                 weaponManager.Initialize(this, Logger, audioManager);
 
@@ -520,35 +430,13 @@ namespace H3TVR
             }
         }
 
-        private void InitializeSosigSpawner()
-        {
-            try
-            {
-                // Initialize the Advanced Chat Sosig Spawner (Update 120 TNH System)
-                // Works standalone - no Twitch integration needed
-                GameObject advancedSpawnerObject = new GameObject("AdvancedChatSosigSpawner");
-                advancedSpawnerObject.transform.SetParent(transform);
-                
-                advancedChatSpawner = advancedSpawnerObject.AddComponent<AdvancedChatSosigSpawner>();
-                advancedChatSpawner.Initialize(this, Logger);
-                
-                Logger.LogInfo("Advanced Chat Sosig Spawner initialized with Update 120 TNH system (standalone mode)!");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Error initializing Sosig Spawner: {ex.Message}");
-            }
-        }
-
         /// <summary>
         /// Initialize TwitchLib integration for real-time chat
         /// </summary>
         private void InitializeTwitchIntegration()
         {
-            // TwitchChatManager removed - AdvancedChatSosigSpawner works standalone
-            // Twitch integration no longer available
-            Logger.LogInfo("Twitch integration disabled - AdvancedChatSosigSpawner runs in standalone mode");
-            Logger.LogInfo("Use keyboard controls: P = spawn ally, O = spawn enemy, Delete = clear all");
+            // TwitchChatManager removed - Twitch integration no longer available
+            Logger.LogInfo("Twitch integration disabled");
         }
         
         /// <summary>
@@ -569,18 +457,8 @@ namespace H3TVR
                 steamFriendsObject.transform.SetParent(transform);
                 
                 steamFriendsIntegration = steamFriendsObject.AddComponent<SteamFriendsIntegration>();
-                
-                // Wait for sosig spawner to be ready
-                if (advancedChatSpawner != null)
-                {
-                    steamFriendsIntegration.Initialize(this, advancedChatSpawner, Logger);
-                    Logger.LogInfo("Steam Friends integration initialized successfully");
-                    Logger.LogInfo("Steam Friends controls: [ = spawn ally, ] = spawn enemy, F7 = spawn all as allies, F8 = spawn all as enemies");
-                }
-                else
-                {
-                    Logger.LogWarning("Cannot initialize Steam Friends - Advanced Chat Spawner not ready");
-                }
+                steamFriendsIntegration.Initialize(this, Logger);
+                Logger.LogInfo("Steam Friends integration initialized successfully");
             }
             catch (Exception ex)
             {
@@ -589,86 +467,6 @@ namespace H3TVR
             }
         }
 
-        /// <summary>
-        /// Initialize LioranBoard 2 integration for external commands
-        /// </summary>
-        private void InitializeLioranBoardIntegration()
-        {
-            try
-            {
-                GameObject lioranBoardObject = new GameObject("LioranBoardIntegration");
-                lioranBoardObject.transform.SetParent(transform);
-                lioranBoardIntegration = lioranBoardObject.AddComponent<LioranBoardIntegration>();
-                lioranBoardIntegration.Initialize(Logger, this);
-                Logger.LogInfo("LioranBoard 2 integration initialized successfully.");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Failed to initialize LioranBoard 2 integration: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Initialize the Sosig Armor Wrist Menu Integration
-        /// </summary>
-        private void InitializeSosigArmorWristMenuIntegration()
-        {
-            try
-            {
-                // Create the integration component
-                var integrationObject = new GameObject("SosigArmorWristMenuIntegration");
-                integrationObject.transform.SetParent(transform);
-
-                sosigArmorWristMenu = integrationObject.AddComponent<SosigArmorWristMenuIntegration>();
-
-                // Initialize the integration with the plugin reference
-                sosigArmorWristMenu.Initialize(this, null);
-                
-                Logger.LogInfo("Sosig Armor Wrist Menu Integration initialized successfully");
-                
-                // Start delayed armor system initialization to avoid H3VR timing issues
-                StartCoroutine(DelayedArmorSystemInitialization());
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Failed to initialize Sosig Armor Wrist Menu Integration: {ex.Message}");
-            }
-        }
-        
-        /// <summary>
-        /// Initialize armor system with delay to ensure H3VR systems are ready
-        /// </summary>
-        private IEnumerator DelayedArmorSystemInitialization()
-        {
-            // Wait a few seconds for H3VR systems to be fully loaded
-            yield return new WaitForSeconds(3f);
-            
-            Logger.LogInfo("Delayed armor system initialization completed");
-            
-            // Retry template cache build for chat spawner after H3VR is ready
-            yield return new WaitForSeconds(2f);
-            
-            // Retry template cache build
-            if (advancedChatSpawner != null)
-            {
-                Logger.LogInfo("Retrying template cache build after H3VR initialization...");
-                // Use reflection to call BuildTemplateCache
-                var method = advancedChatSpawner.GetType().GetMethod("BuildTemplateCache", 
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (method != null)
-                {
-                    try
-                    {
-                        method.Invoke(advancedChatSpawner, null);
-                        Logger.LogInfo("Template cache rebuild completed");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogWarning($"Template cache rebuild warning: {ex.Message}");
-                    }
-                }
-            }
-        }
         #endregion
 
         #region Update Loop - Delegated to InputHandler
@@ -694,7 +492,6 @@ namespace H3TVR
 
         private void OnDestroy()
         {
-            lioranBoardIntegration?.Shutdown();
         }
 
         private void HandleSlomoStateMachine()
@@ -1062,6 +859,12 @@ namespace H3TVR
             min = dangerCloseMinCount.Value;
             max = dangerCloseMaxCount.Value;
         }
+
+        public void GetAirStrikeConfig(out int count, out float pinPullChance)
+        {
+            count = airStrikeGrenadeCount != null ? Mathf.Max(1, airStrikeGrenadeCount.Value) : 1;
+            pinPullChance = airStrikePinPullChance != null ? Mathf.Clamp01(airStrikePinPullChance.Value) : 1.0f;
+        }
         
         // Pillow effect configurations
         public void GetPillowGrenadeConfig(out bool enabled, out float chance, out float armedChance)
@@ -1118,21 +921,21 @@ namespace H3TVR
         // Audio config
         public void GetSlomoAudioConfig(out bool affectsAudio, out float pitchScale, out bool preservePitch)
         {
-            affectsAudio = slomoAffectsAudio.Value;
-            pitchScale = slomoAudioPitchScale.Value;
-            preservePitch = slomoAudioPreservePitch.Value;
+            affectsAudio = slomoAffectsAudio;
+            pitchScale = slomoAudioPitchScale;
+            preservePitch = slomoAudioPreservePitch;
         }
-        
+
         // Complete slomo audio config for enhanced Harmony patch
         public void GetSlomoAudioConfigComplete(out bool affectsAudio, out float pitchScale, out bool preservePitch, 
             out bool affectsSpeed, out float speedScale, out string mode)
         {
-            affectsAudio = slomoAffectsAudio.Value;
-            pitchScale = slomoAudioPitchScale.Value;
-            preservePitch = slomoAudioPreservePitch.Value;
-            affectsSpeed = slomoAffectsAudioSpeed.Value;
-            speedScale = slomoAudioSpeedScale.Value;
-            mode = slomoAudioMode.Value;
+            affectsAudio = slomoAffectsAudio;
+            pitchScale = slomoAudioPitchScale;
+            preservePitch = slomoAudioPreservePitch;
+            affectsSpeed = slomoAffectsAudioSpeed;
+            speedScale = slomoAudioSpeedScale;
+            mode = slomoAudioMode;
         }
         
         // Movement config
@@ -1151,18 +954,6 @@ namespace H3TVR
         // State setters
         public void SetSlomoStatus(string status) => slomoStatus = status;
 
-        // Add missing methods
-        /// <summary>
-        /// Get the SosigArmorWristMenuIntegration instance
-        /// </summary>
-        public SosigArmorWristMenuIntegration GetSosigArmorWristMenu()
-        {
-            return sosigArmorWristMenu;
-        }
-
-        // Add access method for Advanced Chat Spawner
-        public AdvancedChatSosigSpawner GetAdvancedChatSpawner() => advancedChatSpawner;
-        
         // Add access method for Steam Friends Integration
         public SteamFriendsIntegration GetSteamFriendsIntegration() => steamFriendsIntegration;
         

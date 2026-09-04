@@ -36,11 +36,6 @@ namespace H3TVR
 
         #region Audio Configuration
         public ConfigEntry<bool> SlomoAffectsAudio { get; private set; }
-        public ConfigEntry<float> SlomoAudioPitchScale { get; private set; }
-        public ConfigEntry<bool> SlomoAudioPreservePitch { get; private set; }
-        public ConfigEntry<bool> SlomoAffectsAudioSpeed { get; private set; }
-        public ConfigEntry<float> SlomoAudioSpeedScale { get; private set; }
-        public ConfigEntry<string> SlomoAudioMode { get; private set; }
         #endregion
 
         #region Gun Randomization Configuration
@@ -79,13 +74,6 @@ namespace H3TVR
             = new Dictionary<string, ConfigEntry<KeyCode>>();
         #endregion
 
-        #region Chat Sosig Configuration
-        public ConfigEntry<bool> EnableTwitchChatSosigs { get; private set; }
-        // NOTE: MaxAllySosigs/MaxEnemySosigs are in SosigSpawnConfig [Chat Spawner] section
-        // NOTE: File paths (AllyChatFilePath, EnemyChatFilePath) are in ChatWatcher
-        // to avoid duplicate config entries.
-        #endregion
-
         #region Steam Friends Configuration
         public ConfigEntry<bool> EnableSteamFriends { get; private set; }
         public ConfigEntry<bool> SteamFriendsRandomNames { get; private set; }
@@ -115,7 +103,6 @@ namespace H3TVR
         public void InitializeAll()
         {
             InitializeSlomoConfig();
-            InitializeAudioConfig();
             InitializeGunRandomizationConfig();
             InitializeSpawnConfigurations();
             InitializeKeyBindings();
@@ -155,22 +142,6 @@ namespace H3TVR
             // Kill Slomo
             EnableKillSlomo = config.Bind("Slomo", "EnableKillSlomo", true,
                 "Enable slow motion effect on enemy kill.");
-        }
-
-        private void InitializeAudioConfig()
-        {
-            SlomoAffectsAudio = config.Bind("Audio", "SlomoAffectsAudio", true,
-                "Whether slomo affects audio pitch");
-            SlomoAudioPitchScale = config.Bind("Audio", "SlomoAudioPitchScale", 1f,
-                "Audio pitch multiplier during slomo (1.0 = normal pitch, 0.5 = half pitch)");
-            SlomoAudioPreservePitch = config.Bind("Audio", "SlomoPreservePitch", false,
-                "If true, audio pitch is preserved (no pitch change). If false, uses pitch scaling.");
-            SlomoAffectsAudioSpeed = config.Bind("Audio", "SlomoAffectsAudioSpeed", false,
-                "Whether slomo affects audio speed (time stretching)");
-            SlomoAudioSpeedScale = config.Bind("Audio", "SlomoAudioSpeedScale", 1f,
-                "Audio speed multiplier during slomo (1.0 = normal speed, 0.5 = half speed)");
-            SlomoAudioMode = config.Bind("Audio", "SlomoAudioMode", "Both",
-                "Audio adjustment mode during slomo: 'PitchOnly', 'SpeedOnly', 'Both', 'Independent'");
         }
 
         private void InitializeGunRandomizationConfig()
@@ -221,15 +192,9 @@ namespace H3TVR
             DangerCloseMaxCount = config.Bind("DangerClose", "MaxCount", 5,
                 "Maximum danger close rounds");
 
-            // Chat Sosigs - Main enable/disable only
-            // NOTE: Detailed settings are in SosigSpawnConfig under [Chat Spawner] section
-            // NOTE: File paths are configured in ChatWatcher under [Chat Watcher - File Mode] section
-            EnableTwitchChatSosigs = config.Bind("ChatSosigs", "Enabled", true,
-                "Enable Chat Sosig spawning system");
-
             // Steam Friends
             EnableSteamFriends = config.Bind("SteamFriends", "Enabled", true,
-                "Enable Steam Friends integration for sosig spawning");
+                "Enable Steam Friends list integration");
             SteamFriendsRandomNames = config.Bind("SteamFriends", "UseRandomNames", false,
                 "Use random friend from list instead of specific name");
             SteamFriendsRefreshInterval = config.Bind("SteamFriends", "RefreshInterval", 300f,
@@ -276,23 +241,13 @@ namespace H3TVR
                 { "ToggleFireMode", new KeyValuePair<KeyCode, string>(KeyCode.T, "Toggle Fire Mode") },
                 { "BoostMalfunction", new KeyValuePair<KeyCode, string>(KeyCode.Y, "Boost Malfunction") },
                 { "ShowStats", new KeyValuePair<KeyCode, string>(KeyCode.Tab, "Show Stats") },
-                { "SpawnChatSosigFriendly", new KeyValuePair<KeyCode, string>(KeyCode.P, "Spawn Friendly Chat Sosig") },
-                { "SpawnChatSosigEnemy", new KeyValuePair<KeyCode, string>(KeyCode.O, "Spawn Enemy Chat Sosig") },
-                { "CycleChatSosigArmor", new KeyValuePair<KeyCode, string>(KeyCode.L, "Cycle Chat Sosig Armor") },
-                { "ClearChatSosigs", new KeyValuePair<KeyCode, string>(KeyCode.Delete, "Clear All Chat Sosigs") },
-                { "ChatSosigStats", new KeyValuePair<KeyCode, string>(KeyCode.Insert, "Show Chat Sosig Stats") },
-                { "SpawnBossWarlord", new KeyValuePair<KeyCode, string>(KeyCode.B, "Spawn Warlord Boss (Giant)") },
-                { "ClearBosses", new KeyValuePair<KeyCode, string>(KeyCode.Backspace, "Clear All Bosses") },
-                { "SpawnSteamFriendAlly", new KeyValuePair<KeyCode, string>(KeyCode.LeftBracket, "Spawn Steam Friend as Ally") },
-                { "SpawnSteamFriendEnemy", new KeyValuePair<KeyCode, string>(KeyCode.RightBracket, "Spawn Steam Friend as Enemy") },
-                { "SpawnAllSteamFriendsAlly", new KeyValuePair<KeyCode, string>(KeyCode.F7, "Spawn All Steam Friends as Allies") },
-                { "SpawnAllSteamFriendsEnemy", new KeyValuePair<KeyCode, string>(KeyCode.F8, "Spawn All Steam Friends as Enemies") },
                 { "RefreshSteamFriends", new KeyValuePair<KeyCode, string>(KeyCode.F9, "Refresh Steam Friends List") },
                 { "SteamFriendsStats", new KeyValuePair<KeyCode, string>(KeyCode.Home, "Show Steam Friends Stats") },
                 { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
                 { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") },
                 { "SpawnNuke", new KeyValuePair<KeyCode, string>(KeyCode.N, "Spawn Nuke (Massive Explosion)") },
-                { "EmptyHeldGunChamber", new KeyValuePair<KeyCode, string>(KeyCode.E, "Empty Held Gun Chamber") }
+                { "EmptyHeldGunChamber", new KeyValuePair<KeyCode, string>(KeyCode.E, "Empty Held Gun Chamber") },
+                { "SwapHeldGun", new KeyValuePair<KeyCode, string>(KeyCode.F12, "Swap Held Gun for Random Gun") }
             };
 
             foreach (var kvp in keyBindingConfigs)
@@ -313,12 +268,6 @@ namespace H3TVR
         private string cachedSlomoRampCurve;
         private float cachedSlomoRampDuration;
         private float cachedSlomoReturnRampDuration;
-        private bool cachedSlomoAffectsAudio;
-        private float cachedSlomoAudioPitchScale;
-        private bool cachedSlomoAudioPreservePitch;
-        private bool cachedSlomoAffectsAudioSpeed;
-        private float cachedSlomoAudioSpeedScale;
-        private string cachedSlomoAudioMode;
         private bool cachedEnableInfiniteTokens;
         private bool cachedDisableEncryptionNodes;
         private bool cachedDisableAllEncryptions;
@@ -336,12 +285,6 @@ namespace H3TVR
             cachedSlomoRampCurve = SlomoRampCurve.Value;
             cachedSlomoRampDuration = SlomoRampDuration.Value;
             cachedSlomoReturnRampDuration = SlomoReturnRampDuration.Value;
-            cachedSlomoAffectsAudio = SlomoAffectsAudio.Value;
-            cachedSlomoAudioPitchScale = SlomoAudioPitchScale.Value;
-            cachedSlomoAudioPreservePitch = SlomoAudioPreservePitch.Value;
-            cachedSlomoAffectsAudioSpeed = SlomoAffectsAudioSpeed.Value;
-            cachedSlomoAudioSpeedScale = SlomoAudioSpeedScale.Value;
-            cachedSlomoAudioMode = SlomoAudioMode.Value;
             cachedEnableInfiniteTokens = EnableInfiniteTokens.Value;
             cachedDisableEncryptionNodes = DisableEncryptionNodes.Value;
             cachedDisableAllEncryptions = DisableAllEncryptions.Value;
@@ -356,12 +299,12 @@ namespace H3TVR
         public string CachedSlomoRampCurve => cachedSlomoRampCurve;
         public float CachedSlomoRampDuration => cachedSlomoRampDuration;
         public float CachedSlomoReturnRampDuration => cachedSlomoReturnRampDuration;
-        public bool CachedSlomoAffectsAudio => cachedSlomoAffectsAudio;
-        public float CachedSlomoAudioPitchScale => cachedSlomoAudioPitchScale;
-        public bool CachedSlomoAudioPreservePitch => cachedSlomoAudioPreservePitch;
-        public bool CachedSlomoAffectsAudioSpeed => cachedSlomoAffectsAudioSpeed;
-        public float CachedSlomoAudioSpeedScale => cachedSlomoAudioSpeedScale;
-        public string CachedSlomoAudioMode => cachedSlomoAudioMode;
+        public bool CachedSlomoAffectsAudio => true;
+        public float CachedSlomoAudioPitchScale => 1f;
+        public bool CachedSlomoAudioPreservePitch => false;
+        public bool CachedSlomoAffectsAudioSpeed => false;
+        public float CachedSlomoAudioSpeedScale => 1f;
+        public string CachedSlomoAudioMode => "Both";
         public bool CachedEnableInfiniteTokens => cachedEnableInfiniteTokens;
         public bool CachedDisableEncryptionNodes => cachedDisableEncryptionNodes;
         public bool CachedDisableAllEncryptions => cachedDisableAllEncryptions;

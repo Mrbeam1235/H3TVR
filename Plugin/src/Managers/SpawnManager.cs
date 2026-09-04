@@ -7,42 +7,27 @@ using System;
 
 namespace H3TVR
 {
-    /// <summary>
-    /// Simple chat sosig statistics class
-    /// </summary>
-    public class ChatSosigStats
-    {
-        public int activeSosigCount { get; set; }
-        public int friendlyCount { get; set; }
-        public int enemyCount { get; set; }
-        public int queuedSpawns { get; set; }
-        public int totalSpawned { get; set; }
-    }
-
     public class SpawnManager : MonoBehaviour
     {
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private AdvancedChatSosigSpawner advancedChatSpawner;
         private AudioManager audioManager;
 
-        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AdvancedChatSosigSpawner chatSpawnerInstance, AudioManager audioManagerInstance)
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AudioManager audioManagerInstance)
         {
             plugin = pluginInstance;
             logger = logSource;
-            advancedChatSpawner = chatSpawnerInstance;
             audioManager = audioManagerInstance;
 
             // Initialize dependency-aware systems
             OptionalDependencyManager.Initialize(logger);
-            SosigWeaponEnhancer.Initialize(logger);
 
             logger.LogInfo("[SpawnManager] Spawn manager initialized successfully");
             
-            // Log enhancement status
+            // Log optional dependency status for the remaining item/effect spawns.
             if (OptionalDependencyManager.HasAnyDependencies())
             {
-                logger.LogInfo($"[SpawnManager] Enhanced sosig spawning active with {OptionalDependencyManager.GetAvailableDependencyCount()} dependencies");
+                logger.LogInfo($"[SpawnManager] Optional spawn integrations active: {OptionalDependencyManager.GetAvailableDependencyCount()}");
             }
         }
 
@@ -304,6 +289,19 @@ namespace H3TVR
             audioManager?.PlayWeaponSpawnSound("after_spawn", spawnPos, true, "weapons/weapon_ready.wav", 0.7f);
         }
 
+        public void SwapHeldGun()
+        {
+            var weaponManager = plugin.GetWeaponManager();
+            if (weaponManager != null)
+            {
+                weaponManager.SwapHeldGun();
+            }
+            else
+            {
+                logger.LogWarning("WeaponManager not available for SwapHeldGun");
+            }
+        }
+
         public void SpawnSkittyBigGun()
         {
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
@@ -328,7 +326,9 @@ namespace H3TVR
 
         /// <summary>
         /// Spawn Air Strike Smoke Grenade from JerryAr
-        /// Spawns from player head forward, pulls pin and throws
+        /// Count and pin pull chance are configurable via [AirStrike] config section.
+        /// Falls back to a vanilla smoke grenade if the JerryAr mod is not installed,
+        /// so something always spawns.
         /// Mod: https://thunderstore.io/c/h3vr/p/JerryAr/AirStrikeSmokeGrenade/
         /// </summary>
         public void SpawnAirStrikeGrenade()
@@ -337,87 +337,146 @@ namespace H3TVR
             {
                 if (!ValidateSpawnConditions()) return;
 
+                int count;
+                float pinPullChance;
+                plugin.GetAirStrikeConfig(out count, out pinPullChance);
+
                 Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-                
+
                 // Play before-action sound
                 audioManager?.PlayDangerCloseSound("before_airstrike", spawnPos, true, "danger_close/airstrike_call.wav", 0.9f);
 
-                // Air Strike Smoke Grenade Item ID
-                string airStrikeID = "JerryAr_AirStrikeSmokeGrenade";
-                
-                if (!IM.OD.ContainsKey(airStrikeID))
+                // Resolve the grenade to spawn - guaranteed fallback chain
+                FVRObject obj = ResolveAirStrikeGrenadeObject();
+                if (obj == null)
                 {
-                    logger.LogWarning("Air Strike Smoke Grenade not available. Install: https://thunderstore.io/c/h3vr/p/JerryAr/AirStrikeSmokeGrenade/");
-                    logger.LogInfo($"Expected Item ID: {airStrikeID}");
-                    
-                    // List all grenade items for debugging
-                    logger.LogInfo("Available grenade items:");
-                    foreach (var kvp in IM.OD)
-                    {
-                        if (kvp.Key.ToLower().Contains("grenade") || kvp.Key.ToLower().Contains("smoke") || kvp.Key.ToLower().Contains("airstrike"))
-                            logger.LogInfo($"  - {kvp.Key}");
-                    }
+                    logger.LogError("SpawnAirStrikeGrenade: No spawnable grenade found in ItemManager at all.");
                     return;
                 }
 
-                FVRObject obj = IM.OD[airStrikeID];
-                GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
+                int armedCount = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    // Spread multiple grenades slightly so they don't stack inside each other
+                    Vector3 offset = i == 0 ? Vector3.zero : UnityEngine.Random.insideUnitSphere * 0.2f;
+                    GameObject go = Instantiate(obj.GetGameObject(), spawnPos + offset, GM.CurrentPlayerBody.Head.rotation);
 
-                // Pull the pin and release lever to arm the grenade
-                PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
-                if (grenade != null)
-                {
-                    grenade.ReleaseLever();
-                    logger.LogInfo("Air Strike grenade pin pulled and lever released!");
-                }
-                else
-                {
-                    // Try to find any grenade-like component and activate it
-                    var allComponents = go.GetComponentsInChildren<Component>(true);
-                    foreach (var comp in allComponents)
+                    bool armed = UnityEngine.Random.value < pinPullChance;
+                    if (armed)
                     {
-                        if (comp == null) continue;
-                        var compType = comp.GetType();
-                        
-                        // Try common grenade activation methods
-                        var releaseMethod = compType.GetMethod("ReleaseLever", 
-                            System.Reflection.BindingFlags.Public | 
-                            System.Reflection.BindingFlags.Instance);
-                        if (releaseMethod != null)
-                        {
-                            releaseMethod.Invoke(comp, null);
-                            logger.LogInfo($"Air Strike grenade activated via {compType.Name}.ReleaseLever()");
-                            break;
-                        }
-                        
-                        var armMethod = compType.GetMethod("Arm", 
-                            System.Reflection.BindingFlags.Public | 
-                            System.Reflection.BindingFlags.Instance);
-                        if (armMethod != null && armMethod.GetParameters().Length == 0)
-                        {
-                            armMethod.Invoke(comp, null);
-                            logger.LogInfo($"Air Strike grenade activated via {compType.Name}.Arm()");
-                            break;
-                        }
+                        ArmGrenade(go);
+                        armedCount++;
+                    }
+
+                    // Throw it forward
+                    var rb = go.GetComponent<Rigidbody>();
+                    if (rb != null)
+                    {
+                        rb.AddForce(GM.CurrentPlayerBody.Head.forward * 500f);
+                        rb.AddTorque(UnityEngine.Random.insideUnitSphere * 2f);
                     }
                 }
 
-                // Throw it forward
-                var rb = go.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    rb.AddForce(GM.CurrentPlayerBody.Head.forward * 500f);
-                    rb.AddTorque(UnityEngine.Random.insideUnitSphere * 2f);
-                }
+                logger.LogInfo($"Spawned {count} Air Strike grenade(s) ({armedCount} armed, pin pull chance {pinPullChance:P0}, ID: {obj.ItemID})");
 
-                logger.LogInfo($"Successfully spawned and armed Air Strike Smoke Grenade (ID: {airStrikeID})");
-                
                 // Play after-action sound
                 audioManager?.PlayDangerCloseSound("after_airstrike", spawnPos, true, "danger_close/airstrike_deployed.wav", 0.8f);
             }
             catch (Exception ex)
             {
                 logger.LogError($"SpawnAirStrikeGrenade failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Finds the air strike grenade, falling back to vanilla smoke/pinned grenades
+        /// so the redeem always spawns something.
+        /// </summary>
+        private FVRObject ResolveAirStrikeGrenadeObject()
+        {
+            // Preferred: JerryAr's Air Strike Smoke Grenade
+            const string airStrikeID = "JerryAr_AirStrikeSmokeGrenade";
+            if (IM.OD.ContainsKey(airStrikeID))
+            {
+                return IM.OD[airStrikeID];
+            }
+
+            logger.LogWarning("Air Strike Smoke Grenade not available. Install: https://thunderstore.io/c/h3vr/p/JerryAr/AirStrikeSmokeGrenade/");
+
+            // Fallback 1: any item with 'airstrike' in its ID
+            foreach (var kvp in IM.OD)
+            {
+                if (kvp.Value != null && kvp.Key.ToLower().Contains("airstrike"))
+                {
+                    logger.LogInfo($"Using airstrike fallback item: {kvp.Key}");
+                    return kvp.Value;
+                }
+            }
+
+            // Fallback 2: vanilla smoke grenade
+            const string smokeID = "M18SmokeGrenade";
+            if (IM.OD.ContainsKey(smokeID))
+            {
+                logger.LogInfo($"Using vanilla smoke grenade fallback: {smokeID}");
+                return IM.OD[smokeID];
+            }
+
+            // Fallback 3: any pinned grenade in the game
+            foreach (var kvp in IM.OD)
+            {
+                if (kvp.Value == null) continue;
+                string key = kvp.Key.ToLower();
+                if (key.Contains("smokegrenade") || key.Contains("grenade"))
+                {
+                    logger.LogInfo($"Using generic grenade fallback: {kvp.Key}");
+                    return kvp.Value;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Pulls the pin / releases the lever on a spawned grenade object.
+        /// </summary>
+        private void ArmGrenade(GameObject go)
+        {
+            // Pull the pin and release lever to arm the grenade
+            PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
+            if (grenade != null)
+            {
+                grenade.ReleaseLever();
+                logger.LogInfo("Air Strike grenade pin pulled and lever released!");
+                return;
+            }
+
+            // Try to find any grenade-like component and activate it
+            var allComponents = go.GetComponentsInChildren<Component>(true);
+            foreach (var comp in allComponents)
+            {
+                if (comp == null) continue;
+                var compType = comp.GetType();
+
+                // Try common grenade activation methods
+                var releaseMethod = compType.GetMethod("ReleaseLever",
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.Instance);
+                if (releaseMethod != null)
+                {
+                    releaseMethod.Invoke(comp, null);
+                    logger.LogInfo($"Air Strike grenade activated via {compType.Name}.ReleaseLever()");
+                    return;
+                }
+
+                var armMethod = compType.GetMethod("Arm",
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.Instance);
+                if (armMethod != null && armMethod.GetParameters().Length == 0)
+                {
+                    armMethod.Invoke(comp, null);
+                    logger.LogInfo($"Air Strike grenade activated via {compType.Name}.Arm()");
+                    return;
+                }
             }
         }
 
@@ -728,98 +787,6 @@ namespace H3TVR
             {
                 logger.LogError($"DestroyQuickbelt failed: {ex.Message}");
             }
-        }
-
-        // Chat Sosig methods - using Advanced Chat Spawner
-        /// <summary>
-        /// Spawn friendly Chat Sosig (wrapper for H3TwitchTools compatibility)
-        /// </summary>
-        public void SpawnChatSosigFriendly()
-        {
-            try
-            {
-                string username = "Player_" + UnityEngine.Random.Range(1000, 9999);
-                advancedChatSpawner?.SpawningSequence(username);
-                logger?.LogInfo($"Spawned friendly chat sosig: {username}");
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to spawn friendly chat sosig: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Spawn enemy Chat Sosig (wrapper for H3TwitchTools compatibility)
-        /// </summary>
-        public void SpawnChatSosigEnemy()
-        {
-            try
-            {
-                string username = "Enemy_" + UnityEngine.Random.Range(1000, 9999);
-                advancedChatSpawner?.SpawningSequenceEnemy(1, username);
-                logger?.LogInfo($"Spawned enemy chat sosig: {username}");
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to spawn enemy chat sosig: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Spawn a Warlord boss with a custom Twitch username as the name
-        /// Giant 5x scaled boss with heavy armor that spawns minions
-        /// </summary>
-        public void SpawnWarlordBoss(string twitchUsername = null)
-        {
-            try
-            {
-                // Use provided username or generate default
-                string bossName = !string.IsNullOrEmpty(twitchUsername) 
-                    ? $"?? {twitchUsername.ToUpper()} ??" 
-                    : $"?? WARLORD ??";
-                
-                advancedChatSpawner?.SpawningSequenceWarlord(bossName);
-                logger?.LogInfo($"Spawned WARLORD boss: {bossName}");
-                
-                // Play dramatic warlord spawn sound
-                audioManager?.PlayDangerCloseSound("warlord_spawn", 
-                    GM.CurrentPlayerBody?.Head?.position ?? Vector3.zero, 
-                    false, "boss/warlord_appears.wav", 1.0f);
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Failed to spawn Warlord boss: {ex.Message}");
-            }
-        }
-
-        public void ClearAllChatSosigs()
-        {
-            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
-            if (advancedSpawner != null)
-            {
-                advancedSpawner.ClearAllSosigs();
-                logger?.LogInfo("Cleared all chat sosigs and bosses");
-            }
-            else
-            {
-                logger?.LogWarning("Advanced Chat Spawner not available");
-            }
-        }
-
-        public ChatSosigStats GetChatSosigStats()
-        {
-            var advancedSpawner = AdvancedChatSosigSpawner.Instance;
-            if (advancedSpawner != null)
-            {
-                var stats = advancedSpawner.GetStats();
-                return new ChatSosigStats
-                {
-                    friendlyCount = stats.Allies,
-                    enemyCount = stats.Enemies,
-                    activeSosigCount = stats.TotalActive
-                };
-            }
-            return new ChatSosigStats { friendlyCount = 0, enemyCount = 0, activeSosigCount = 0 };
         }
 
         // Helper methods

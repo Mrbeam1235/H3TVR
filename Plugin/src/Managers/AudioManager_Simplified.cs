@@ -41,61 +41,27 @@ namespace H3TVR
         #endregion
 
         #region Configuration
-        private ConfigEntry<bool> enableAudioEffects;
-        private ConfigEntry<float> masterVolume;
-        private ConfigEntry<float> effectsVolume;
-        private ConfigEntry<float> weaponSoundsVolume;
-        private ConfigEntry<float> ambientSoundsVolume;
-        
-        private ConfigEntry<bool> enableSpatialAudio;
-        private ConfigEntry<bool> enable3DAudio;
-        private ConfigEntry<float> maxAudioDistance;
-        private ConfigEntry<int> maxSimultaneousSounds;
-        
-        private ConfigEntry<float> shurikenVolume;
-        private ConfigEntry<float> hydrationVolume;
-        private ConfigEntry<float> slomoVolume;
-        private ConfigEntry<float> dangerCloseVolume;
-        private ConfigEntry<float> skittySubGunVolume;
-        private ConfigEntry<float> destroyQuickbeltVolume;
-        private ConfigEntry<float> wondertoyVolume;
-        private ConfigEntry<float> jeditoyVolume;
-        
-        // Custom audio path configurations
-        private ConfigEntry<string> customAudioDirectory1;
-        private ConfigEntry<string> customAudioDirectory2;
-        private ConfigEntry<string> customAudioDirectory3;
-        
-        // Individual audio file path configurations - FULL CONTROL
-        private ConfigEntry<string> shurikenThrowPath;
-        private ConfigEntry<string> shurikenSpawnPath;
-        private ConfigEntry<string> hydrationDrinkPath;
-        private ConfigEntry<string> hydrationSpawnPath;
-        private ConfigEntry<string> slomoStartPath;
-        private ConfigEntry<string> slomoEndPath;
-        private ConfigEntry<string> slomoActivePath;
-        private ConfigEntry<string> dangerClosePath;
-        private ConfigEntry<string> explosionPath;
-        private ConfigEntry<string> gunSpawnPath;
-        private ConfigEntry<string> destroyQuickbeltPath;
-        private ConfigEntry<string> itemDestroyPath;
-        private ConfigEntry<string> wondertoySpawnPath;
-        private ConfigEntry<string> wondertoyActivatePath;
-        private ConfigEntry<string> jeditoySpawnPath;
-        private ConfigEntry<string> uiConfirmPath;
-        private ConfigEntry<string> uiErrorPath;
-        private ConfigEntry<string> systemReadyPath;
-        
-        // Stovepipe paths
-        private ConfigEntry<string> stovepipeJamPath;
-        private ConfigEntry<string> stovepipeDoubleFeedPath;
-        private ConfigEntry<string> stovepipeFailureToFeedPath;
-        private ConfigEntry<string> stovepipeFailureToEjectPath;
-        private ConfigEntry<string> stovepipeFailureToFirePath;
-        private ConfigEntry<string> stovepipeHangFirePath;
-        private ConfigEntry<string> stovepipeClearJamPath;
-        private ConfigEntry<string> stovepipeCyclingPath;
-        private ConfigEntry<string> stovepipeGenericPath;
+        // Audio settings (hardcoded defaults - [Audio] config section removed)
+        private const bool enableAudioEffects = true;
+        private const float masterVolume = 1.0f;
+        private const float effectsVolume = 0.8f;
+        private const float weaponSoundsVolume = 0.9f;
+        private const float ambientSoundsVolume = 0.6f;
+
+        private const bool enableSpatialAudio = true;
+        private const bool enable3DAudio = true;
+        private const float maxAudioDistance = 50f;
+        private const int maxSimultaneousSounds = 10;
+
+        // Per-effect volumes (hardcoded - [Audio.Effects] config section removed)
+        private const float shurikenVolume = 0.8f;
+        private const float hydrationVolume = 0.7f;
+        private const float slomoVolume = 0.9f;
+        private const float dangerCloseVolume = 1.0f;
+        private const float skittySubGunVolume = 0.8f;
+        private const float destroyQuickbeltVolume = 0.6f;
+        private const float wondertoyVolume = 0.7f;
+        private const float jeditoyVolume = 0.7f;
         #endregion
 
         #region Initialization
@@ -108,10 +74,8 @@ namespace H3TVR
             
             try
             {
-                SetupConfiguration();
                 SetupAudioFolders();
                 LoadCustomPathsConfig();
-                LoadConfiguredPaths();
                 ScanForAudioFiles();
                 LoadAudioClips();
                 
@@ -123,155 +87,6 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"[AudioManager] Init failed: {ex.Message}");
-            }
-        }
-
-        private void SetupConfiguration()
-        {
-            enableAudioEffects = plugin.Config.Bind("Audio", "EnableAudioEffects", true, "Enable all audio effects");
-            masterVolume = plugin.Config.Bind("Audio", "MasterVolume", 1.0f, "Master volume (0.0-1.0)");
-            effectsVolume = plugin.Config.Bind("Audio", "EffectsVolume", 0.8f, "Effects volume (0.0-1.0)");
-            weaponSoundsVolume = plugin.Config.Bind("Audio", "WeaponSoundsVolume", 0.9f, "Weapon sounds volume (0.0-1.0)");
-            ambientSoundsVolume = plugin.Config.Bind("Audio", "AmbientSoundsVolume", 0.6f, "Ambient sounds volume (0.0-1.0)");
-            
-            enableSpatialAudio = plugin.Config.Bind("Audio", "EnableSpatialAudio", true, "Enable 3D positional audio");
-            enable3DAudio = plugin.Config.Bind("Audio", "Enable3DAudio", true, "Enable full 3D audio processing");
-            maxAudioDistance = plugin.Config.Bind("Audio", "MaxAudioDistance", 50f, "Max distance for 3D audio");
-            maxSimultaneousSounds = plugin.Config.Bind("Audio", "MaxSimultaneousSounds", 10, "Max simultaneous sounds");
-            
-            shurikenVolume = plugin.Config.Bind("Audio.Effects", "ShurikenVolume", 0.8f, "Shuriken sounds volume");
-            hydrationVolume = plugin.Config.Bind("Audio.Effects", "HydrationVolume", 0.7f, "Hydration sounds volume");
-            slomoVolume = plugin.Config.Bind("Audio.Effects", "SlomoVolume", 0.9f, "Slomo effects volume");
-            dangerCloseVolume = plugin.Config.Bind("Audio.Effects", "DangerCloseVolume", 1.0f, "Danger close volume");
-            skittySubGunVolume = plugin.Config.Bind("Audio.Effects", "SkittySubGunVolume", 0.8f, "Weapon spawn volume");
-            destroyQuickbeltVolume = plugin.Config.Bind("Audio.Effects", "DestroyQuickbeltVolume", 0.6f, "Destruction volume");
-            wondertoyVolume = plugin.Config.Bind("Audio.Effects", "WondertoyVolume", 0.7f, "Wondertoy volume");
-            jeditoyVolume = plugin.Config.Bind("Audio.Effects", "JeditoyVolume", 0.7f, "Jeditoy volume");
-            
-            // Custom directories - can point ANYWHERE on your computer!
-            customAudioDirectory1 = plugin.Config.Bind("Audio.CustomPaths", "CustomDirectory1", "", 
-                "Additional audio directory (can be anywhere on your computer, e.g., C:\\My Sounds\\Game Audio)");
-            customAudioDirectory2 = plugin.Config.Bind("Audio.CustomPaths", "CustomDirectory2", "", 
-                "Additional audio directory (can be anywhere on your computer)");
-            customAudioDirectory3 = plugin.Config.Bind("Audio.CustomPaths", "CustomDirectory3", "", 
-                "Additional audio directory (can be anywhere on your computer)");
-            
-            // Individual file paths - FULL CONTROL FOR EACH EFFECT
-            shurikenThrowPath = plugin.Config.Bind("Audio.FilePaths", "ShurikenThrow", "", 
-                "Full path to shuriken throw sound (e.g., C:\\My Audio\\shuriken.wav). Leave empty for auto-detection.");
-            shurikenSpawnPath = plugin.Config.Bind("Audio.FilePaths", "ShurikenSpawn", "", 
-                "Full path to shuriken spawn sound. Leave empty for auto-detection.");
-            
-            hydrationDrinkPath = plugin.Config.Bind("Audio.FilePaths", "HydrationDrink", "", 
-                "Full path to hydration drink sound. Leave empty for auto-detection.");
-            hydrationSpawnPath = plugin.Config.Bind("Audio.FilePaths", "HydrationSpawn", "", 
-                "Full path to hydration spawn sound. Leave empty for auto-detection.");
-            
-            slomoStartPath = plugin.Config.Bind("Audio.FilePaths", "SlomoStart", "", 
-                "Full path to slomo start sound. Leave empty for auto-detection.");
-            slomoEndPath = plugin.Config.Bind("Audio.FilePaths", "SlomoEnd", "", 
-                "Full path to slomo end sound. Leave empty for auto-detection.");
-            slomoActivePath = plugin.Config.Bind("Audio.FilePaths", "SlomoActive", "", 
-                "Full path to slomo active loop sound. Leave empty for auto-detection.");
-            
-            dangerClosePath = plugin.Config.Bind("Audio.FilePaths", "DangerClose", "", 
-                "Full path to danger close sound. Leave empty for auto-detection.");
-            explosionPath = plugin.Config.Bind("Audio.FilePaths", "Explosion", "", 
-                "Full path to explosion sound. Leave empty for auto-detection.");
-            
-            gunSpawnPath = plugin.Config.Bind("Audio.FilePaths", "GunSpawn", "", 
-                "Full path to gun spawn sound. Leave empty for auto-detection.");
-            
-            destroyQuickbeltPath = plugin.Config.Bind("Audio.FilePaths", "DestroyQuickbelt", "", 
-                "Full path to destroy quickbelt sound. Leave empty for auto-detection.");
-            itemDestroyPath = plugin.Config.Bind("Audio.FilePaths", "ItemDestroy", "", 
-                "Full path to item destroy sound. Leave empty for auto-detection.");
-            
-            wondertoySpawnPath = plugin.Config.Bind("Audio.FilePaths", "WondertoySpawn", "", 
-                "Full path to wondertoy spawn sound. Leave empty for auto-detection.");
-            wondertoyActivatePath = plugin.Config.Bind("Audio.FilePaths", "WondertoyActivate", "", 
-                "Full path to wondertoy activate sound. Leave empty for auto-detection.");
-            jeditoySpawnPath = plugin.Config.Bind("Audio.FilePaths", "JeditoySpawn", "", "Full path to jeditoy spawn sound. Leave empty for auto-detection.");
-            
-            uiConfirmPath = plugin.Config.Bind("Audio.FilePaths", "UIConfirm", "", 
-                "Full path to UI confirm sound. Leave empty for auto-detection.");
-            uiErrorPath = plugin.Config.Bind("Audio.FilePaths", "UIError", "", 
-                "Full path to UI error sound. Leave empty for auto-detection.");
-            
-            systemReadyPath = plugin.Config.Bind("Audio.FilePaths", "SystemReady", "", 
-                "Full path to system ready sound. Leave empty for auto-detection.");
-            
-            // Stovepipe paths
-            stovepipeJamPath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "WeaponJam", "", 
-                "Full path to weapon jam sound. Leave empty for auto-detection.");
-            stovepipeDoubleFeedPath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "DoubleFeed", "", 
-                "Full path to double feed sound. Leave empty for auto-detection.");
-            stovepipeFailureToFeedPath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "FailureToFeed", "", 
-                "Full path to failure to feed sound. Leave empty for auto-detection.");
-            stovepipeFailureToEjectPath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "FailureToEject", "", 
-                "Full path to failure to eject sound. Leave empty for auto-detection.");
-            stovepipeFailureToFirePath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "FailureToFire", "", 
-                "Full path to failure to fire sound. Leave empty for auto-detection.");
-            stovepipeHangFirePath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "HangFire", "", 
-                "Full path to hang fire sound. Leave empty for auto-detection.");
-            stovepipeClearJamPath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "ClearJam", "", 
-                "Full path to clear jam sound. Leave empty for auto-detection.");
-            stovepipeCyclingPath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "Cycling", "", 
-                "Full path to cycling sound. Leave empty for auto-detection.");
-            stovepipeGenericPath = plugin.Config.Bind("Audio.FilePaths.Stovepipe", "GenericMalfunction", "", 
-                "Full path to generic malfunction sound. Leave empty for auto-detection.");
-        }
-
-        /// <summary>
-        /// Load all configured file paths from BepInEx config
-        /// </summary>
-        private void LoadConfiguredPaths()
-        {
-            RegisterConfigPath("shuriken", shurikenThrowPath.Value);
-            RegisterConfigPath("shuriken_spawn", shurikenSpawnPath.Value);
-            RegisterConfigPath("hydration", hydrationDrinkPath.Value);
-            RegisterConfigPath("hydration_spawn", hydrationSpawnPath.Value);
-            RegisterConfigPath("slomo_start", slomoStartPath.Value);
-            RegisterConfigPath("slomo_end", slomoEndPath.Value);
-            RegisterConfigPath("slomo_active", slomoActivePath.Value);
-            RegisterConfigPath("danger_close", dangerClosePath.Value);
-            RegisterConfigPath("explosion", explosionPath.Value);
-            RegisterConfigPath("gun_spawn", gunSpawnPath.Value);
-            RegisterConfigPath("skitty_sub_gun", gunSpawnPath.Value); // Same as gun_spawn
-            RegisterConfigPath("destroy_quickbelt", destroyQuickbeltPath.Value);
-            RegisterConfigPath("item_destroy", itemDestroyPath.Value);
-            RegisterConfigPath("wondertoy", wondertoySpawnPath.Value);
-            RegisterConfigPath("wondertoy_activate", wondertoyActivatePath.Value);
-            RegisterConfigPath("jeditoy", jeditoySpawnPath.Value);
-            RegisterConfigPath("ui_confirm", uiConfirmPath.Value);
-            RegisterConfigPath("ui_error", uiErrorPath.Value);
-            RegisterConfigPath("system_ready", systemReadyPath.Value);
-            
-            // Stovepipe
-            RegisterConfigPath("stovepipe_jam", stovepipeJamPath.Value);
-            RegisterConfigPath("stovepipe_malfunction", stovepipeJamPath.Value);
-            RegisterConfigPath("stovepipe_double_feed", stovepipeDoubleFeedPath.Value);
-            RegisterConfigPath("stovepipe_failure_to_feed", stovepipeFailureToFeedPath.Value);
-            RegisterConfigPath("stovepipe_failure_to_eject", stovepipeFailureToEjectPath.Value);
-            RegisterConfigPath("stovepipe_failure_to_fire", stovepipeFailureToFirePath.Value);
-            RegisterConfigPath("stovepipe_hang_fire", stovepipeHangFirePath.Value);
-            RegisterConfigPath("stovepipe_clear_jam", stovepipeClearJamPath.Value);
-            RegisterConfigPath("stovepipe_cycling", stovepipeCyclingPath.Value);
-            RegisterConfigPath("stovepipe_generic", stovepipeGenericPath.Value);
-        }
-
-        private void RegisterConfigPath(string effectKey, string filePath)
-        {
-            if (string.IsNullOrEmpty(filePath)) return;
-            
-            if (File.Exists(filePath))
-            {
-                effectNameToFile[effectKey] = filePath;
-                logger.LogInfo($"[AudioManager] Config path registered: {effectKey} -> {filePath}");
-            }
-            else
-            {
-                logger.LogWarning($"[AudioManager] Config path not found for {effectKey}: {filePath}");
             }
         }
 
@@ -308,10 +123,7 @@ namespace H3TVR
 
         private void AddCustomDirectories()
         {
-            // Add custom directories from BepInEx config
-            AddCustomDirectory(customAudioDirectory1.Value);
-            AddCustomDirectory(customAudioDirectory2.Value);
-            AddCustomDirectory(customAudioDirectory3.Value);
+            // Custom directory config removed - only the H3TVR_Audio folder and its subdirectories are scanned
         }
 
         private void AddCustomDirectory(string path)
@@ -720,28 +532,28 @@ PRIORITY ORDER:
         #region Public APIs
         public void PlayShurikenSound(string action = "throw", Vector3 position = default, bool is3D = true, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
             string soundKey = action == "throw" ? "shuriken" : $"shuriken_{action}";
-            float volume = customVolume >= 0 ? customVolume : shurikenVolume.Value * effectsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : shurikenVolume * effectsVolume * masterVolume;
             PlayEffect(soundKey, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlayHydrationSound(string action = "drink", Vector3 position = default, bool is3D = true, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
             string soundKey = action == "drink" ? "hydration" : $"hydration_{action}";
-            float volume = customVolume >= 0 ? customVolume : hydrationVolume.Value * effectsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : hydrationVolume * effectsVolume * masterVolume;
             PlayEffect(soundKey, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlaySlomoSound(string phase = "start", Vector3 position = default, bool is3D = false, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
             string soundKey = $"slomo_{phase}";
-            float volume = customVolume >= 0 ? customVolume : slomoVolume.Value * ambientSoundsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : slomoVolume * ambientSoundsVolume * masterVolume;
             float pitch = phase == "active" ? Time.timeScale : DEFAULT_PITCH;
             
             PlayEffect(soundKey, position, is3D, volume, pitch, customFilePath);
@@ -749,58 +561,58 @@ PRIORITY ORDER:
 
         public void PlayDangerCloseSound(string type = "danger_close", Vector3 position = default, bool is3D = true, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
-            float volume = customVolume >= 0 ? customVolume : dangerCloseVolume.Value * effectsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : dangerCloseVolume * effectsVolume * masterVolume;
             PlayEffect(type, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlayWeaponSpawnSound(string type = "skitty_sub_gun", Vector3 position = default, bool is3D = true, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
-            float volume = customVolume >= 0 ? customVolume : skittySubGunVolume.Value * weaponSoundsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : skittySubGunVolume * weaponSoundsVolume * masterVolume;
             PlayEffect(type, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlayDestructionSound(string type = "destroy_quickbelt", Vector3 position = default, bool is3D = false, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
-            float volume = customVolume >= 0 ? customVolume : destroyQuickbeltVolume.Value * effectsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : destroyQuickbeltVolume * effectsVolume * masterVolume;
             PlayEffect(type, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlayWondertoySound(string action = "spawn", Vector3 position = default, bool is3D = true, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
             string soundKey = action == "spawn" ? "wondertoy" : $"wondertoy_{action}";
-            float volume = customVolume >= 0 ? customVolume : wondertoyVolume.Value * effectsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : wondertoyVolume * effectsVolume * masterVolume;
             PlayEffect(soundKey, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlayJeditoySound(string action = "spawn", Vector3 position = default, bool is3D = true, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
 
             string soundKey = action == "spawn" ? "jeditoy" : $"jeditoy_{action}";
-            float volume = customVolume >= 0 ? customVolume : jeditoyVolume.Value * effectsVolume.Value * masterVolume.Value;
+            float volume = customVolume >= 0 ? customVolume : jeditoyVolume * effectsVolume * masterVolume;
             PlayEffect(soundKey, position, is3D, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlayUISound(string type = "confirm", Vector3 position = default, string customFilePath = null, float customVolume = -1f)
         {
-            if (!enableAudioEffects.Value) return;
+            if (!enableAudioEffects) return;
             
             string soundKey = $"ui_{type}";
-            float volume = customVolume >= 0 ? customVolume : effectsVolume.Value * masterVolume.Value * 0.5f;
+            float volume = customVolume >= 0 ? customVolume : effectsVolume * masterVolume * 0.5f;
             PlayEffect(soundKey, position, false, volume, DEFAULT_PITCH, customFilePath);
         }
 
         public void PlayStovepipeSound(string action, Vector3 position, bool is3D = true, string customSound = null, float volume = 1.0f)
         {
-            if (!isInitialized || !enableAudioEffects.Value) return;
+            if (!isInitialized || !enableAudioEffects) return;
 
             string soundKey = GetStovepipeSoundKey(action);
             PlayEffect(soundKey, position, is3D, volume, DEFAULT_PITCH, customSound);
@@ -817,7 +629,6 @@ PRIORITY ORDER:
         public void RescanAudioFiles()
         {
             logger.LogInfo("[AudioManager] Rescanning for audio files...");
-            LoadConfiguredPaths();
             LoadCustomPathsConfig();
             ScanForAudioFiles();
             LoadAudioClips();
@@ -850,16 +661,16 @@ PRIORITY ORDER:
         #region Core Playback
         private void PlayEffect(string effectKey, Vector3 position, bool is3D, float volume = DEFAULT_VOLUME, float pitch = DEFAULT_PITCH, string customFilePath = null)
         {
-            if (!enableAudioEffects.Value || !isInitialized) return;
+            if (!enableAudioEffects || !isInitialized) return;
             if (string.IsNullOrEmpty(effectKey)) return;
 
             volume = Mathf.Clamp(volume, 0f, 2f);
             pitch = Mathf.Clamp(pitch, 0.1f, 10f);
 
-            if (activeSources.Count >= maxSimultaneousSounds.Value)
+            if (activeSources.Count >= maxSimultaneousSounds)
             {
                 CleanupFinishedSources();
-                if (activeSources.Count >= maxSimultaneousSounds.Value) return;
+                if (activeSources.Count >= maxSimultaneousSounds) return;
             }
 
             AudioClip clip = GetAudioClip(effectKey, customFilePath);
@@ -897,10 +708,10 @@ PRIORITY ORDER:
             source.playOnAwake = false;
             source.loop = false;
             
-            if (is3D && enableSpatialAudio.Value)
+            if (is3D && enableSpatialAudio)
             {
-                source.spatialBlend = enable3DAudio.Value ? SPATIAL_BLEND_3D : 0.5f;
-                source.maxDistance = maxAudioDistance.Value;
+                source.spatialBlend = enable3DAudio ? SPATIAL_BLEND_3D : 0.5f;
+                source.maxDistance = maxAudioDistance;
                 source.rolloffMode = AudioRolloffMode.Logarithmic;
                 source.dopplerLevel = 0.1f;
                 source.transform.position = position;
@@ -1056,10 +867,10 @@ PRIORITY ORDER:
 
         public bool PlayLoadedEffect(string effectName, Vector3 position = default, bool is3D = true, float volume = 0.8f, float pitch = 1.0f)
         {
-            if (!enableAudioEffects.Value || !isInitialized) return false;
+            if (!enableAudioEffects || !isInitialized) return false;
             if (!HasEffect(effectName)) return false;
 
-            float finalVolume = volume * effectsVolume.Value * masterVolume.Value;
+            float finalVolume = volume * effectsVolume * masterVolume;
             PlayEffect(effectName, position, is3D, finalVolume, pitch);
             
             return true;
@@ -1080,8 +891,8 @@ PRIORITY ORDER:
         public void LogConfiguration()
         {
             logger.LogInfo("[AudioManager] Configuration:");
-            logger.LogInfo($"  Enabled: {enableAudioEffects.Value}");
-            logger.LogInfo($"  Master Volume: {masterVolume.Value}");
+            logger.LogInfo($"  Enabled: {enableAudioEffects}");
+            logger.LogInfo($"  Master Volume: {masterVolume}");
             logger.LogInfo($"  Loaded Clips: {audioClips.Count}");
             logger.LogInfo($"  Active Sources: {activeSources.Count}");
             logger.LogInfo($"  Search Paths: {audioSearchPaths.Count}");

@@ -242,6 +242,95 @@ namespace H3TVR
             SpawnGunAndMagazine(gunObj, isBigGun);
         }
 
+        /// <summary>
+        /// Swaps the gun currently held by the player with a random firearm.
+        /// Checks both hands, pulls from the full ItemManager firearm pool (never
+        /// depends on config lists), and force-grabs the new gun into the same hand.
+        /// If no gun is held, spawns a random gun in front of the player instead.
+        /// </summary>
+        public void SwapHeldGun()
+        {
+            try
+            {
+                // Pick a random firearm straight from ItemManager - always available
+                var allFirearms = IM.OD.Values
+                    .Where(obj => obj != null && obj.Category == FVRObject.ObjectCategory.Firearm)
+                    .ToArray();
+
+                if (allFirearms.Length == 0)
+                {
+                    logger.LogError("SwapHeldGun: No firearms found in ItemManager.");
+                    return;
+                }
+
+                FVRObject newGunObj = allFirearms[UnityEngine.Random.Range(0, allFirearms.Length)];
+
+                // Find a hand holding a firearm (check both hands)
+                FVRViveHand holdingHand = null;
+                FVRFireArm heldGun = null;
+
+                var hands = GM.CurrentMovementManager?.Hands;
+                if (hands != null)
+                {
+                    foreach (var hand in hands)
+                    {
+                        var firearm = hand?.CurrentInteractable as FVRFireArm;
+                        if (firearm != null)
+                        {
+                            holdingHand = hand;
+                            heldGun = firearm;
+                            break;
+                        }
+                    }
+                }
+
+                if (heldGun == null)
+                {
+                    // Fallback: nothing held - spawn a random gun in front of the player so the redeem never wastes
+                    logger.LogInfo("SwapHeldGun: No gun held, spawning random gun instead");
+                    audioManager?.PlayWeaponSpawnSound("skitty_sub_gun", GM.CurrentPlayerBody.Head.position, true);
+                    SpawnGunAndMagazine(newGunObj, false);
+                    return;
+                }
+
+                Vector3 gunPos = heldGun.transform.position;
+                Quaternion gunRot = heldGun.transform.rotation;
+
+                // Spawn the replacement gun at the old gun's exact position
+                GameObject newGunGO = Instantiate(newGunObj.GetGameObject(), gunPos, gunRot);
+                audioManager?.PlayWeaponSpawnSound("skitty_sub_gun", gunPos, true);
+
+                // Remove the old gun from the hand and destroy it
+                heldGun.ForceBreakInteraction();
+                Destroy(heldGun.gameObject);
+
+                // Force-grab the new gun into the same hand so it never drops
+                var newInteractable = newGunGO.GetComponent<FVRPhysicalObject>();
+                if (newInteractable != null)
+                {
+                    try
+                    {
+                        holdingHand.ForceSetInteractable(newInteractable);
+                        newInteractable.BeginInteraction(holdingHand);
+                    }
+                    catch (Exception grabEx)
+                    {
+                        // If force-grab fails the gun still sits exactly where the hand is
+                        logger.LogWarning($"SwapHeldGun: Force-grab failed, gun left at hand position: {grabEx.Message}");
+                    }
+                }
+
+                // Spawn a matching magazine for the new gun
+                TrySpawnMatchingMagazine(newGunObj, gunPos, false);
+
+                logger.LogInfo($"SwapHeldGun: Swapped held gun for {newGunObj.DisplayName}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SwapHeldGun failed: {ex.Message}");
+            }
+        }
+
         private void SpawnGunAndMagazine(FVRObject gunObj, bool isBigGun)
         {
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);

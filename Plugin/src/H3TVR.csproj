@@ -44,16 +44,6 @@
     <Compile Include="SlomoMovementController.cs" />
     <Compile Include="Hooks.cs" />
     
-    <!-- Sosig Integration -->
-    <Compile Include="SosigSpawnerIntegration.cs" />
-    <Compile Include="SosigSpawnerManager.cs" />
-    <Compile Include="SosigWeaponManager.cs" />
-    <Compile Include="SosigLoadoutConfiguration.cs" />
-    <Compile Include="SosigLoadoutUtility.cs" />
-    <Compile Include="SosigStatsManager.cs" />
-    <Compile Include="SosigPerformanceMonitor2.cs" />
-    <Compile Include="SosigScenarioManager.cs" />
-    
     <!-- H3VR Integration -->
     <Compile Include="H3VRAssetLoader.cs" />
     <Compile Include="H3VRDelayedInitializer.cs" />
