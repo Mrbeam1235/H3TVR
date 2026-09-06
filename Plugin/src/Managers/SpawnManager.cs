@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using FistVR;
@@ -11,13 +11,11 @@ namespace H3TVR
     {
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private AudioManager audioManager;
 
-        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AudioManager audioManagerInstance)
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
         {
             plugin = pluginInstance;
             logger = logSource;
-            audioManager = audioManagerInstance;
 
             // Initialize dependency-aware systems
             OptionalDependencyManager.Initialize(logger);
@@ -37,19 +35,16 @@ namespace H3TVR
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
             
             // Play before-action sound
-            audioManager?.PlayWondertoySound("before_spawn", spawnPos, true, "wondertoy/wondertoy_appear.wav");
             
             SpawnObject("TippyToyAnton", "WonderToy");
             
             // Play after-action sound
-            audioManager?.PlayWondertoySound("after_spawn", spawnPos, true, "wondertoy/wondertoy_ready.wav");
         }
 
         public void SpawnJeditToy()
         {
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
             
-            audioManager?.PlayWondertoySound("before_activate", spawnPos, true, "wondertoy/jedi_ignite.wav");
             
             try
             {
@@ -83,7 +78,6 @@ namespace H3TVR
                 StartCoroutine(FlipTippyToyToActivate(go));
 
                 logger.LogInfo($"Successfully spawned Jedi Tippy Toy (ID: {jeditToyID})");
-                audioManager?.PlayWondertoySound("after_activate", spawnPos, true, "wondertoy/jedi_ready.wav");
             }
             catch (Exception ex)
             {
@@ -162,12 +156,10 @@ namespace H3TVR
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
             
             // Play before-action sound
-            audioManager?.PlayHydrationSound("before_spawn", spawnPos, true, "hydration/bottle_materialize.wav");
             
             SpawnObject("SuppressorBottle", "Hydration");
             
             // Play after-action sound
-            audioManager?.PlayHydrationSound("after_spawn", spawnPos, true, "hydration/bottle_ready.wav");
         }
 
         public void SpawnPillow()
@@ -184,7 +176,6 @@ namespace H3TVR
                 logger.LogInfo($"Spawning {pillowCount} pillow(s)");
 
                 // Play before-action sound with custom volume
-                audioManager?.PlayWondertoySound("before_pillow", spawnPos, true, "pillow/pillow_summon.wav", 0.8f);
 
                 for (int i = 0; i < pillowCount; i++)
                 {
@@ -206,7 +197,6 @@ namespace H3TVR
                 }
 
                 // Play after-action sound
-                audioManager?.PlayWondertoySound("after_pillow", spawnPos, true, "pillow/pillow_launched.wav", 0.6f);
 
                 // Handle pillow effects
                 HandlePillowEffects();
@@ -233,7 +223,6 @@ namespace H3TVR
                 Vector3 shuriPosition = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 0.02f);
                 
                 // Play before-action sound
-                audioManager?.PlayShurikenSound("before_throw", shuriPosition, true, "shuriken/shuriken_prepare.wav", 0.9f);
 
                 if (!IM.OD.ContainsKey("Shuriken"))
                 {
@@ -259,7 +248,6 @@ namespace H3TVR
                 }
 
                 // Play after-action sound
-                audioManager?.PlayShurikenSound("after_throw", shuriPosition, true, "shuriken/shuriken_thrown.wav", 0.7f);
             }
             catch (Exception ex)
             {
@@ -272,7 +260,6 @@ namespace H3TVR
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
 
             // Play before-action sound
-            audioManager?.PlayWeaponSpawnSound("before_spawn", spawnPos, true, "weapons/weapon_materializing.wav", 0.8f);
 
             // Use WeaponManager's list-based spawning (uses GunList/MagazineList config)
             var weaponManager = plugin.GetWeaponManager();
@@ -286,7 +273,6 @@ namespace H3TVR
             }
 
             // Play after-action sound
-            audioManager?.PlayWeaponSpawnSound("after_spawn", spawnPos, true, "weapons/weapon_ready.wav", 0.7f);
         }
 
         public void SwapHeldGun()
@@ -307,7 +293,6 @@ namespace H3TVR
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
 
             // Play before-action sound
-            audioManager?.PlayWeaponSpawnSound("before_big_spawn", spawnPos, true, "weapons/big_gun_materializing.wav", 0.9f);
 
             // Use WeaponManager's list-based spawning (uses GunList/MagazineList config)
             var weaponManager = plugin.GetWeaponManager();
@@ -321,7 +306,6 @@ namespace H3TVR
             }
 
             // Play after-action sound
-            audioManager?.PlayWeaponSpawnSound("after_big_spawn", spawnPos, true, "weapons/big_gun_ready.wav", 0.8f);
         }
 
         /// <summary>
@@ -344,7 +328,6 @@ namespace H3TVR
                 Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
 
                 // Play before-action sound
-                audioManager?.PlayDangerCloseSound("before_airstrike", spawnPos, true, "danger_close/airstrike_call.wav", 0.9f);
 
                 // Resolve the grenade to spawn - guaranteed fallback chain
                 FVRObject obj = ResolveAirStrikeGrenadeObject();
@@ -355,11 +338,14 @@ namespace H3TVR
                 }
 
                 int armedCount = 0;
+                Vector3 headForward = GM.CurrentPlayerBody.Head.forward;
+                // Spawn in front of the player so the grenade doesn't collide with their head
+                Vector3 throwOrigin = GM.CurrentPlayerBody.Head.position + (headForward * 0.75f) + new Vector3(0f, 0.25f, 0f);
                 for (int i = 0; i < count; i++)
                 {
                     // Spread multiple grenades slightly so they don't stack inside each other
                     Vector3 offset = i == 0 ? Vector3.zero : UnityEngine.Random.insideUnitSphere * 0.2f;
-                    GameObject go = Instantiate(obj.GetGameObject(), spawnPos + offset, GM.CurrentPlayerBody.Head.rotation);
+                    GameObject go = Instantiate(obj.GetGameObject(), throwOrigin + offset, GM.CurrentPlayerBody.Head.rotation);
 
                     bool armed = UnityEngine.Random.value < pinPullChance;
                     if (armed)
@@ -368,11 +354,11 @@ namespace H3TVR
                         armedCount++;
                     }
 
-                    // Throw it forward
+                    // Throw it forward in a proper arc
                     var rb = go.GetComponent<Rigidbody>();
                     if (rb != null)
                     {
-                        rb.AddForce(GM.CurrentPlayerBody.Head.forward * 500f);
+                        rb.velocity = (headForward * 12f) + (Vector3.up * 4f);
                         rb.AddTorque(UnityEngine.Random.insideUnitSphere * 2f);
                     }
                 }
@@ -380,7 +366,6 @@ namespace H3TVR
                 logger.LogInfo($"Spawned {count} Air Strike grenade(s) ({armedCount} armed, pin pull chance {pinPullChance:P0}, ID: {obj.ItemID})");
 
                 // Play after-action sound
-                audioManager?.PlayDangerCloseSound("after_airstrike", spawnPos, true, "danger_close/airstrike_deployed.wav", 0.8f);
             }
             catch (Exception ex)
             {
@@ -494,34 +479,51 @@ namespace H3TVR
                 Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.forward * 5f);
                 
                 // Play before-action sound
-                audioManager?.PlayWeaponSpawnSound("before_titan", spawnPos, true, "weapons/titan_materializing.wav", 1.0f);
 
                 // Titan Machine Item ID
                 string titanID = "JerryAr_TitanMachine";
-                
+
                 if (!IM.OD.ContainsKey(titanID))
                 {
-                    logger.LogWarning("Titan Machine not available. Install: https://thunderstore.io/c/h3vr/p/JerryAr/TitanMachine/");
-                    logger.LogInfo($"Expected Item ID: {titanID}");
-                    
-                    // List all titan/machine items for debugging
-                    logger.LogInfo("Available machine/titan items:");
+                    // Fallback: search for any titan item in the ItemManager
+                    string fallbackID = null;
                     foreach (var kvp in IM.OD)
                     {
-                        if (kvp.Key.ToLower().Contains("titan") || kvp.Key.ToLower().Contains("machine") || kvp.Key.ToLower().Contains("robot"))
-                            logger.LogInfo($"  - {kvp.Key}");
+                        if (kvp.Value != null && kvp.Key.ToLower().Contains("titan"))
+                        {
+                            fallbackID = kvp.Key;
+                            break;
+                        }
                     }
-                    return;
+
+                    if (fallbackID == null)
+                    {
+                        logger.LogWarning("Titan Machine not available. Install: https://thunderstore.io/c/h3vr/p/JerryAr/TitanMachine/");
+                        logger.LogInfo($"Expected Item ID: {titanID}");
+                        return;
+                    }
+
+                    logger.LogInfo($"Using titan fallback item: {fallbackID}");
+                    titanID = fallbackID;
                 }
 
                 FVRObject obj = IM.OD[titanID];
-                
-                // Spawn at ground level in front of player
-                Quaternion spawnRot = Quaternion.LookRotation(GM.CurrentPlayerBody.Head.forward);
+
+                // Snap the spawn point down to the ground so the titan doesn't spawn floating
+                RaycastHit hit;
+                if (Physics.Raycast(spawnPos + Vector3.up, Vector3.down, out hit, 20f))
+                {
+                    spawnPos = hit.point + (Vector3.up * 0.1f);
+                }
+
+                // Face the player
+                Vector3 toPlayer = GM.CurrentPlayerBody.Head.position - spawnPos;
+                toPlayer.y = 0f;
+                Quaternion spawnRot = toPlayer.sqrMagnitude > 0.001f ? Quaternion.LookRotation(toPlayer) : Quaternion.identity;
                 GameObject go = Instantiate(obj.GetGameObject(), spawnPos, spawnRot);
 
-                // Try to configure as hostile AI if it has sosig-like components
-                var sosig = go.GetComponent<Sosig>();
+                // Try to configure as hostile AI if it has sosig-like components (check children too)
+                var sosig = go.GetComponentInChildren<Sosig>();
                 if (sosig != null)
                 {
                     // Set as enemy
@@ -539,7 +541,6 @@ namespace H3TVR
                 logger.LogInfo($"Successfully spawned Titan Machine (ID: {titanID})");
                 
                 // Play after-action sound
-                audioManager?.PlayWeaponSpawnSound("after_titan", spawnPos, true, "weapons/titan_active.wav", 0.9f);
             }
             catch (Exception ex)
             {
@@ -561,7 +562,6 @@ namespace H3TVR
                 Vector3 targetPos = playerPos + (GM.CurrentPlayerBody.Head.forward * 15f);
 
                 // Play dramatic warning sound
-                audioManager?.PlayDangerCloseSound("nuke_incoming", playerPos, false, "danger_close/nuke_incoming.wav", 1.0f);
 
                 logger.LogInfo("NUKE INCOMING! Taking cover is advised...");
 
@@ -580,7 +580,6 @@ namespace H3TVR
             yield return new WaitForSeconds(1.5f);
 
             // Play nuke detonation sound
-            audioManager?.PlayDangerCloseSound("nuke_detonate", targetPosition, false, "danger_close/nuke_explosion.wav", 1.0f);
 
             // Check for danger close cartridge
             string nukeCartridgeID = "Cartridge50mmFlareDangerClose";
@@ -643,7 +642,6 @@ namespace H3TVR
             logger.LogInfo("Nuke detonation complete - area devastated!");
             
             // Play aftermath sound
-            audioManager?.PlayDangerCloseSound("nuke_aftermath", targetPosition, false, "danger_close/nuke_aftermath.wav", 0.8f);
         }
 
         private void SpawnNukeExplosion(FVRObject explosiveObj, Vector3 position, float delay)
@@ -680,7 +678,6 @@ namespace H3TVR
                 Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
                 
                 // Play before-action danger close warning
-                audioManager?.PlayDangerCloseSound("before_barrage", spawnPos, true, "danger_close/incoming_artillery.wav", 1.0f);
 
                 int minCount, maxCount;
                 plugin.GetDangerCloseConfig(out minCount, out maxCount);
@@ -717,7 +714,6 @@ namespace H3TVR
                 }
 
                 // Play after-action sound
-                audioManager?.PlayDangerCloseSound("after_barrage", spawnPos, true, "danger_close/barrage_complete.wav", 0.8f);
             }
             catch (Exception ex)
             {
@@ -728,7 +724,6 @@ namespace H3TVR
         private IEnumerator PlayDelayedExplosionSound(Vector3 position, float delay)
         {
             yield return new WaitForSeconds(delay);
-            audioManager?.PlayDangerCloseSound("explosion", position, true, "danger_close/explosion_impact.wav", 0.9f);
         }
 
         public void DestroyQuickbelt()
@@ -738,7 +733,6 @@ namespace H3TVR
                 Vector3 playerPos = GM.CurrentPlayerBody.Head.position;
                 
                 // Play before-action destruction sound
-                audioManager?.PlayDestructionSound("before_destroy", playerPos, false, "destruction/quickbelt_clearing.wav", 0.7f);
 
                 FVRQuickBeltSlot[] allSlots = UnityEngine.Object.FindObjectsOfType<FVRQuickBeltSlot>();
                 if (allSlots == null || allSlots.Length == 0)
@@ -774,7 +768,6 @@ namespace H3TVR
                     SpawnCelebratoryShell();
                     
                     // Play after-action sound
-                    audioManager?.PlayDestructionSound("after_destroy", playerPos, false, "destruction/quickbelt_cleared.wav", 0.6f);
                     
                     logger.LogInfo($"Destroyed {destroyedCount} quickbelt object(s) (magazines preserved).");
                 }
@@ -832,7 +825,6 @@ namespace H3TVR
                 Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
                 
                 // Play before-action sound
-                audioManager?.PlayDangerCloseSound("before_grenade", spawnPos, true, "grenades/pin_pull.wav", 0.8f);
 
                 FVRObject obj = IM.OD[grenadeID];
                 GameObject go = Instantiate(obj.GetGameObject(), spawnPos, GM.CurrentPlayerBody.Head.rotation);
@@ -853,7 +845,6 @@ namespace H3TVR
                 }
 
                 // Play after-action sound
-                audioManager?.PlayDangerCloseSound("after_grenade", spawnPos, true, "grenades/grenade_thrown.wav", 0.7f);
 
                 logger.LogInfo($"Spawned {grenadeName}");
             }
@@ -866,7 +857,6 @@ namespace H3TVR
         public void SpawnFlash()
         {
             Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-            audioManager?.PlayDangerCloseSound("before_flash", spawnPos, true, "grenades/flashbang_prepare.wav", 0.9f);
             SpawnGrenade("PinnedGrenadeXM84", "Flash", 500f, true);
         }
 
@@ -877,7 +867,6 @@ namespace H3TVR
                 if (!ValidateSpawnConditions() || !IM.OD.ContainsKey("PinnedGrenadeXM84")) return;
 
                 Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-                audioManager?.PlayDangerCloseSound("before_multiflash", spawnPos, true, "grenades/multiple_flashbang.wav", 1.0f);
 
                 FVRObject obj = IM.OD["PinnedGrenadeXM84"];
 
@@ -916,7 +905,6 @@ namespace H3TVR
                 }
 
                 // Play after-action sound
-                audioManager?.PlayDangerCloseSound("after_multiflash", spawnPos, true, "grenades/flashbangs_thrown.wav", 0.8f);
 
                 logger.LogInfo("Spawned Flash2 (4 flashbangs)");
             }
@@ -930,31 +918,60 @@ namespace H3TVR
         {
             try
             {
-                // 10% spawn chance
-                if (UnityEngine.Random.Range(1, 11) != 1) return;
-                if (!ValidateSpawnConditions() || !IM.OD.ContainsKey("PinnedGrenadeM67")) return;
+                if (!ValidateSpawnConditions()) return;
 
-                Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
-                audioManager?.PlayDangerCloseSound("before_nade_rain", spawnPos, true, "grenades/grenade_incoming.wav", 0.8f);
+                if (!IM.OD.ContainsKey("PinnedGrenadeM67"))
+                {
+                    logger.LogError("SpawnNadeRain: 'PinnedGrenadeM67' not found in ItemManager.");
+                    return;
+                }
 
-                FVRObject obj = IM.OD["PinnedGrenadeM67"];
-                float howFast = 15.0f;
-                float maxAngle = 4.0f;
+                StartCoroutine(NadeRainRoutine());
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"SpawnNadeRain failed: {ex.Message}");
+            }
+        }
+
+        private IEnumerator NadeRainRoutine()
+        {
+            Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
+
+            FVRObject obj = IM.OD["PinnedGrenadeM67"];
+            const int grenadeCount = 10;
+            const float launchSpeed = 15.0f;
+            const float maxAngle = 8.0f;
+
+            for (int i = 0; i < grenadeCount; i++)
+            {
+                LaunchNadeRainGrenade(obj, launchSpeed, maxAngle);
+                yield return new WaitForSeconds(0.35f);
+            }
+
+            logger.LogInfo($"NadeRain complete ({grenadeCount} grenades launched)");
+        }
+
+        private void LaunchNadeRainGrenade(FVRObject obj, float launchSpeed, float maxAngle)
+        {
+            try
+            {
+                // Launch straight up with a random tilt so grenades rain down around the player
                 Vector2 randRot = UnityEngine.Random.insideUnitCircle;
-                int pullChance = UnityEngine.Random.Range(1, 20);
-
-                Vector3 grenadePosition = GM.CurrentPlayerBody.Head.position + (GM.CurrentPlayerBody.Head.up * 0.02f);
-                GameObject go = Instantiate(obj.GetGameObject(), grenadePosition, Quaternion.LookRotation(GM.CurrentPlayerBody.Head.up));
+                Vector3 grenadePosition = GM.CurrentPlayerBody.Head.position + (Vector3.up * 0.5f);
+                GameObject go = Instantiate(obj.GetGameObject(), grenadePosition, Quaternion.LookRotation(Vector3.up));
 
                 go.transform.Rotate(new Vector3(randRot.x * maxAngle, randRot.y * maxAngle, 0.0f), Space.Self);
-                
+
                 var rb = go.GetComponent<Rigidbody>();
                 if (rb != null)
                 {
-                    rb.velocity = go.transform.forward * howFast;
+                    rb.velocity = go.transform.forward * launchSpeed;
+                    rb.AddTorque(UnityEngine.Random.insideUnitSphere * 2f);
                 }
 
-                if (pullChance == 10)
+                // ~25% of grenades come down armed
+                if (UnityEngine.Random.Range(0, 4) == 0)
                 {
                     PinnedGrenade grenade = go.GetComponentInChildren<PinnedGrenade>();
                     if (grenade != null)
@@ -962,12 +979,10 @@ namespace H3TVR
                         grenade.ReleaseLever();
                     }
                 }
-
-                logger.LogInfo("Spawned NadeRain grenade");
             }
             catch (Exception ex)
             {
-                logger.LogError($"SpawnNadeRain failed: {ex.Message}");
+                logger.LogError($"NadeRain grenade launch failed: {ex.Message}");
             }
         }
 
@@ -978,7 +993,6 @@ namespace H3TVR
                 Vector3 handPos = GM.CurrentPlayerBody.RightHand.position;
                 
                 // Play before-action sound
-                audioManager?.PlayDestructionSound("before_destroy_held", handPos, true, "destruction/item_dissolving.wav", 0.8f);
 
                 var hands = GM.CurrentMovementManager?.Hands;
                 if (hands == null || hands.Length < 2)
@@ -996,7 +1010,6 @@ namespace H3TVR
                     SpawnCelebratoryShell();
                     
                     // Play after-action sound
-                    audioManager?.PlayDestructionSound("after_destroy_held", handPos, true, "destruction/item_destroyed.wav", 0.7f);
                     
                     logger.LogInfo("Destroyed held item in right hand.");
                 }
@@ -1036,7 +1049,6 @@ namespace H3TVR
                 }
 
                 // Play celebration sound
-                audioManager?.PlayUISound("celebration", shellPosition, "ui/celebration.wav", 0.6f);
             }
             catch (Exception ex)
             {
@@ -1121,14 +1133,12 @@ namespace H3TVR
             if (grenadeEnabled && UnityEngine.Random.value < grenadeChance)
             {
                 logger.LogInfo("Pillow grenade spawn triggered!");
-                audioManager?.PlayDangerCloseSound("pillow_grenade", GM.CurrentPlayerBody.Head.position, true, "pillow/grenade_surprise.wav", 0.8f);
                 SpawnPillowGrenade(grenadeArmedChance);
             }
 
             if (zeroGEnabled && UnityEngine.Random.value < zeroGChance)
             {
                 logger.LogInfo($"Pillow zero gravity triggered! Duration: {zeroGDuration}s");
-                audioManager?.PlaySlomoSound("zerog_start", GM.CurrentPlayerBody.Head.position, false, "effects/zero_gravity.wav", 0.7f);
                 var effectsManager = plugin.GetEffectsManager();
                 effectsManager?.StartCoroutine(effectsManager.ActivatePillowZeroGravity(zeroGDuration));
             }
@@ -1136,7 +1146,6 @@ namespace H3TVR
             if (slomoEnabled && UnityEngine.Random.value < slomoChance)
             {
                 logger.LogInfo($"Pillow slow motion triggered! Duration: {slomoDuration}s");
-                audioManager?.PlaySlomoSound("start", GM.CurrentPlayerBody.Head.position, false, "effects/slomo_pillow.wav", 0.8f);
                 var effectsManager = plugin.GetEffectsManager();
                 effectsManager?.StartCoroutine(effectsManager.ActivatePillowSlomo(slomoDuration));
             }

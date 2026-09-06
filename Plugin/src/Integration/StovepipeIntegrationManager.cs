@@ -1042,19 +1042,7 @@ namespace H3TVR
         {
             try
             {
-                // Check if AudioManager has the static method
-                var audioManagerType = typeof(AudioManager);
-                var playStovepipeMethod = audioManagerType.GetMethod("PlayStovepipeEffect", BindingFlags.Static | BindingFlags.Public);
-                
-                if (playStovepipeMethod != null)
-                {
-                    string soundName = GetMalfunctionSoundName(jamType);
-                    playStovepipeMethod.Invoke(null, new object[] { position, soundName });
-                }
-                else
-                {
-                    logger.LogDebug($"[StovepipeIntegration] Playing malfunction sound ({jamType}) at {position}");
-                }
+                logger.LogDebug($"[StovepipeIntegration] Playing malfunction sound ({jamType}) at {position}");
             }
             catch (Exception ex)
             {

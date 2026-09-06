@@ -979,16 +979,7 @@ namespace H3TVR
         {
             try
             {
-                // Try to use H3TVR's AudioManager if available
-                var audioManager = UnityEngine.Object.FindObjectOfType<AudioManager>();
-                if (audioManager != null)
-                {
-                    audioManager.PlayWeaponSpawnSound("transformation", position, true);
-                }
-                else
-                {
-                    logger.LogDebug($"[MeatyceiverIntegration] Playing transformation sound at {position}");
-                }
+                logger.LogDebug($"[MeatyceiverIntegration] Playing transformation sound at {position}");
             }
             catch (Exception ex)
             {

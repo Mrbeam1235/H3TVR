@@ -74,12 +74,6 @@ namespace H3TVR
             = new Dictionary<string, ConfigEntry<KeyCode>>();
         #endregion
 
-        #region Steam Friends Configuration
-        public ConfigEntry<bool> EnableSteamFriends { get; private set; }
-        public ConfigEntry<bool> SteamFriendsRandomNames { get; private set; }
-        public ConfigEntry<float> SteamFriendsRefreshInterval { get; private set; }
-        #endregion
-
         #region Take and Hold Configuration
         public ConfigEntry<bool> EnableInfiniteTokens { get; private set; }
         public ConfigEntry<bool> DisableEncryptionNodes { get; private set; }
@@ -192,14 +186,6 @@ namespace H3TVR
             DangerCloseMaxCount = config.Bind("DangerClose", "MaxCount", 5,
                 "Maximum danger close rounds");
 
-            // Steam Friends
-            EnableSteamFriends = config.Bind("SteamFriends", "Enabled", true,
-                "Enable Steam Friends list integration");
-            SteamFriendsRandomNames = config.Bind("SteamFriends", "UseRandomNames", false,
-                "Use random friend from list instead of specific name");
-            SteamFriendsRefreshInterval = config.Bind("SteamFriends", "RefreshInterval", 300f,
-                "Auto-refresh Steam friends list interval (seconds)");
-
             // Take and Hold
             EnableInfiniteTokens = config.Bind("TakeAndHold", "InfiniteTokens", false,
                 "Enable infinite tokens in Take and Hold mode");
@@ -241,8 +227,6 @@ namespace H3TVR
                 { "ToggleFireMode", new KeyValuePair<KeyCode, string>(KeyCode.T, "Toggle Fire Mode") },
                 { "BoostMalfunction", new KeyValuePair<KeyCode, string>(KeyCode.Y, "Boost Malfunction") },
                 { "ShowStats", new KeyValuePair<KeyCode, string>(KeyCode.Tab, "Show Stats") },
-                { "RefreshSteamFriends", new KeyValuePair<KeyCode, string>(KeyCode.F9, "Refresh Steam Friends List") },
-                { "SteamFriendsStats", new KeyValuePair<KeyCode, string>(KeyCode.Home, "Show Steam Friends Stats") },
                 { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
                 { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") },
                 { "SpawnNuke", new KeyValuePair<KeyCode, string>(KeyCode.N, "Spawn Nuke (Massive Explosion)") },

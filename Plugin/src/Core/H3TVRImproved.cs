@@ -99,11 +99,6 @@ namespace H3TVR
         // Key Bindings - Organized
         private readonly Dictionary<string, ConfigEntry<KeyCode>> keyBindings = new Dictionary<string, ConfigEntry<KeyCode>>();
 
-        // Steam Friends Configuration
-        private ConfigEntry<bool> enableSteamFriends;
-        private ConfigEntry<bool> steamFriendsRandomNames;
-        private ConfigEntry<float> steamFriendsRefreshInterval;
-        
         // Take and Hold Configuration
         private ConfigEntry<bool> enableInfiniteTokens;
         private ConfigEntry<bool> disableEncryptionNodes;
@@ -124,8 +119,6 @@ namespace H3TVR
         private SpawnManager spawnManager;
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
-        private AudioManager audioManager;
-        private SteamFriendsIntegration steamFriendsIntegration; // Steam Friends Integration
         private AirdropManager airdropManager;
         #endregion
 
@@ -165,7 +158,7 @@ namespace H3TVR
                 base.Logger.LogInfo("Step 5: Initializing SpawnManager...");
                 if (spawnManager != null)
                 {
-                    spawnManager.Initialize(this, Logger, audioManager);
+                    spawnManager.Initialize(this, Logger);
                     base.Logger.LogInfo("SpawnManager initialized successfully");
                 }
                 else
@@ -176,10 +169,6 @@ namespace H3TVR
                 // Initialize TwitchLib integration (if enabled)
                 base.Logger.LogInfo("Step 6: Initializing Twitch integration...");
                 InitializeTwitchIntegration();
-                
-                // Initialize Steam Friends integration (if enabled)
-                base.Logger.LogInfo("Step 6.5: Initializing Steam Friends integration...");
-                InitializeSteamFriendsIntegration();
 
                 base.Logger.LogInfo("H3TVR Enhanced Edition loaded successfully!");
                 
@@ -285,11 +274,6 @@ namespace H3TVR
             airStrikePinPullChance = Config.Bind("AirStrike", "PinPullChance", 1.0f,
                 "Chance (0.0 - 1.0) that each spawned air strike grenade has its pin pulled and is armed");
 
-            // Steam Friends Configuration
-            enableSteamFriends = Config.Bind("SteamFriends", "Enabled", true, "Enable Steam Friends list integration");
-            steamFriendsRandomNames = Config.Bind("SteamFriends", "UseRandomNames", false, "Use random friend from list instead of specific name");
-            steamFriendsRefreshInterval = Config.Bind("SteamFriends", "RefreshInterval", 300f, "Auto-refresh Steam friends list interval (seconds)");
-            
             // Take and Hold Configuration
             enableInfiniteTokens = Config.Bind("TakeAndHold", "InfiniteTokens", false, "Enable infinite tokens in Take and Hold mode");
             disableEncryptionNodes = Config.Bind("TakeAndHold", "DisableEncryptionNodes", false, "Disable encryption nodes in Take and Hold mode for easier gameplay");
@@ -332,10 +316,6 @@ namespace H3TVR
                 { "BoostMalfunction", new KeyValuePair<KeyCode, string>(KeyCode.Y, "Boost Malfunction") },
                 { "ShowStats", new KeyValuePair<KeyCode, string>(KeyCode.Tab, "Show Stats") },
 
-                // Steam Friends Key Bindings
-                { "RefreshSteamFriends", new KeyValuePair<KeyCode, string>(KeyCode.F9, "Refresh Steam Friends List") },
-                { "SteamFriendsStats", new KeyValuePair<KeyCode, string>(KeyCode.Home, "Show Steam Friends Stats") },
-                
                 // JerryAr mod keybindings
                 { "SpawnAirStrike", new KeyValuePair<KeyCode, string>(KeyCode.F10, "Spawn Air Strike Smoke Grenade") },
                 { "SpawnTitanMachine", new KeyValuePair<KeyCode, string>(KeyCode.F11, "Spawn Titan Machine (AI Enemy)") },
@@ -412,14 +392,12 @@ namespace H3TVR
                 spawnManager = gameObject.AddComponent<SpawnManager>();  // Add SpawnManager component
                 effectsManager = gameObject.AddComponent<EffectsManager>();
                 weaponManager = gameObject.AddComponent<WeaponManager>();
-                audioManager = gameObject.AddComponent<AudioManager>();
 
                 // Initialize each component
-                audioManager.Initialize(this, Logger);
                 inputHandler.Initialize(keyBindings, this);
                 // SpawnManager is initialized in Awake after components are created
                 effectsManager.Initialize(this, slomoMovementController, Logger);
-                weaponManager.Initialize(this, Logger, audioManager);
+                weaponManager.Initialize(this, Logger);
 
                 Logger.LogInfo("All components initialized successfully");
             }
@@ -437,34 +415,6 @@ namespace H3TVR
         {
             // TwitchChatManager removed - Twitch integration no longer available
             Logger.LogInfo("Twitch integration disabled");
-        }
-        
-        /// <summary>
-        /// Initialize Steam Friends integration
-        /// </summary>
-        private void InitializeSteamFriendsIntegration()
-        {
-            if (!enableSteamFriends.Value)
-            {
-                Logger.LogInfo("Steam Friends integration disabled in config");
-                return;
-            }
-            
-            try
-            {
-                // Create the integration component
-                GameObject steamFriendsObject = new GameObject("SteamFriendsIntegration");
-                steamFriendsObject.transform.SetParent(transform);
-                
-                steamFriendsIntegration = steamFriendsObject.AddComponent<SteamFriendsIntegration>();
-                steamFriendsIntegration.Initialize(this, Logger);
-                Logger.LogInfo("Steam Friends integration initialized successfully");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Failed to initialize Steam Friends integration: {ex.Message}");
-                steamFriendsIntegration = null;
-            }
         }
 
         #endregion
@@ -507,14 +457,6 @@ namespace H3TVR
                     case "Wait":
                         Logger.LogInfo("Waiting!");
                         slomoStatus = "Paused";
-                        try
-                        {
-                            audioManager?.PlaySlomoSound("active"); // Play slomo active sound
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.LogWarning($"Audio error during slomo: {ex.Message}");
-                        }
                         StartCoroutine(effectsManager.SlomoWait(() => slomoStatus = "Return"));
                         break;
                     case "Return":
@@ -525,17 +467,6 @@ namespace H3TVR
 
                 if (Time.timeScale == 1)
                 {
-                    if (slomoStatus != "Off")
-                    {
-                        try
-                        {
-                            audioManager?.PlaySlomoSound("end"); // Play slomo end sound
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.LogWarning($"Audio error ending slomo: {ex.Message}");
-                        }
-                    }
                     slomoStatus = "Off";
                 }
                 
@@ -820,8 +751,6 @@ namespace H3TVR
             slomoRampStartTime = Time.unscaledTime;
             slomoRampStartValue = Time.timeScale;
             isRamping = true;
-            
-            audioManager?.PlaySlomoSound("start"); // Play slomo start sound
         }
         
         public void TriggerZeroGravity() 
@@ -836,7 +765,6 @@ namespace H3TVR
         public SpawnManager GetSpawnManager() => spawnManager;
         public WeaponManager GetWeaponManager() => weaponManager;
         public EffectsManager GetEffectsManager() => effectsManager;
-        public AudioManager GetAudioManager() => audioManager;
         public AirdropManager GetAirdropManager() => airdropManager;
         
         // Spawn configuration access methods
@@ -954,14 +882,6 @@ namespace H3TVR
         // State setters
         public void SetSlomoStatus(string status) => slomoStatus = status;
 
-        // Add access method for Steam Friends Integration
-        public SteamFriendsIntegration GetSteamFriendsIntegration() => steamFriendsIntegration;
-        
-        // Steam Friends configuration access
-        public bool IsSteamFriendsEnabled() => enableSteamFriends != null && enableSteamFriends.Value;
-        public bool UseSteamFriendsRandomNames() => steamFriendsRandomNames != null && steamFriendsRandomNames.Value;
-        public float GetSteamFriendsRefreshInterval() => steamFriendsRefreshInterval != null ? steamFriendsRefreshInterval.Value : 300f;
-        
         // Take and Hold methods
         public bool IsInfiniteTokensEnabled() => enableInfiniteTokens != null && enableInfiniteTokens.Value;
         public bool IsEncryptionDisabled() => disableEncryptionNodes != null && disableEncryptionNodes.Value;

@@ -17,7 +17,6 @@ namespace H3TVR
         private EffectsManager effectsManager;
         private WeaponManager weaponManager;
         private ManualLogSource logger;
-        private AudioManager audioManager;
 
         public void Initialize(Dictionary<string, ConfigEntry<KeyCode>> bindings, H3TVRImproved pluginInstance)
         {
@@ -29,7 +28,6 @@ namespace H3TVR
             spawnManager = plugin.GetSpawnManager();
             effectsManager = plugin.GetEffectsManager();
             weaponManager = plugin.GetWeaponManager();
-            audioManager = plugin.GetAudioManager();
         }
 
         void Update()
@@ -38,7 +36,6 @@ namespace H3TVR
             ProcessEffectInputs();
             ProcessWeaponInputs();
             ProcessUtilityInputs();
-            ProcessSteamFriendsInputs();
         }
 
         private void ProcessSpawnInputs()
@@ -64,10 +61,7 @@ namespace H3TVR
                     spawnManager?.SpawnHydration();
                     
                 if (keyBindings.ContainsKey("SpawnJeditToy") && Input.GetKeyDown(keyBindings["SpawnJeditToy"].Value))
-                {
                     spawnManager?.SpawnJeditToy();
-                    audioManager?.PlayJeditoySound();
-                }
                     
                 if (keyBindings.ContainsKey("SpawnSkittySubGun") && Input.GetKeyDown(keyBindings["SpawnSkittySubGun"].Value))
                     spawnManager?.SpawnSkittySubGun();
@@ -166,32 +160,5 @@ namespace H3TVR
                 logger?.LogError($"Utility input error: {ex.Message}");
             }
         }
-
-        private void ProcessSteamFriendsInputs()
-        {
-            try
-            {
-                var steamFriends = plugin?.GetSteamFriendsIntegration();
-                if (steamFriends == null || !plugin.IsSteamFriendsEnabled())
-                {
-                    return;
-                }
-                
-                if (keyBindings.ContainsKey("RefreshSteamFriends") && Input.GetKeyDown(keyBindings["RefreshSteamFriends"].Value))
-                {
-                    steamFriends.RefreshFriendsList();
-                    logger?.LogInfo("Refreshing Steam friends list");
-                }
-                
-                if (keyBindings.ContainsKey("SteamFriendsStats") && Input.GetKeyDown(keyBindings["SteamFriendsStats"].Value))
-                {
-                    logger?.LogInfo(steamFriends.GetStatsInfo());
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError($"Steam Friends input error: {ex.Message}");
             }
         }
-    }
-}

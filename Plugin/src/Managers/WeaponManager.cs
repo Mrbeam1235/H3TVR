@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using FistVR;
 using System.Reflection;
 using System.Linq;
@@ -25,7 +25,6 @@ namespace H3TVR
     {
         private H3TVRImproved plugin;
         private ManualLogSource logger;
-        private AudioManager audioManager;
 
         // Weapon statistics
         private int weaponSpawnCount = 0;
@@ -44,11 +43,10 @@ namespace H3TVR
             public float targetScale;
         }
 
-        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource, AudioManager audioManagerInstance)
+        public void Initialize(H3TVRImproved pluginInstance, ManualLogSource logSource)
         {
             plugin = pluginInstance;
             logger = logSource;
-            audioManager = audioManagerInstance;
 
             // Initialize optional dependency manager first
             OptionalDependencyManager.Initialize(logger);
@@ -83,15 +81,17 @@ namespace H3TVR
 
                 if (gunList.Length == 0)
                 {
-                    logger.LogError("Gun list is empty after parsing.");
+                    logger.LogWarning("Gun list is empty after parsing - falling back to ItemManager pool.");
+                    SpawnFromItemManager(isBigGun);
                     return;
                 }
 
                 string selectedGun = isBigGun ? gunList[0] : gunList[UnityEngine.Random.Range(0, gunList.Length)];
-                
+
                 if (!IM.OD.ContainsKey(selectedGun))
                 {
-                    logger.LogError($"Gun key '{selectedGun}' not found in IM.OD dictionary.");
+                    logger.LogWarning($"Gun key '{selectedGun}' not found in IM.OD dictionary - falling back to ItemManager pool.");
+                    SpawnFromItemManager(isBigGun);
                     return;
                 }
 
@@ -133,7 +133,6 @@ namespace H3TVR
                 Vector3 spawnPos = GM.CurrentPlayerBody.Head.position + new Vector3(0f, 0.25f, 0f);
                 
                 // Play weapon spawn sound
-                audioManager?.PlayWeaponSpawnSound(isBigGun ? "gun_spawn" : "skitty_sub_gun", spawnPos, true);
 
                 if (plugin.UseItemManagerForGuns())
                 {
@@ -226,15 +225,17 @@ namespace H3TVR
 
             if (gunList.Length == 0)
             {
-                logger.LogError("Gun list is empty after parsing.");
+                logger.LogWarning("Gun list is empty after parsing - falling back to ItemManager pool.");
+                SpawnFromItemManager(isBigGun);
                 return;
             }
 
             string selectedGun = isBigGun ? gunList[0] : gunList[UnityEngine.Random.Range(0, gunList.Length)];
-            
+
             if (!IM.OD.ContainsKey(selectedGun))
             {
-                logger.LogError($"Gun key '{selectedGun}' not found in IM.OD dictionary.");
+                logger.LogWarning($"Gun key '{selectedGun}' not found in IM.OD dictionary - falling back to ItemManager pool.");
+                SpawnFromItemManager(isBigGun);
                 return;
             }
 
@@ -288,7 +289,6 @@ namespace H3TVR
                 {
                     // Fallback: nothing held - spawn a random gun in front of the player so the redeem never wastes
                     logger.LogInfo("SwapHeldGun: No gun held, spawning random gun instead");
-                    audioManager?.PlayWeaponSpawnSound("skitty_sub_gun", GM.CurrentPlayerBody.Head.position, true);
                     SpawnGunAndMagazine(newGunObj, false);
                     return;
                 }
@@ -298,7 +298,6 @@ namespace H3TVR
 
                 // Spawn the replacement gun at the old gun's exact position
                 GameObject newGunGO = Instantiate(newGunObj.GetGameObject(), gunPos, gunRot);
-                audioManager?.PlayWeaponSpawnSound("skitty_sub_gun", gunPos, true);
 
                 // Remove the old gun from the hand and destroy it
                 heldGun.ForceBreakInteraction();
@@ -690,7 +689,6 @@ namespace H3TVR
                 if (firearm == null)
                 {
                     logger.LogWarning("ToggleHeldGunFireMode: No firearm found in hands");
-                    audioManager?.PlayUISound("error"); // Play error sound
                     return;
                 }
 
@@ -698,7 +696,6 @@ namespace H3TVR
                 logger.LogInfo($"ToggleHeldGunFireMode: Attempting to toggle fire mode on {gunType}");
 
                 // Play fire mode toggle sound
-                audioManager?.PlayWeaponSpawnSound("weapon_ready", firearm.transform.position, true);
 
                 // Try various method names for fire mode cycling
                 string[] methodNames = { 
@@ -715,7 +712,6 @@ namespace H3TVR
                     {
                         mi.Invoke(firearm, null);
                         logger.LogInfo($"ToggleHeldGunFireMode: Successfully toggled via method '{methodName}'");
-                        audioManager?.PlayUISound("confirm"); // Play confirmation sound
                         return;
                     }
                 }
@@ -727,7 +723,6 @@ namespace H3TVR
             catch (Exception ex)
             {
                 logger.LogError($"ToggleHeldGunFireMode failed: {ex.Message}");
-                audioManager?.PlayUISound("error"); // Play error sound
             }
         }
 
@@ -1044,7 +1039,6 @@ namespace H3TVR
             if (firearm == null)
           {
     logger.LogWarning("ScaleHeldWeapon: No firearm found in hands");
-        audioManager?.PlayUISound("error");
   return;
              }
 
@@ -1068,13 +1062,10 @@ namespace H3TVR
                 firearm.transform.localScale = scaleData.originalScale * scaleFactor;
 
        logger.LogInfo($"ScaleHeldWeapon: Scaled {firearm.name} to {scaleFactor}x for {duration} seconds");
-           audioManager?.PlayWeaponSpawnSound("weapon_ready", firearm.transform.position, true);
- audioManager?.PlayUISound("confirm");
       }
  catch (Exception ex)
             {
        logger.LogError($"ScaleHeldWeapon failed: {ex.Message}");
- audioManager?.PlayUISound("error");
           }
         }
 
@@ -1133,7 +1124,6 @@ try
      if (RestoreOriginalScale(firearm))
         {
    logger.LogInfo($"RestoreHeldWeaponScale: Restored original scale for {firearm.name}");
-     audioManager?.PlayUISound("confirm");
  }
       else
        {
@@ -1181,7 +1171,6 @@ try
       {
                   RestoreOriginalScale(firearm);
   logger.LogInfo($"UpdateScaleModifiers: Scale modifier expired for {firearm.name}");
-           audioManager?.PlayWeaponSpawnSound("weapon_ready", firearm.transform.position, false);
          }
              else
         {
