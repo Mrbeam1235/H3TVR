@@ -328,9 +328,18 @@ namespace H3TVR
                     case "righttrigger":
                         return hands.Length > 1 && hands[1] != null && hands[1].Input.TriggerDown;
                     case "lefttouchpad":
+                    case "leftjoystick":
                         return hands.Length > 0 && hands[0] != null && hands[0].Input.TouchpadDown;
                     case "righttouchpad":
+                    case "rightjoystick":
                         return hands.Length > 1 && hands[1] != null && hands[1].Input.TouchpadDown;
+                    case "leftany":
+                        return hands.Length > 0 && IsAnyButtonDown(hands[0]);
+                    case "rightany":
+                        return hands.Length > 1 && IsAnyButtonDown(hands[1]);
+                    case "any":
+                        return (hands.Length > 0 && IsAnyButtonDown(hands[0])) ||
+                               (hands.Length > 1 && IsAnyButtonDown(hands[1]));
                     default:
                         logger.LogWarning($"Unknown VR button configuration: {buttonName}. Using default LeftX.");
                         return hands.Length > 0 && hands[0] != null && hands[0].Input.AXButtonDown;
@@ -341,6 +350,16 @@ namespace H3TVR
                 logger.LogError($"CheckVRButtonPress failed for button {buttonName}: {ex.Message}");
                 return false;
             }
+        }
+
+        private static bool IsAnyButtonDown(FVRViveHand hand)
+        {
+            if (hand == null) return false;
+            return hand.Input.AXButtonDown ||
+                   hand.Input.BYButtonDown ||
+                   hand.Input.GripDown ||
+                   hand.Input.TriggerDown ||
+                   hand.Input.TouchpadDown;
         }
         #endregion
 

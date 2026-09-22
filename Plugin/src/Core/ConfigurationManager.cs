@@ -117,7 +117,13 @@ namespace H3TVR
             SlomoVRControllerEnabled = config.Bind("Slomo", "VRControllerEnabled", true,
                 "Enable VR controller button to trigger slomo");
             SlomoVRButton = config.Bind("Slomo", "VRButton", "LeftX",
-                "VR button to trigger slomo");
+                new ConfigDescription(
+                    "VR controller button that triggers slomo. Joystick options are the thumbstick/touchpad click. 'Any' options trigger on any button or joystick press.",
+                    new AcceptableValueList<string>(
+                        "LeftX", "RightX", "LeftY", "RightY",
+                        "LeftGrip", "RightGrip", "LeftTrigger", "RightTrigger",
+                        "LeftJoystick", "RightJoystick",
+                        "LeftAny", "RightAny", "Any")));
             SlomoAffectsMovement = config.Bind("Slomo", "AffectsMovement", true,
                 "Whether slomo affects player movement speed");
             SlomoMovementScale = config.Bind("Slomo", "MovementScale", 0.3f,
